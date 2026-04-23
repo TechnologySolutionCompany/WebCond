@@ -1,0 +1,109 @@
+import { defineConfig, loadEnv } from 'vite'
+import react from '@vitejs/plugin-react'
+
+const apiModules = {
+  '/api/health': new URL('./api/health.js', import.meta.url),
+  '/api/auth/login-cpf': new URL('./api/auth/login-cpf.js', import.meta.url),
+  '/api/admin/residents/create': new URL('./api/admin/residents/create.js', import.meta.url),
+  '/api/admin/residents/delete': new URL('./api/admin/residents/delete.js', import.meta.url),
+  '/api/admin/residents/update': new URL('./api/admin/residents/update.js', import.meta.url),
+  '/api/admin/residents/update-password': new URL('./api/admin/residents/update-password.js', import.meta.url),
+}
+
+function devApiPlugin() {
+  return {
+    name: 'webcond-dev-api',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const url = new URL(req.url || '/', 'http://localhost')
+        const moduleUrl = apiModules[url.pathname]
+
+        if (!moduleUrl) {
+          next()
+          return
+        }
+
+        try {
+          const method = req.method || 'GET'
+          const routeModule = await import(`${moduleUrl.href}?t=${Date.now()}`)
+          const handler = routeModule[method]
+
+          if (typeof handler !== 'function') {
+            res.statusCode = 405
+            res.setHeader('Content-Type', 'application/json; charset=utf-8')
+            res.end(JSON.stringify({ error: 'Método não permitido.' }))
+            return
+          }
+
+          const body = await readRequestBody(req)
+          const request = new Request(url.toString(), {
+            method,
+            headers: new Headers(convertHeaders(req.headers)),
+            body: method === 'GET' || method === 'HEAD' ? undefined : body,
+          })
+
+          const response = await handler(request)
+          res.statusCode = response.status
+          response.headers.forEach((value, key) => {
+            res.setHeader(key, value)
+          })
+
+          const buffer = Buffer.from(await response.arrayBuffer())
+          res.end(buffer)
+        } catch (error) {
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({
+            error: error?.message || 'Erro interno ao processar a API local.',
+          }))
+        }
+      })
+    },
+  }
+}
+
+function convertHeaders(headers) {
+  return Object.entries(headers)
+    .filter(([, value]) => value != null)
+    .map(([key, value]) => [key, Array.isArray(value) ? value.join(', ') : String(value)])
+}
+
+async function readRequestBody(req) {
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    return undefined
+  }
+
+  const chunks = []
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+
+  if (chunks.length === 0) {
+    return undefined
+  }
+
+  return Buffer.concat(chunks)
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+
+  Object.entries(env).forEach(([key, value]) => {
+    if (process.env[key] == null) {
+      process.env[key] = value
+    }
+  })
+
+  if (!process.env.SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_URL) {
+    process.env.SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL
+  }
+
+  if (!process.env.SUPABASE_ANON_KEY && env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY) {
+    process.env.SUPABASE_ANON_KEY = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+  }
+
+  return {
+    plugins: [react(), devApiPlugin()],
+    envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
+  }
+})
