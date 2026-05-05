@@ -47,7 +47,7 @@ function referenceSortKey(reference = '') {
 
 export function normalizeChargePaymentStatus(status) {
   const normalized = String(status || '').trim().toUpperCase()
-  const allowed = new Set(['PENDING', 'PAID', 'OVERDUE', 'UNDER_REVIEW'])
+  const allowed = new Set(['PENDING', 'PAID', 'OVERDUE', 'UNDER_REVIEW', 'CANCELLED'])
   return allowed.has(normalized) ? normalized : ''
 }
 
@@ -66,6 +66,7 @@ export function getChargePaymentStatus(charge, baseDate = new Date()) {
   const normalized = normalizeChargePaymentStatus(charge?.payment_status)
   if (normalized === 'PAID') return 'PAID'
   if (normalized === 'UNDER_REVIEW') return 'UNDER_REVIEW'
+  if (normalized === 'CANCELLED') return 'CANCELLED'
   if (normalized === 'OVERDUE') return 'OVERDUE'
   if (normalized === 'PENDING') {
     return resolveLegacyPaymentStatus({ ...charge, pago: false }, baseDate)
@@ -87,6 +88,10 @@ export function getChargePaymentStatusMeta(charge, baseDate = new Date()) {
 
   if (status === 'UNDER_REVIEW') {
     return { key: 'under_review', label: 'Em analise', badgeClass: 'badge-blue' }
+  }
+
+  if (status === 'CANCELLED') {
+    return { key: 'cancelled', label: 'Cancelada', badgeClass: 'badge-purple' }
   }
 
   if (status === 'OVERDUE') {

@@ -3,9 +3,11 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useToast } from '../shared/Toast'
 import { formatCurrency, formatReferenceLabel } from '../../lib/billingShared'
-import { enrichChargesWithPaymentUrls, isChargeImageUrl } from '../../lib/charges'
-import { DollarSign, CheckCircle, ExternalLink, QrCode, FileText, Receipt, CalendarClock, X, Copy } from 'lucide-react'
+import { enrichChargesWithPaymentUrls } from '../../lib/charges'
+import { DollarSign, CheckCircle, ExternalLink, Receipt, CalendarClock, X, Copy, Send } from 'lucide-react'
 import { getChargePaymentStatusMeta, isChargePaid } from '../../lib/chargeStatus'
+import { withTenantFields } from '../../lib/tenant'
+import { buildPaymentConfirmationTitle, isResidentPaymentConfirmation, isResidentRequestPending, parseResidentRequest } from '../../lib/residentRequests'
 
 const TIPOS_LABEL = {
   condominio: 'Condominio',
@@ -21,20 +23,18 @@ function formatDate(dateValue = '') {
 }
 
 function getPrimaryPaymentLink(cobranca) {
-  return String(cobranca?.pagamento_link || cobranca?.pix_link || '').trim()
-}
-
-function getQrPreview(cobranca) {
-  return cobranca?.pix_qr_preview || cobranca?.pix_qrcode_url || cobranca?.pix_qr_code || ''
+  return String(cobranca?.pagamento_link || '').trim()
 }
 
 export default function MoradorCobrancas() {
-  const { profile } = useAuth()
+  const { profile, condominiumId } = useAuth()
   const { toast } = useToast()
   const [cobrancas, setCobrancas] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('todas')
   const [selected, setSelected] = useState(null)
+  const [paymentRequests, setPaymentRequests] = useState([])
+  const [sendingConfirmation, setSendingConfirmation] = useState(false)
 
   useEffect(() => {
     if (!profile?.id) return
@@ -45,14 +45,22 @@ export default function MoradorCobrancas() {
     if (!profile?.id) return
 
     setLoading(true)
-    const { data } = await supabase
+    const [{ data }, { data: requestsData }] = await Promise.all([
+      supabase
       .from('cobrancas')
       .select('*')
       .eq('morador_id', profile.id)
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: false }),
+      supabase
+        .from('ocorrencias_predio')
+        .select('*')
+        .eq('created_by', profile.id)
+        .order('created_at', { ascending: false }),
+    ])
 
     const enriched = await enrichChargesWithPaymentUrls(data || [])
     setCobrancas(enriched)
+    setPaymentRequests((requestsData || []).filter((item) => isResidentPaymentConfirmation(item) && isResidentRequestPending(item)))
     setLoading(false)
   }
 
@@ -70,6 +78,15 @@ export default function MoradorCobrancas() {
     cobrancas.filter((cobranca) => isChargePaid(cobranca)).reduce((sum, cobranca) => sum + Number(cobranca.valor || 0), 0)
   ), [cobrancas])
 
+  const pendingChargeRequestIds = useMemo(() => {
+    const ids = new Set()
+    for (const request of paymentRequests) {
+      const parsed = parseResidentRequest(request)
+      if (parsed.chargeId) ids.add(parsed.chargeId)
+    }
+    return ids
+  }, [paymentRequests])
+
   const copyPixCode = async (value) => {
     try {
       if (!navigator.clipboard?.writeText) {
@@ -81,6 +98,35 @@ export default function MoradorCobrancas() {
     } catch {
       toast('Nao foi possivel copiar o codigo Pix.', 'error')
     }
+  }
+
+  const sendPaymentConfirmation = async (charge) => {
+    if (!charge?.id || !profile?.id) return
+    if (pendingChargeRequestIds.has(charge.id)) {
+      toast('O pagamento desta cobranca ja foi sinalizado ao sindico.', 'info')
+      return
+    }
+
+    setSendingConfirmation(true)
+    const { error } = await supabase
+      .from('ocorrencias_predio')
+      .insert(withTenantFields({
+        titulo: buildPaymentConfirmationTitle(charge.id),
+        descricao: `O morador informou que realizou o pagamento da cobranca "${charge.descricao || charge.tipo}" referente a ${formatReferenceLabel(charge.mes_referencia)}. Verifique o comprovante e/ou o extrato do banco antes da baixa definitiva.`,
+        categoria: 'geral',
+        status: 'em_analise',
+        apartamento: profile?.apartamento || '',
+        created_by: profile.id,
+      }, condominiumId))
+    setSendingConfirmation(false)
+
+    if (error) {
+      toast('Nao foi possivel avisar o sindico sobre o pagamento.', 'error')
+      return
+    }
+
+    toast('Pagamento confirmado no sistema. O sindico foi avisado para validar.', 'success')
+    await fetchCobrancas()
   }
 
   return (
@@ -139,9 +185,11 @@ export default function MoradorCobrancas() {
               <tbody>
                 {filtered.map((cobranca) => {
                   const paymentLink = getPrimaryPaymentLink(cobranca)
-                  const hasAttachment = Boolean(cobranca.pagamento_anexo_download_url)
                   const hasBoleto = Boolean(cobranca.boleto_download_url)
-                  const statusMeta = getChargePaymentStatusMeta(cobranca)
+                  const residentConfirmed = pendingChargeRequestIds.has(cobranca.id) && !isChargePaid(cobranca)
+                  const statusMeta = residentConfirmed
+                    ? { label: 'Pagamento confirmado', badgeClass: 'badge-blue' }
+                    : getChargePaymentStatusMeta(cobranca)
                   return (
                     <tr key={cobranca.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(cobranca)}>
                       <td>{cobranca.descricao || TIPOS_LABEL[cobranca.tipo] || cobranca.tipo}</td>
@@ -154,9 +202,8 @@ export default function MoradorCobrancas() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           {cobranca.pix_copy_paste_code && <span className="badge badge-orange">Pix</span>}
                           {paymentLink && <span className="badge badge-green">Link</span>}
-                          {hasAttachment && <span className="badge badge-purple">Anexo</span>}
                           {hasBoleto && <span className="badge badge-blue">Boleto</span>}
-                          {!paymentLink && !hasAttachment && !hasBoleto && <span style={{ color: '#8b949e' }}>-</span>}
+                          {!cobranca.pix_copy_paste_code && !paymentLink && !hasBoleto && <span style={{ color: '#8b949e' }}>-</span>}
                         </div>
                       </td>
                     </tr>
@@ -168,7 +215,10 @@ export default function MoradorCobrancas() {
 
           <div className="charges-mobile-grid">
             {filtered.map((cobranca) => {
-              const statusMeta = getChargePaymentStatusMeta(cobranca)
+              const residentConfirmed = pendingChargeRequestIds.has(cobranca.id) && !isChargePaid(cobranca)
+              const statusMeta = residentConfirmed
+                ? { label: 'Pagamento confirmado', badgeClass: 'badge-blue' }
+                : getChargePaymentStatusMeta(cobranca)
 
               return (
                 <button key={cobranca.id} type="button" className="charge-card" onClick={() => setSelected(cobranca)}>
@@ -194,7 +244,7 @@ export default function MoradorCobrancas() {
           <DollarSign size={20} color="#58a6ff" style={{ margin: '0 auto 8px' }} />
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Pagamento da cobranca</div>
           <div style={{ fontSize: 13, color: '#8b949e' }}>
-            Abra a cobranca para ver link, QRCode, anexo e boleto disponivel para pagamento.
+            Abra a cobranca para acessar o boleto e confirmar o pagamento depois da quitacao.
           </div>
         </div>
       )}
@@ -234,7 +284,10 @@ export default function MoradorCobrancas() {
                 <label className="form-label">Status</label>
                 <div className="charge-detail-value">
                   {(() => {
-                    const statusMeta = getChargePaymentStatusMeta(selected)
+                    const residentConfirmed = pendingChargeRequestIds.has(selected.id) && !isChargePaid(selected)
+                    const statusMeta = residentConfirmed
+                      ? { label: 'Pagamento confirmado', badgeClass: 'badge-blue' }
+                      : getChargePaymentStatusMeta(selected)
                     return <span className={`badge ${statusMeta.badgeClass}`}>{statusMeta.label}</span>
                   })()}
                 </div>
@@ -248,36 +301,20 @@ export default function MoradorCobrancas() {
               </div>
             )}
 
-            {getQrPreview(selected) && isChargeImageUrl(getQrPreview(selected)) && (
-              <div className="charge-qr-preview">
-                <div style={{ fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <QrCode size={14} /> QRCode de pagamento
-                </div>
-                <img src={getQrPreview(selected)} alt="QRCode de pagamento" />
-              </div>
-            )}
-
-            {selected.pix_copy_paste_code && (
-              <div style={{ marginTop: 14 }}>
-                <div className="form-label">Pix copia e cola</div>
-                <div className="charge-detail-note" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                  <span className="mono" style={{ wordBreak: 'break-all' }}>{selected.pix_copy_paste_code}</span>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => copyPixCode(selected.pix_copy_paste_code)}>
-                    <Copy size={13} /> Copiar
-                  </button>
-                </div>
-              </div>
-            )}
-
             <div className="charge-actions">
+              {!isChargePaid(selected) && (
+                <button className="btn btn-primary" type="button" onClick={() => sendPaymentConfirmation(selected)} disabled={sendingConfirmation || pendingChargeRequestIds.has(selected.id)}>
+                  <Send size={14} /> {pendingChargeRequestIds.has(selected.id) ? 'Pagamento ja confirmado' : sendingConfirmation ? 'Enviando...' : 'Confirmar pagamento'}
+                </button>
+              )}
+              {selected.pix_copy_paste_code && (
+                <button type="button" className="btn btn-ghost" onClick={() => copyPixCode(selected.pix_copy_paste_code)}>
+                  <Copy size={14} /> Copiar PIX
+                </button>
+              )}
               {getPrimaryPaymentLink(selected) && (
                 <a href={getPrimaryPaymentLink(selected)} target="_blank" rel="noreferrer" className="btn btn-primary">
                   <ExternalLink size={14} /> Abrir link de pagamento
-                </a>
-              )}
-              {selected.pagamento_anexo_download_url && (
-                <a href={selected.pagamento_anexo_download_url} target="_blank" rel="noreferrer" className="btn btn-ghost">
-                  <FileText size={14} /> Abrir anexo enviado
                 </a>
               )}
               {selected.boleto_download_url && (
@@ -289,11 +326,11 @@ export default function MoradorCobrancas() {
 
             {!isChargePaid(selected) && (
               <div className="charge-detail-note" style={{ marginTop: 12 }}>
-                Depois do pagamento, a confirmacao continua manual pela administracao do condominio.
+                Depois do pagamento, confirme aqui no sistema para avisar o sindico. A baixa definitiva continua manual pela administracao do condominio.
               </div>
             )}
 
-            {!getPrimaryPaymentLink(selected) && !selected.pagamento_anexo_download_url && !selected.boleto_download_url && !selected.pix_copy_paste_code && !getQrPreview(selected) && (
+            {!selected.pix_copy_paste_code && !getPrimaryPaymentLink(selected) && !selected.boleto_download_url && (
               <div className="charge-detail-note" style={{ marginTop: 12 }}>
                 Nenhuma forma de pagamento foi anexada para esta cobranca.
               </div>

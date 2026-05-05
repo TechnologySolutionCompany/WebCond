@@ -4,10 +4,17 @@ import react from '@vitejs/plugin-react'
 const apiModules = {
   '/api/health': new URL('./api/health.js', import.meta.url),
   '/api/auth/login-cpf': new URL('./api/auth/login-cpf.js', import.meta.url),
+  '/api/auth/login-cnpj': new URL('./api/auth/login-cnpj.js', import.meta.url),
+  '/api/admin/billing/render-pdf': new URL('./api/admin/billing/render-pdf.js', import.meta.url),
   '/api/admin/residents/create': new URL('./api/admin/residents/create.js', import.meta.url),
   '/api/admin/residents/delete': new URL('./api/admin/residents/delete.js', import.meta.url),
   '/api/admin/residents/update': new URL('./api/admin/residents/update.js', import.meta.url),
   '/api/admin/residents/update-password': new URL('./api/admin/residents/update-password.js', import.meta.url),
+  '/api/platform/condominiums/list': new URL('./api/platform/condominiums/list.js', import.meta.url),
+  '/api/platform/condominiums/register': new URL('./api/platform/condominiums/register.js', import.meta.url),
+  '/api/platform/condominiums/update': new URL('./api/platform/condominiums/update.js', import.meta.url),
+  '/api/platform/condominiums/update-syndic-password': new URL('./api/platform/condominiums/update-syndic-password.js', import.meta.url),
+  '/api/tenant/charge-summary': new URL('./api/tenant/charge-summary.js', import.meta.url),
 }
 
 function devApiPlugin() {

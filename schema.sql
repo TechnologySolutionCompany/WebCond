@@ -74,7 +74,8 @@ create table public.condominiums (
   is_default boolean not null default false,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint condominiums_document_length_check check (cnpj = '' or length(cnpj) in (11, 14))
 );
 
 create unique index condominiums_slug_unique_idx on public.condominiums (lower(slug)) where slug <> '';
@@ -147,7 +148,7 @@ create table public.cobrancas (
   pagamento_anexo_path text not null default '',
   boleto_url text not null default '',
   boleto_path text not null default '',
-  payment_status text not null default 'PENDING' check (payment_status in ('PENDING', 'PAID', 'OVERDUE', 'UNDER_REVIEW')),
+  payment_status text not null default 'PENDING' check (payment_status in ('PENDING', 'PAID', 'OVERDUE', 'UNDER_REVIEW', 'CANCELLED')),
   paid_at timestamptz,
   confirmed_by uuid references public.profiles(id) on delete set null,
   receipt_url text not null default '',
@@ -243,7 +244,7 @@ returns trigger
 language plpgsql
 as $$
 begin
-  new.name := coalesce(nullif(new.name, ''), nullif(new.nome, ''), 'Condominio Principal');
+  new.name := coalesce(nullif(new.name, ''), nullif(new.nome, ''), '');
   new.nome := coalesce(nullif(new.nome, ''), new.name);
   new.address := coalesce(nullif(new.address, ''), nullif(new.endereco, ''), '');
   new.endereco := coalesce(nullif(new.endereco, ''), new.address);
@@ -283,10 +284,6 @@ begin
     from public.profiles p
     where p.id = auth.uid()
     limit 1;
-  end if;
-
-  if resolved_id is null then
-    resolved_id := public.default_condominium_id();
   end if;
 
   if resolved_id is not null then
@@ -341,20 +338,6 @@ for each row execute function public.set_updated_at();
 create trigger ocorrencias_sync_condominium_id
 before insert or update on public.ocorrencias_predio
 for each row execute function public.sync_legacy_condominium_id();
-
-insert into public.condominiums (
-  name,
-  nome,
-  status,
-  is_default
-)
-values (
-  'Condominio Principal',
-  'Condominio Principal',
-  'active',
-  true
-)
-on conflict do nothing;
 
 create or replace view public.condominios as
 select
@@ -445,15 +428,10 @@ stable
 security definer
 set search_path = public
 as $$
-  select coalesce(
-    (
-      select coalesce(condominium_id, condominio_id)
-      from public.profiles
-      where id = auth.uid()
-      limit 1
-    ),
-    public.default_condominium_id()
-  );
+  select coalesce(condominium_id, condominio_id)
+  from public.profiles
+  where id = auth.uid()
+  limit 1;
 $$;
 
 create or replace function public.is_platform_admin()
@@ -809,8 +787,13 @@ using (
 );
 
 -- ============================================================
--- Depois de criar o primeiro usuario no Auth:
+-- Depois de criar o primeiro usuario global no Auth:
 -- update public.profiles
--- set role = 'admin', nome = 'Seu Nome'
+-- set role = 'PLATFORM_ADMIN',
+--     ativo = true,
+--     nome = 'Seu Nome',
+--     cpf = '00000000000',
+--     condominium_id = null,
+--     condominio_id = null
 -- where email = 'seu-email@dominio.com';
 -- ============================================================

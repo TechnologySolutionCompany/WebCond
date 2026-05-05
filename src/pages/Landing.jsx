@@ -1,24 +1,21 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Eye, EyeOff, Loader2, UserPlus, CheckCircle, Building, ShieldCheck } from 'lucide-react'
+import {
+  Building,
+  CheckCircle,
+  Eye,
+  EyeOff,
+  IdCard,
+  Loader2,
+  LockKeyhole,
+  ShieldCheck,
+} from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
-import { supabase } from '../lib/supabase'
 import { getHomePathForRole } from '../lib/auth'
-import { signInWithCpf } from '../lib/authApi'
+import { signInWithDocument } from '../lib/authApi'
 import { formatCpf, normalizeCpf } from '../lib/cpf'
+import { formatCpfCnpj, getCpfCnpjType, normalizeCpfCnpj } from '../lib/document'
 import { registerCondominium } from '../lib/platformApi'
-import { APARTMENT_OPTIONS } from '../lib/apartments'
-import { COMPANY_COPY } from '../lib/condoConfig'
-
-const emptyForm = {
-  nome: '',
-  email: '',
-  cpf: '',
-  whatsapp: '',
-  apartamento: '',
-  data_entrada: '',
-  mensagem: '',
-}
 
 const emptyCondominiumForm = {
   name: '',
@@ -27,25 +24,12 @@ const emptyCondominiumForm = {
   zipCode: '',
   whatsapp: '',
   unitCount: '',
-  bankDetails: '',
+  pixKey: '',
+  bankDestination: '',
   syndicName: '',
   syndicCpf: '',
   syndicEmail: '',
   password: '',
-}
-
-function normalizeCnpj(value = '') {
-  return String(value || '').replace(/\D/g, '').slice(0, 14)
-}
-
-function formatCnpj(value = '') {
-  const digits = normalizeCnpj(value)
-
-  if (digits.length <= 2) return digits
-  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`
-  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`
-  if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`
-  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12, 14)}`
 }
 
 export default function Landing() {
@@ -55,7 +39,6 @@ export default function Landing() {
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [form, setForm] = useState(emptyForm)
   const [condominiumForm, setCondominiumForm] = useState(emptyCondominiumForm)
   const [successMode, setSuccessMode] = useState('')
   const { user, loading: authLoading, resolvedRole, authIssue, signOut } = useAuth()
@@ -80,46 +63,15 @@ export default function Landing() {
     setError('')
 
     try {
-      const normalizedCpf = normalizeCpf(cpf)
-      if (normalizedCpf.length !== 11) {
-        setError('Informe um CPF valido.')
+      const normalizedDocument = normalizeCpfCnpj(cpf)
+      if (!getCpfCnpjType(normalizedDocument)) {
+        setError('Informe um CPF ou CNPJ valido.')
         return
       }
 
-      await signInWithCpf(normalizedCpf, pass)
+      await signInWithDocument(normalizedDocument, pass)
     } catch (loginError) {
       setError(loginError.message || 'Nao foi possivel entrar.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleCadastro = async (event) => {
-    event.preventDefault()
-
-    if (!form.nome || !form.email || !form.cpf || !form.whatsapp || !form.apartamento || !form.data_entrada) {
-      setError('Preencha nome, e-mail, CPF, WhatsApp, apartamento e data de entrada.')
-      return
-    }
-
-    setLoading(true)
-    setError('')
-
-    try {
-      const { error: insertError } = await supabase
-        .from('solicitacoes_cadastro')
-        .insert({
-          ...form,
-          cpf: normalizeCpf(form.cpf),
-          whatsapp: String(form.whatsapp || '').replace(/\D/g, ''),
-          status: 'pendente',
-        })
-
-      if (insertError) throw insertError
-
-      setSuccessMode('cadastro')
-    } catch (submissionError) {
-      setError(submissionError.message || 'Erro ao enviar solicitacao.')
     } finally {
       setLoading(false)
     }
@@ -130,12 +82,13 @@ export default function Landing() {
 
     const payload = {
       name: condominiumForm.name,
-      cnpj: normalizeCnpj(condominiumForm.cnpj),
+      cnpj: normalizeCpfCnpj(condominiumForm.cnpj),
       address: condominiumForm.address,
       zipCode: condominiumForm.zipCode,
       whatsapp: condominiumForm.whatsapp,
       unitCount: Number(condominiumForm.unitCount || 0),
-      bankDetails: condominiumForm.bankDetails,
+      pixKey: condominiumForm.pixKey,
+      bankDestination: condominiumForm.bankDestination,
       syndicName: condominiumForm.syndicName,
       syndicCpf: normalizeCpf(condominiumForm.syndicCpf),
       syndicEmail: condominiumForm.syndicEmail,
@@ -147,8 +100,8 @@ export default function Landing() {
       return
     }
 
-    if (payload.cnpj.length !== 14) {
-      setError('Informe um CNPJ valido com 14 digitos.')
+    if (!getCpfCnpjType(payload.cnpj)) {
+      setError('Informe um CPF ou CNPJ valido para o condominio.')
       return
     }
 
@@ -176,27 +129,27 @@ export default function Landing() {
   }
 
   if (successMode) {
-    const isCondominiumFlow = successMode === 'condominio'
-
     return (
       <div style={S.root}>
         <div style={S.bg} />
         <div style={S.grid} />
+        <div style={S.glowLeft} />
+        <div style={S.glowRight} />
         <div style={S.center}>
+          <style>{RESPONSIVE_STYLES}</style>
           <div style={S.successCard}>
-            <CheckCircle size={48} color="#3fb950" style={{ margin: '0 auto 16px' }} />
-            <div style={S.successTitle}>{isCondominiumFlow ? 'Condominio cadastrado!' : 'Solicitacao enviada!'}</div>
+            <img src="/logo.png" alt="WebCond" style={S.successLogo} />
+            <CheckCircle size={48} color="#43A047" style={{ margin: '0 auto 18px' }} />
+            <div style={S.successTitle}>Condominio cadastrado!</div>
             <div style={S.successText}>
-              {isCondominiumFlow
-                ? 'O cadastro inicial foi recebido. O acesso do sindico fica em analise ate a aprovacao do condominio pela plataforma.'
-                : 'A administracao foi notificada e vai analisar seus dados. Assim que o acesso for liberado, o login continuara sendo feito com CPF e senha.'}
+              O cadastro inicial foi recebido. O acesso do sindico fica em analise ate a aprovacao do condominio pela plataforma.
             </div>
             <button
-              style={{ ...S.btn, ...S.primaryBtn, width: '100%', justifyContent: 'center' }}
+              className="landing-primary-button"
+              style={{ ...S.btnBase, ...S.primaryBtn, width: '100%' }}
               onClick={() => {
                 setSuccessMode('')
                 setTab('login')
-                setForm(emptyForm)
                 setCondominiumForm(emptyCondominiumForm)
               }}
             >
@@ -212,39 +165,48 @@ export default function Landing() {
     <div style={S.root}>
       <div style={S.bg} />
       <div style={S.grid} />
+      <div style={S.glowLeft} />
+      <div style={S.glowRight} />
+
       <div style={S.center}>
-        <div style={S.logo}>
-          <Building2 size={36} color="#3fb950" />
-          <div>
-            <div style={S.logoTitle}>WebCond</div>
-            <div style={S.logoSub}>Technology Solution Company BR</div>
+        <style>{RESPONSIVE_STYLES}</style>
+
+        <div style={S.brandArea}>
+          <img src="/logo.png" alt="WebCond" style={S.logoImage} />
+          <div style={S.brandName}>
+            <span style={{ color: '#0D47A1' }}>Web</span>
+            <span style={{ color: '#43A047' }}>Cond</span>
           </div>
+          <div style={S.brandSubtitle}>Gestao condominial simples e completa</div>
         </div>
 
-        <h1 style={S.headline}>Acesso com CPF + senha</h1>
-        <p style={S.sub}>
-          Entre com seu CPF. O sistema identifica seu perfil automaticamente e redireciona para a area correta.
-        </p>
+        <div style={S.heroText}>
+          <h1 style={S.headline}>Acesse sua area do condominio</h1>
+          <p style={S.sub}>
+            Entre com seu CPF ou CNPJ e senha para visualizar cobrancas, comunicados e informacoes da sua unidade.
+          </p>
+        </div>
 
-        <div style={S.card}>
+        <div style={S.card} className="landing-card">
           {!hasBlockedSession && (
-            <div style={S.tabs}>
+            <div style={S.tabs} className="landing-tabs">
               {[
                 ['login', 'Entrar'],
-                ['cadastro', 'Solicitar cadastro'],
-                ['condominio', 'Cadastrar condominio'],
+                ['condominio', 'Sou sindico / cadastrar condominio'],
               ].map(([key, label]) => (
                 <button
                   key={key}
                   type="button"
+                  className="landing-tab-button"
                   onClick={() => {
                     setTab(key)
                     setError('')
                   }}
                   style={{
                     ...S.tabButton,
-                    color: tab === key ? '#3fb950' : '#8b949e',
-                    borderBottomColor: tab === key ? '#3fb950' : 'transparent',
+                    color: tab === key ? '#F2F4F7' : '#9CA3AF',
+                    background: tab === key ? 'rgba(67,160,71,0.16)' : 'transparent',
+                    borderColor: tab === key ? 'rgba(67,160,71,0.28)' : 'transparent',
                   }}
                 >
                   {label}
@@ -257,15 +219,16 @@ export default function Landing() {
 
           {hasBlockedSession && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ color: '#c9d1d9', fontSize: 14, lineHeight: 1.6 }}>
+              <div style={{ color: '#F2F4F7', fontSize: 14, lineHeight: 1.7 }}>
                 Seu acesso foi autenticado, mas a plataforma ainda nao liberou o ambiente para continuar.
               </div>
-              <div style={{ color: '#8b949e', fontSize: 13, lineHeight: 1.6 }}>
+              <div style={{ color: '#9CA3AF', fontSize: 13, lineHeight: 1.7 }}>
                 Use o aviso acima como referencia e, se necessario, entre em contato com a administracao ou com a plataforma para regularizar o acesso.
               </div>
               <button
                 type="button"
-                style={{ ...S.btn, ...S.secondaryBtn, justifyContent: 'center' }}
+                className="landing-secondary-button"
+                style={{ ...S.btnBase, ...S.secondaryBtn }}
                 onClick={() => {
                   setError('')
                   void signOut()
@@ -279,29 +242,34 @@ export default function Landing() {
           {!hasBlockedSession && tab === 'login' && (
             <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column' }}>
               <div className="form-group">
-                <label className="form-label">CPF</label>
-                <input
-                  className="input"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="000.000.000-00"
-                  value={formatCpf(cpf)}
-                  onChange={(event) => setCpf(normalizeCpf(event.target.value))}
-                  required
-                />
+                <label className="form-label" style={S.label}>CPF ou CNPJ</label>
+                <div style={S.inputShell} className="landing-input-shell">
+                  <IdCard size={17} color="#9CA3AF" />
+                  <input
+                    className="landing-input"
+                    style={S.input}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                    value={formatCpfCnpj(cpf)}
+                    onChange={(event) => setCpf(normalizeCpfCnpj(event.target.value))}
+                    required
+                  />
+                </div>
               </div>
 
               <div className="form-group" style={{ marginTop: 14 }}>
-                <label className="form-label">Senha</label>
-                <div style={{ position: 'relative' }}>
+                <label className="form-label" style={S.label}>Senha</label>
+                <div style={S.inputShell} className="landing-input-shell">
+                  <LockKeyhole size={17} color="#9CA3AF" />
                   <input
-                    className="input"
+                    className="landing-input"
+                    style={{ ...S.input, paddingRight: 44 }}
                     type={showPass ? 'text' : 'password'}
-                    placeholder="********"
+                    placeholder="Digite sua senha"
                     value={pass}
                     onChange={(event) => setPass(event.target.value)}
                     required
-                    style={{ paddingRight: 40 }}
                   />
                   <button type="button" onClick={() => setShowPass(!showPass)} style={S.eye}>
                     {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -309,127 +277,37 @@ export default function Landing() {
                 </div>
               </div>
 
-              <button type="submit" disabled={loading} style={{ ...S.btn, ...S.primaryBtn, marginTop: 20 }}>
+              <button type="submit" disabled={loading} className="landing-primary-button" style={{ ...S.btnBase, ...S.primaryBtn, marginTop: 20 }}>
                 {loading ? (
                   <>
                     <Loader2 size={15} style={{ animation: 'spin .6s linear infinite' }} /> Entrando...
                   </>
                 ) : 'Entrar'}
               </button>
-              <style>{'@keyframes spin{to{transform:rotate(360deg)}}'}</style>
-            </form>
-          )}
 
-          {!hasBlockedSession && tab === 'cadastro' && (
-            <form onSubmit={handleCadastro} style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">Nome completo *</label>
-                  <input
-                    className="input"
-                    placeholder="Joao da Silva"
-                    value={form.nome}
-                    onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))}
-                    required
-                  />
-                </div>
-
-                <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">E-mail *</label>
-                  <input
-                    className="input"
-                    type="email"
-                    placeholder="joao@email.com"
-                    value={form.email}
-                    onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">CPF *</label>
-                  <input
-                    className="input"
-                    placeholder="000.000.000-00"
-                    value={formatCpf(form.cpf)}
-                    onChange={(event) => setForm((current) => ({ ...current, cpf: normalizeCpf(event.target.value) }))}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">WhatsApp *</label>
-                  <input
-                    className="input"
-                    placeholder="(81) 90000-0000"
-                    value={form.whatsapp}
-                    onChange={(event) => setForm((current) => ({ ...current, whatsapp: event.target.value }))}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Apartamento *</label>
-                  <select
-                    className="input"
-                    value={form.apartamento}
-                    onChange={(event) => setForm((current) => ({ ...current, apartamento: event.target.value }))}
-                    required
-                  >
-                    <option value="">Selecione</option>
-                    {APARTMENT_OPTIONS.map((apto) => <option key={apto} value={apto}>Apt. {apto}</option>)}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Data de entrada *</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={form.data_entrada}
-                    onChange={(event) => setForm((current) => ({ ...current, data_entrada: event.target.value }))}
-                    required
-                  />
-                </div>
-
-                <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">Mensagem</label>
-                  <textarea
-                    className="input"
-                    rows={2}
-                    placeholder="Alguma informacao adicional..."
-                    value={form.mensagem}
-                    onChange={(event) => setForm((current) => ({ ...current, mensagem: event.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <p style={S.note}>
-                Depois da aprovacao, o acesso sera feito pelo mesmo CPF informado acima.
-              </p>
-
-              <button type="submit" disabled={loading} style={{ ...S.btn, ...S.secondaryBtn, marginTop: 4 }}>
-                {loading ? (
-                  <>
-                    <Loader2 size={15} style={{ animation: 'spin .6s linear infinite' }} /> Enviando...
-                  </>
-                ) : (
-                  <>
-                    <UserPlus size={15} /> Solicitar acesso
-                  </>
-                )}
+              <button
+                type="button"
+                style={S.condoLink}
+                onClick={() => {
+                  setTab('condominio')
+                  setError('')
+                }}
+              >
+                E sindico? Cadastre seu condominio
               </button>
+
               <style>{'@keyframes spin{to{transform:rotate(360deg)}}'}</style>
             </form>
           )}
 
           {!hasBlockedSession && tab === 'condominio' && (
             <form onSubmit={handleCondominiumRegister} style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="landing-condo-grid" style={S.condominiumGrid}>
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">Nome do condominio *</label>
+                  <label className="form-label" style={S.label}>Nome do condominio *</label>
                   <input
                     className="input"
+                    style={S.standardInput}
                     placeholder="Condominio Solar das Palmeiras"
                     value={condominiumForm.name}
                     onChange={(event) => setCondominiumForm((current) => ({ ...current, name: event.target.value }))}
@@ -438,20 +316,22 @@ export default function Landing() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">CNPJ *</label>
+                  <label className="form-label" style={S.label}>CPF ou CNPJ do condominio *</label>
                   <input
                     className="input"
-                    placeholder="00.000.000/0000-00"
-                    value={formatCnpj(condominiumForm.cnpj)}
-                    onChange={(event) => setCondominiumForm((current) => ({ ...current, cnpj: normalizeCnpj(event.target.value) }))}
+                    style={S.standardInput}
+                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                    value={formatCpfCnpj(condominiumForm.cnpj)}
+                    onChange={(event) => setCondominiumForm((current) => ({ ...current, cnpj: normalizeCpfCnpj(event.target.value) }))}
                     required
                   />
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">WhatsApp do condominio *</label>
+                  <label className="form-label" style={S.label}>WhatsApp do condominio *</label>
                   <input
                     className="input"
+                    style={S.standardInput}
                     placeholder="(81) 90000-0000"
                     value={condominiumForm.whatsapp}
                     onChange={(event) => setCondominiumForm((current) => ({ ...current, whatsapp: event.target.value }))}
@@ -460,9 +340,10 @@ export default function Landing() {
                 </div>
 
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">Endereco *</label>
+                  <label className="form-label" style={S.label}>Endereco *</label>
                   <input
                     className="input"
+                    style={S.standardInput}
                     placeholder="Rua Exemplo, 100 - Bairro - Cidade/UF"
                     value={condominiumForm.address}
                     onChange={(event) => setCondominiumForm((current) => ({ ...current, address: event.target.value }))}
@@ -471,9 +352,10 @@ export default function Landing() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">CEP *</label>
+                  <label className="form-label" style={S.label}>CEP *</label>
                   <input
                     className="input"
+                    style={S.standardInput}
                     placeholder="00000-000"
                     value={condominiumForm.zipCode}
                     onChange={(event) => setCondominiumForm((current) => ({ ...current, zipCode: event.target.value }))}
@@ -482,9 +364,10 @@ export default function Landing() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Unidades *</label>
+                  <label className="form-label" style={S.label}>Unidades *</label>
                   <input
                     className="input"
+                    style={S.standardInput}
                     type="number"
                     min="1"
                     placeholder="24"
@@ -494,26 +377,38 @@ export default function Landing() {
                   />
                 </div>
 
-                <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">Dados bancarios ou observacoes financeiras</label>
-                  <textarea
+                <div className="form-group">
+                  <label className="form-label" style={S.label}>Chave Pix</label>
+                  <input
                     className="input"
-                    rows={2}
-                    placeholder="Banco, agencia, conta ou instrucoes iniciais para cobrancas."
-                    value={condominiumForm.bankDetails}
-                    onChange={(event) => setCondominiumForm((current) => ({ ...current, bankDetails: event.target.value }))}
+                    style={S.standardInput}
+                    placeholder="email, celular, CPF ou chave aleatoria"
+                    value={condominiumForm.pixKey}
+                    onChange={(event) => setCondominiumForm((current) => ({ ...current, pixKey: event.target.value }))}
                   />
                 </div>
 
-                <div style={{ gridColumn: '1/-1', display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                  <ShieldCheck size={15} color="#3fb950" />
-                  <div style={{ fontSize: 12, color: '#8b949e' }}>Responsavel inicial pelo acesso administrativo</div>
+                <div className="form-group">
+                  <label className="form-label" style={S.label}>Banco destino do Pix</label>
+                  <input
+                    className="input"
+                    style={S.standardInput}
+                    placeholder="Ex.: Nubank, Inter, Caixa, InfinitePay"
+                    value={condominiumForm.bankDestination}
+                    onChange={(event) => setCondominiumForm((current) => ({ ...current, bankDestination: event.target.value }))}
+                  />
+                </div>
+
+                <div style={S.sectionTag}>
+                  <ShieldCheck size={15} color="#43A047" />
+                  <div style={{ fontSize: 12, color: '#9CA3AF' }}>Responsavel inicial pelo acesso administrativo</div>
                 </div>
 
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">Nome do sindico *</label>
+                  <label className="form-label" style={S.label}>Nome do sindico *</label>
                   <input
                     className="input"
+                    style={S.standardInput}
                     placeholder="Maria Ferreira"
                     value={condominiumForm.syndicName}
                     onChange={(event) => setCondominiumForm((current) => ({ ...current, syndicName: event.target.value }))}
@@ -522,9 +417,10 @@ export default function Landing() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">CPF do sindico *</label>
+                  <label className="form-label" style={S.label}>CPF do sindico *</label>
                   <input
                     className="input"
+                    style={S.standardInput}
                     placeholder="000.000.000-00"
                     value={formatCpf(condominiumForm.syndicCpf)}
                     onChange={(event) => setCondominiumForm((current) => ({ ...current, syndicCpf: normalizeCpf(event.target.value) }))}
@@ -533,9 +429,10 @@ export default function Landing() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">E-mail do sindico *</label>
+                  <label className="form-label" style={S.label}>E-mail do sindico *</label>
                   <input
                     className="input"
+                    style={S.standardInput}
                     type="email"
                     placeholder="sindico@condominio.com"
                     value={condominiumForm.syndicEmail}
@@ -545,9 +442,10 @@ export default function Landing() {
                 </div>
 
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">Senha inicial *</label>
+                  <label className="form-label" style={S.label}>Senha inicial *</label>
                   <input
                     className="input"
+                    style={S.standardInput}
                     type="password"
                     placeholder="Minimo de 6 caracteres"
                     value={condominiumForm.password}
@@ -561,7 +459,7 @@ export default function Landing() {
                 O ambiente do condominio sera criado em modo pendente e liberado somente depois da aprovacao do administrador da plataforma.
               </p>
 
-              <button type="submit" disabled={loading} style={{ ...S.btn, ...S.secondaryBtn, marginTop: 4 }}>
+              <button type="submit" disabled={loading} className="landing-secondary-button" style={{ ...S.btnBase, ...S.secondaryBtn, marginTop: 4 }}>
                 {loading ? (
                   <>
                     <Loader2 size={15} style={{ animation: 'spin .6s linear infinite' }} /> Enviando cadastro...
@@ -578,13 +476,56 @@ export default function Landing() {
         </div>
 
         <div style={S.footer}>
-          <Building2 size={12} color="#484f58" />
-          <span>{COMPANY_COPY}</span>
+          <div>© 2026 WebCond</div>
+          <div>Desenvolvido por TSCBr Technology Solution Company BR</div>
         </div>
       </div>
     </div>
   )
 }
+
+const RESPONSIVE_STYLES = `
+  .landing-primary-button:hover {
+    background: #2e7d32;
+    border-color: #2e7d32;
+    transform: translateY(-1px);
+  }
+
+  .landing-secondary-button:hover {
+    background: #0b3b84;
+    border-color: #0b3b84;
+    transform: translateY(-1px);
+  }
+
+  .landing-tab-button:hover {
+    border-color: rgba(67,160,71,0.18) !important;
+    color: #F2F4F7 !important;
+  }
+
+  .landing-input-shell:focus-within {
+    border-color: rgba(67,160,71,0.85) !important;
+    box-shadow: 0 0 0 4px rgba(67,160,71,0.12);
+  }
+
+  .landing-input::placeholder {
+    color: #6B7280;
+  }
+
+  @media (max-width: 860px) {
+    .landing-card {
+      width: min(92vw, 720px) !important;
+      padding: 24px !important;
+    }
+
+    .landing-tabs {
+      flex-direction: column;
+    }
+
+    .landing-condo-grid {
+      grid-template-columns: 1fr !important;
+    }
+  }
+`
 
 const S = {
   root: {
@@ -592,167 +533,263 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: '#0d1117',
+    background: '#0B1117',
     position: 'relative',
     overflow: 'hidden',
   },
   bg: {
     position: 'absolute',
     inset: 0,
-    background: 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(63,185,80,0.08) 0%, transparent 70%)',
+    background: 'radial-gradient(circle at top, rgba(13,71,161,0.16), transparent 42%)',
     pointerEvents: 'none',
   },
   grid: {
     position: 'absolute',
     inset: 0,
-    backgroundImage: 'linear-gradient(rgba(48,54,61,0.3) 1px,transparent 1px),linear-gradient(90deg,rgba(48,54,61,0.3) 1px,transparent 1px)',
-    backgroundSize: '40px 40px',
+    backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px)',
+    backgroundSize: '42px 42px',
+    pointerEvents: 'none',
+    maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.88), rgba(0,0,0,0.2))',
+  },
+  glowLeft: {
+    position: 'absolute',
+    width: 420,
+    height: 420,
+    borderRadius: '50%',
+    background: 'rgba(13,71,161,0.12)',
+    filter: 'blur(80px)',
+    top: -120,
+    left: -120,
+    pointerEvents: 'none',
+  },
+  glowRight: {
+    position: 'absolute',
+    width: 320,
+    height: 320,
+    borderRadius: '50%',
+    background: 'rgba(67,160,71,0.12)',
+    filter: 'blur(80px)',
+    bottom: -80,
+    right: -80,
     pointerEvents: 'none',
   },
   center: {
     position: 'relative',
     zIndex: 1,
     width: '100%',
-    maxWidth: 700,
-    padding: '0 20px',
+    maxWidth: 860,
+    padding: '40px 20px 32px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
   },
-  logo: {
+  brandArea: {
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 14,
-    marginBottom: 28,
-  },
-  logoTitle: {
-    fontSize: 20,
-    fontWeight: 700,
-    color: '#e6edf3',
-  },
-  logoSub: {
-    fontSize: 12,
-    color: '#8b949e',
-    marginTop: 2,
-  },
-  headline: {
-    fontSize: 28,
-    fontWeight: 700,
-    color: '#e6edf3',
-    marginBottom: 8,
     textAlign: 'center',
+    marginBottom: 22,
   },
-  sub: {
+  logoImage: {
+    width: 88,
+    height: 88,
+    objectFit: 'contain',
+    marginBottom: 14,
+    filter: 'drop-shadow(0 16px 30px rgba(0,0,0,0.35))',
+  },
+  brandName: {
+    display: 'flex',
+    gap: 2,
+    fontSize: 34,
+    lineHeight: 1,
+    fontWeight: 800,
+    letterSpacing: '-0.04em',
+  },
+  brandSubtitle: {
+    marginTop: 10,
+    color: '#9CA3AF',
     fontSize: 14,
-    color: '#8b949e',
-    marginBottom: 28,
-    textAlign: 'center',
-    maxWidth: 560,
     lineHeight: 1.6,
   },
+  heroText: {
+    textAlign: 'center',
+    marginBottom: 26,
+    maxWidth: 640,
+  },
+  headline: {
+    fontSize: 34,
+    lineHeight: 1.1,
+    fontWeight: 800,
+    color: '#F2F4F7',
+    margin: 0,
+    letterSpacing: '-0.04em',
+  },
+  sub: {
+    fontSize: 15,
+    color: '#9CA3AF',
+    margin: '12px 0 0',
+    lineHeight: 1.75,
+  },
   card: {
-    background: '#161b22',
-    border: '1px solid #30363d',
+    background: '#111821',
+    border: '1px solid rgba(67,160,71,0.22)',
     borderRadius: 16,
-    padding: 32,
+    padding: 30,
     width: '100%',
     maxWidth: 720,
+    boxShadow: '0 28px 70px rgba(0,0,0,0.34)',
+    backdropFilter: 'blur(10px)',
   },
   tabs: {
     display: 'flex',
-    borderBottom: '1px solid #30363d',
-    marginBottom: 24,
+    gap: 10,
+    marginBottom: 22,
   },
   tabButton: {
     flex: 1,
-    background: 'none',
-    border: 'none',
-    padding: '10px 0',
+    borderRadius: 12,
+    border: '1px solid transparent',
+    padding: '12px 14px',
     fontSize: 13,
-    fontWeight: 600,
+    fontWeight: 700,
     cursor: 'pointer',
-    borderBottom: '2px solid transparent',
-    marginBottom: -1,
-    transition: 'all .15s',
+    transition: 'all .18s ease',
   },
   err: {
-    background: '#3a1010',
-    border: '1px solid #f85149',
-    color: '#f85149',
-    borderRadius: 8,
-    padding: '10px 14px',
+    background: 'rgba(127,29,29,0.38)',
+    border: '1px solid rgba(248,81,73,0.55)',
+    color: '#FCA5A5',
+    borderRadius: 12,
+    padding: '12px 14px',
     fontSize: 13,
-    marginBottom: 16,
+    marginBottom: 18,
   },
-  btn: {
+  label: {
+    color: '#F2F4F7',
+    fontSize: 12,
+    marginBottom: 8,
+    display: 'block',
+  },
+  inputShell: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 52,
+    borderRadius: 14,
+    border: '1px solid rgba(255,255,255,0.08)',
+    background: 'rgba(255,255,255,0.03)',
+    padding: '0 14px',
+    transition: 'all .18s ease',
+  },
+  input: {
+    flex: 1,
+    background: 'transparent',
+    border: 'none',
+    outline: 'none',
+    color: '#F2F4F7',
+    fontSize: 14,
+    minHeight: 50,
+  },
+  standardInput: {
+    minHeight: 48,
+    background: 'rgba(255,255,255,0.03)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    color: '#F2F4F7',
+    borderRadius: 12,
+  },
+  btnBase: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    padding: '11px 20px',
-    borderRadius: 8,
+    padding: '13px 20px',
+    borderRadius: 12,
     border: '1px solid',
     fontSize: 14,
-    fontWeight: 600,
+    fontWeight: 700,
     cursor: 'pointer',
-    transition: 'all .15s',
+    transition: 'all .18s ease',
   },
   primaryBtn: {
-    background: '#3fb950',
-    borderColor: '#3fb950',
-    color: '#000',
+    background: '#43A047',
+    borderColor: '#43A047',
+    color: '#F2F4F7',
   },
   secondaryBtn: {
-    background: '#58a6ff',
-    borderColor: '#58a6ff',
-    color: '#fff',
+    background: '#0D47A1',
+    borderColor: '#0D47A1',
+    color: '#F2F4F7',
   },
   eye: {
-    position: 'absolute',
-    right: 10,
-    top: '50%',
-    transform: 'translateY(-50%)',
     background: 'none',
     border: 'none',
-    color: '#8b949e',
+    color: '#9CA3AF',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
   },
-  note: {
-    fontSize: 11,
-    color: '#8b949e',
-    margin: '10px 0',
-    lineHeight: 1.5,
-  },
-  successCard: {
-    background: '#161b22',
-    border: '1px solid #3fb95040',
-    borderRadius: 16,
-    padding: 40,
-    maxWidth: 440,
-    width: '100%',
-    textAlign: 'center',
-  },
-  successTitle: {
-    fontSize: 20,
-    fontWeight: 700,
-    color: '#e6edf3',
-    marginBottom: 8,
-  },
-  successText: {
+  condoLink: {
+    marginTop: 14,
+    background: 'transparent',
+    border: 'none',
+    color: '#9CA3AF',
     fontSize: 13,
-    color: '#8b949e',
-    lineHeight: 1.7,
-    marginBottom: 24,
+    cursor: 'pointer',
+    alignSelf: 'center',
   },
-  footer: {
+  condominiumGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 12,
+  },
+  sectionTag: {
+    gridColumn: '1/-1',
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
-    fontSize: 11,
-    color: '#484f58',
-    marginTop: 32,
+    gap: 8,
+    marginTop: 4,
+  },
+  note: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    margin: '12px 0',
+    lineHeight: 1.7,
+  },
+  footer: {
+    marginTop: 24,
     textAlign: 'center',
+    color: '#9CA3AF',
+    fontSize: 12,
+    lineHeight: 1.8,
+  },
+  successCard: {
+    background: '#111821',
+    border: '1px solid rgba(67,160,71,0.22)',
+    borderRadius: 16,
+    padding: 40,
+    maxWidth: 460,
+    width: '100%',
+    textAlign: 'center',
+    boxShadow: '0 28px 70px rgba(0,0,0,0.34)',
+  },
+  successLogo: {
+    width: 72,
+    height: 72,
+    objectFit: 'contain',
+    marginBottom: 20,
+  },
+  successTitle: {
+    fontSize: 22,
+    fontWeight: 800,
+    color: '#F2F4F7',
+    marginBottom: 10,
+  },
+  successText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    lineHeight: 1.75,
+    marginBottom: 24,
   },
 }

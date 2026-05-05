@@ -20,7 +20,7 @@ export async function POST(req) {
     return json({ error: 'Corpo da requisição inválido.' }, 400)
   }
 
-  const cpf = String(body.cpf || '').replace(/\D/g, '')
+  const cpf = String(body.cpf || body.document || '').replace(/\D/g, '')
   const password = String(body.password || '')
 
   if (cpf.length !== 11 || !password) {

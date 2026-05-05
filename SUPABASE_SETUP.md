@@ -1,138 +1,157 @@
-# Supabase Setup
+# Supabase Setup - WebCond SaaS
 
-Este projeto depende de configuracao manual no Supabase para funcionar por completo. Siga os passos abaixo.
+Este projeto esta pronto no codigo, mas depende da preparacao do Supabase antes de rodar os fluxos reais de login, cadastro, cobrancas e arquivos.
 
-## 1. Escolha o SQL certo
+## 1. O que ja existe no projeto
 
-- Projeto Supabase novo: execute [`schema.sql`](/d:/webcond_final/schema.sql)
-- Projeto Supabase que ja tem tabelas/dados: execute [`schema_updates.sql`](/d:/webcond_final/schema_updates.sql)
+- Arquitetura multi-condominio com tabela `condominiums`
+- Isolamento por `condominium_id` nas tabelas principais
+- Login unico por CPF/CNPJ + senha
+- Roles: `PLATFORM_ADMIN`, `ADMIN_CONDOMINIUM`, `RESIDENT`
+- Cadastro de condominio pela landing com status `pending`
+- Painel global em `/platform` para aprovar, rejeitar, bloquear, desbloquear e editar condominios
+- Painel do sindico em `/admin`
+- Area do morador em `/morador`
+- Cobrancas manuais com Pix, QR Code/copia e cola, boleto/anexo e confirmacao manual
+- Buckets privados `documentos` e `cobrancas`
 
-Os dois arquivos fazem o seguinte:
+## 2. Crie e configure o projeto Supabase
 
-- corrigem o trigger de criacao de perfil no `auth.users`
-- alinham as politicas RLS com o app atual
-- garantem unicidade do `cpf` em `public.profiles`
-- criam a tabela `ocorrencias_predio`
-- criam a tabela `app_health` usada pelo endpoint `/api/health`
-- tornam o bucket `documentos` privado e seguro
-- criam e protegem o bucket `cobrancas` (anexos de pagamento e boletos)
-- adicionam `arquivo_path` para links assinados de documentos
-- adicionam campos de pagamento/anexo/boleto na tabela `cobrancas`
-- mantem o campo `telefone` apenas por compatibilidade, mas o app usa somente `whatsapp`
+1. Crie um projeto no Supabase.
+2. Abra `Project Settings > API`.
+3. Copie:
+   - Project URL
+   - anon/public key
+   - service_role key
+4. Preencha o `.env` local:
 
-## 1.1 Login do morador
+```bash
+VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co
+VITE_SUPABASE_ANON_KEY=SUA_ANON_KEY
+SUPABASE_URL=https://SEU-PROJETO.supabase.co
+SUPABASE_ANON_KEY=SUA_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY=SUA_SERVICE_ROLE_KEY
+NEXT_PUBLIC_SUPABASE_URL=https://SEU-PROJETO.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=SUA_ANON_KEY
+```
 
-- Morador: `CPF + senha`
-- Administrador: `e-mail + senha`
+A `SUPABASE_SERVICE_ROLE_KEY` deve ficar somente em ambiente de backend/local seguro. Ela e obrigatoria para login por CPF/CNPJ, cadastro de condominio e criacao/alteracao de usuarios pelo painel admin.
 
-O e-mail do morador continua existindo no Supabase Auth para identificacao interna, recuperacao e integracoes, mas a tela do morador nao usa mais o e-mail como credencial de acesso.
+## 3. Execute o SQL
 
-## 2. Crie o primeiro administrador
+Projeto Supabase novo:
 
-1. No painel do Supabase, abra `Authentication > Users`
-2. Crie o usuario administrador com email e senha
-3. No `SQL Editor`, execute:
+```sql
+-- Cole e execute todo o conteudo de schema.sql no SQL Editor
+```
+
+Projeto Supabase que ja tem tabelas/dados:
+
+```sql
+-- Cole e execute todo o conteudo de schema_updates.sql no SQL Editor
+```
+
+Depois disso, confira se existem:
+
+- tabela `condominiums`
+- tabela `profiles`
+- tabela `solicitacoes_cadastro`
+- tabela `cobrancas`
+- tabela `avisos`
+- tabela `documentos`
+- tabela `ocorrencias_predio`
+- buckets privados `documentos` e `cobrancas`
+
+## 4. Crie sua conta de PLATFORM_ADMIN
+
+1. No Supabase, abra `Authentication > Users`.
+2. Crie seu usuario administrador global com e-mail e senha.
+3. No `SQL Editor`, execute, trocando os dados:
 
 ```sql
 update public.profiles
-set role = 'admin',
-    nome = 'Seu Nome'
+set role = 'PLATFORM_ADMIN',
+    ativo = true,
+    nome = 'Seu Nome',
+    cpf = '00000000000',
+    condominium_id = null,
+    condominio_id = null,
+    updated_at = now()
 where email = 'seu-email@dominio.com';
 ```
 
-Sem isso, o login entra, mas a area administrativa nao libera as operacoes protegidas.
+Esse usuario entra pelo CPF + senha e deve cair em `/platform`.
 
-## 3. Configure as variaveis de ambiente
+## 5. Cadastre o condominio do sindico
 
-No frontend/local/Vercel:
+1. Rode o projeto.
+2. Na landing, abra `Cadastrar condominio`.
+3. Preencha dados do condominio e do sindico. No documento do condominio, use CPF quando o condominio ainda nao tiver CNPJ e CNPJ quando ja tiver.
+4. O sistema cria:
+   - `condominiums.status = 'pending'`
+   - usuario Auth do sindico
+   - perfil do sindico com role `ADMIN_CONDOMINIUM`
+5. Entre com o `PLATFORM_ADMIN`.
+6. Abra `/platform > Condominios`.
+7. Aprove o condominio.
 
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+Antes da aprovacao, o sindico autentica, mas o app bloqueia o acesso porque o condominio esta `pending`. Depois de aprovado, o sindico pode entrar pelo proprio CPF ou pelo CNPJ do condominio quando esse CNPJ estiver cadastrado.
 
-No backend/Vercel:
+## 6. Crie os 3 moradores de teste
 
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+Depois que o condominio estiver `active`:
 
-Compatibilidade adicional:
+1. Entre com o CPF ou CNPJ + senha do sindico.
+2. Abra `/admin > Moradores`.
+3. Cadastre 3 moradores com:
+   - nome
+   - e-mail
+   - CPF
+   - WhatsApp
+   - apartamento
+   - data de entrada
+4. O sistema gera uma senha temporaria para cada morador.
+5. Cada morador entra usando CPF + senha temporaria.
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`
+## 7. Ative Realtime
 
-Observacoes:
-
-- a `SUPABASE_SERVICE_ROLE_KEY` deve existir apenas no backend
-- sem a service role real, o sistema ainda funciona parcialmente, mas troca de senha, troca de email de login e criacao administrativa de usuarios ficam limitadas
-
-## 4. Ative o Realtime da tabela de solicitacoes
-
-O painel admin escuta mudancas em `solicitacoes_cadastro`.
-
-No Supabase, habilite o Realtime/publication para:
+No Supabase, habilite Realtime/publication para:
 
 - `public.solicitacoes_cadastro`
 
-Se isso nao estiver ativo, novas solicitacoes entram no banco, mas o contador em tempo real da area admin nao atualiza sozinho.
+Sem isso, as solicitacoes ainda entram no banco, mas o contador em tempo real do admin pode nao atualizar automaticamente.
 
-## 5. Confira o bucket de documentos
+## 8. Verificacao rapida
 
-Depois de executar o SQL:
+1. `PLATFORM_ADMIN` entra por CPF e acessa `/platform`.
+2. Cadastro de condominio novo fica `pending`.
+3. `PLATFORM_ADMIN` aprova o condominio.
+4. Sindico entra por CPF ou CNPJ e acessa `/admin`.
+5. Sindico cria 3 moradores.
+6. Moradores entram por CPF e acessam `/morador`.
+7. Sindico cria uma cobranca com Pix/anexo/boleto.
+8. Morador visualiza cobranca, QR Code/codigo Pix e documentos permitidos.
+9. Sindico marca pagamento como recebido manualmente.
+10. Bloqueie o condominio no `/platform` e confirme que sindico/moradores nao conseguem acessar.
 
-- o bucket `documentos` deve existir
-- ele deve estar `private`, nao `public`
+## 9. Auditoria automatica
 
-O app agora usa URL assinada para download, inclusive para documentos restritos.
-
-## 5.1 Confira o bucket de cobrancas
-
-Depois de executar o SQL:
-
-- o bucket `cobrancas` deve existir
-- ele deve estar `private`
-- o admin deve conseguir upload de anexo/boleto
-- o morador deve abrir apenas os arquivos das proprias cobrancas
-
-O app usa URL assinada para o morador abrir:
-
-- boleto gerado
-- anexo de pagamento (qrcode/imagem/pdf/etc)
-
-## 6. Verificacao rapida
-
-Depois de terminar a configuracao, valide:
-
-1. Abrir a landing e enviar uma solicitacao de cadastro
-2. Entrar com o admin e aprovar a solicitacao
-3. Criar um morador manualmente na tela de moradores com `nome`, `e-mail`, `cpf`, `whatsapp`, `apartamento` e `data de entrada`
-4. Publicar um aviso
-5. Enviar um documento publico
-6. Entrar com um morador usando `CPF + senha` e conferir cobrancas, avisos, documentos e ocorrencias
-7. No admin, criar uma cobranca com anexo/link e confirmar se o morador recebe aviso e consegue abrir boleto/anexo
-8. Conferir o banner de status da plataforma
-
-## 6.1 Auditoria automatica
-
-Para auditar e sincronizar os dados remotos do Supabase com o padrao novo, rode:
+Se estiver migrando dados ou quiser conferir inconsistencias:
 
 ```bash
 npm run supabase:audit
 ```
 
-Esse script:
+O script gera/atualiza `SUPABASE_AUDIT.md` com pendencias encontradas.
 
-- normaliza CPF e WhatsApp
-- limpa `telefone` onde ainda existir
-- tenta completar solicitacoes antigas com dados do perfil quando houver correspondencia segura por e-mail
-- sincroniza `user_metadata` no Auth
-- gera o arquivo [`SUPABASE_AUDIT.md`](/d:/webcond_final/SUPABASE_AUDIT.md) com o resultado e as pendencias manuais
+## 10. Comandos locais
 
-## 7. Se algo ainda falhar
+No PowerShell desta maquina, se `npm` estiver bloqueado pela execution policy, use:
 
-Cheque primeiro:
+```bash
+npm.cmd run dev
+npm.cmd run build
+npm.cmd run lint
+```
 
-- se o SQL certo foi executado sem erro
-- se o admin foi promovido para `role = 'admin'`
-- se a `SUPABASE_SERVICE_ROLE_KEY` real foi configurada
-- se o Realtime da tabela `solicitacoes_cadastro` foi habilitado
-- se o deploy recebeu as mesmas env vars do ambiente local
+O `npm run dev` normal pode falhar no PowerShell por causa do arquivo `npm.ps1`; isso e configuracao do Windows, nao erro do projeto.

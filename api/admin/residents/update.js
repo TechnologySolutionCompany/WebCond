@@ -9,6 +9,10 @@ import {
   supabaseAdmin,
 } from '../../_lib/supabaseAdmin.js'
 
+function buildInternalResidentEmail(cpf, condominiumId) {
+  return `morador-${cpf}-${condominiumId}@login.webcond.local`
+}
+
 async function validateResidentUniqueness(userId, { email, cpf }) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
@@ -49,17 +53,17 @@ export async function POST(req) {
 
   const userId = String(body.userId || '').trim()
   const nome = String(body.nome || '').trim()
-  const email = String(body.email || '').trim().toLowerCase()
   const apartamento = String(body.apartamento || '').trim()
   const whatsapp = String(body.whatsapp || '').replace(/\D/g, '')
   const cpf = String(body.cpf || '').replace(/\D/g, '')
-  const dataEntrada = body.data_entrada || null
   const ativo = body.ativo !== false
   const role = body.role === 'contador' ? 'contador' : 'morador'
   const password = String(body.password || '')
+  const condominiumId = getProfileCondominiumId(auth.profile)
+  const email = String(body.email || '').trim().toLowerCase() || buildInternalResidentEmail(cpf, condominiumId)
 
-  if (!userId || !nome || !email || !apartamento || !whatsapp || !dataEntrada) {
-    return json({ error: 'Usuario, nome, e-mail, WhatsApp, apartamento e data de entrada sao obrigatorios.' }, 400)
+  if (!userId || !nome || !apartamento || !whatsapp) {
+    return json({ error: 'Usuario, nome, apartamento e WhatsApp sao obrigatorios.' }, 400)
   }
 
   if (cpf.length !== 11) {
@@ -111,7 +115,7 @@ export async function POST(req) {
     return json({ error: authError.message || 'Nao foi possivel atualizar os dados de autenticacao.' }, 500)
   }
 
-  const condominiumId = getProfileCondominiumId(targetProfile)
+  const targetCondominiumId = getProfileCondominiumId(targetProfile)
   const { error: profileError } = await supabaseAdmin
     .from('profiles')
     .update({
@@ -121,11 +125,11 @@ export async function POST(req) {
       telefone: '',
       whatsapp,
       cpf,
-      data_entrada: dataEntrada,
+      data_entrada: null,
       ativo,
       role,
-      condominium_id: condominiumId,
-      condominio_id: condominiumId,
+      condominium_id: targetCondominiumId,
+      condominio_id: targetCondominiumId,
       updated_at: new Date().toISOString(),
     })
     .eq('id', userId)

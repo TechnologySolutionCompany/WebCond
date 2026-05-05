@@ -1,17 +1,8 @@
 import { useMemo, useState } from 'react'
-import { Building2, CheckCircle2, Clock3, Edit2, Loader2, Search, ShieldBan, ShieldCheck, XCircle } from 'lucide-react'
+import { Building2, CheckCircle2, Edit2, KeyRound, Loader2, Search, ShieldBan, ShieldCheck, XCircle } from 'lucide-react'
 import { useToast } from '../shared/Toast'
-import { updatePlatformCondominium } from '../../lib/platformApi'
-
-function formatCnpj(value = '') {
-  const digits = String(value || '').replace(/\D/g, '')
-
-  if (digits.length <= 2) return digits
-  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`
-  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`
-  if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`
-  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12, 14)}`
-}
+import { updatePlatformCondominium, updatePlatformSyndicPassword } from '../../lib/platformApi'
+import { formatCpfCnpj, normalizeCpfCnpj } from '../../lib/document'
 
 function formatDate(dateValue = '') {
   if (!dateValue) return '-'
@@ -26,6 +17,28 @@ function getStatusBadge(status = '') {
   return 'badge-orange'
 }
 
+function toDateInputValue(dateValue = '') {
+  if (!dateValue) return ''
+
+  const normalized = String(dateValue)
+  if (/^\d{4}-\d{2}-\d{2}/.test(normalized)) {
+    return normalized.slice(0, 10)
+  }
+
+  const date = new Date(dateValue)
+  if (Number.isNaN(date.getTime())) return ''
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const PLAN_OPTIONS = [
+  { value: 'Plano Padrao', label: 'Plano Padrao' },
+  { value: 'Plano Plus', label: 'Plano Plus' },
+]
+
 const emptyEditForm = {
   id: '',
   name: '',
@@ -35,7 +48,9 @@ const emptyEditForm = {
   whatsapp: '',
   unit_count: '',
   status: 'pending',
-  plan_name: '',
+  plan_name: 'Plano Padrao',
+  subscription_status: 'trial',
+  trial_started_at: '',
   platform_note: '',
 }
 
@@ -50,6 +65,7 @@ export default function PlatformCondominiums({
   const [savingAction, setSavingAction] = useState('')
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(emptyEditForm)
+  const [syndicPassword, setSyndicPassword] = useState('')
   const { toast } = useToast()
 
   const filtered = useMemo(() => (condominiums || []).filter((item) => {
@@ -74,14 +90,18 @@ export default function PlatformCondominiums({
       whatsapp: item.whatsapp || '',
       unit_count: String(item.unit_count || ''),
       status: item.status || 'pending',
-      plan_name: item.metadata?.plan_name || item.plan_name || '',
+      plan_name: item.metadata?.plan_name || item.plan_name || 'Plano Padrao',
+      subscription_status: item.metadata?.subscription_status || item.subscription_status || 'trial',
+      trial_started_at: toDateInputValue(item.trial_started_at || item.metadata?.trial_started_at || new Date()),
       platform_note: item.metadata?.platform_note || '',
     })
+    setSyndicPassword('')
   }
 
   const closeEdit = () => {
     setEditing(null)
     setForm(emptyEditForm)
+    setSyndicPassword('')
   }
 
   const handleAction = async (item, action) => {
@@ -117,7 +137,9 @@ export default function PlatformCondominiums({
         unit_count: Number(form.unit_count || 0),
         status: form.status,
         metadata: {
-          plan_name: form.plan_name || 'Padrao',
+          plan_name: form.plan_name || 'Plano Padrao',
+          subscription_status: form.subscription_status || 'trial',
+          trial_started_at: form.trial_started_at || '',
           platform_note: form.platform_note || '',
         },
       })
@@ -127,6 +149,31 @@ export default function PlatformCondominiums({
       await reload()
     } catch (saveError) {
       toast(saveError.message || 'Nao foi possivel salvar o condominio.', 'error')
+    } finally {
+      setSavingAction('')
+    }
+  }
+
+  const handleSyndicPasswordSave = async () => {
+    if (!editing?.id) return
+
+    if (syndicPassword.trim().length < 6) {
+      toast('Informe uma senha com pelo menos 6 caracteres.', 'error')
+      return
+    }
+
+    const actionKey = `${editing.id}:syndic-password`
+    setSavingAction(actionKey)
+
+    try {
+      await updatePlatformSyndicPassword({
+        condominiumId: editing.id,
+        password: syndicPassword.trim(),
+      })
+      setSyndicPassword('')
+      toast('Senha do sindico atualizada com sucesso.', 'success')
+    } catch (passwordError) {
+      toast(passwordError.message || 'Nao foi possivel atualizar a senha do sindico.', 'error')
     } finally {
       setSavingAction('')
     }
@@ -166,7 +213,7 @@ export default function PlatformCondominiums({
           <input
             className="input"
             style={{ paddingLeft: 34 }}
-            placeholder="Buscar por condominio, CNPJ ou sindico..."
+            placeholder="Buscar por condominio, CPF/CNPJ ou sindico..."
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
@@ -196,6 +243,7 @@ export default function PlatformCondominiums({
                 <th>Usuarios</th>
                 <th>Sindico</th>
                 <th>Criado em</th>
+                <th>Assinatura</th>
                 <th>Acoes</th>
               </tr>
             </thead>
@@ -204,7 +252,7 @@ export default function PlatformCondominiums({
                 <tr key={item.id}>
                   <td>
                     <div style={{ fontWeight: 700 }}>{item.name}</div>
-                    <div style={{ fontSize: 12, color: '#8b949e' }}>{formatCnpj(item.cnpj)}</div>
+                    <div style={{ fontSize: 12, color: '#8b949e' }}>{item.cnpj ? formatCpfCnpj(item.cnpj) : '-'}</div>
                     <div style={{ fontSize: 12, color: '#8b949e' }}>{item.address || '-'}</div>
                   </td>
                   <td><span className={`badge ${getStatusBadge(item.status)}`}>{item.status}</span></td>
@@ -218,6 +266,12 @@ export default function PlatformCondominiums({
                     <div style={{ fontSize: 12, color: '#8b949e' }}>{item.syndic?.email || '-'}</div>
                   </td>
                   <td>{formatDate(item.created_at)}</td>
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{item.subscription_status === 'active' ? 'Ativa' : 'Trial'}</div>
+                    <div style={{ fontSize: 12, color: '#8b949e' }}>
+                      {item.trial_ends_at ? `Vence em ${formatDate(item.trial_ends_at)}` : 'Aguardando aprovacao'}
+                    </div>
+                  </td>
                   <td>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button className="btn btn-ghost btn-sm" onClick={() => openEdit(item)}>
@@ -257,7 +311,7 @@ export default function PlatformCondominiums({
 
       {editing && (
         <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && closeEdit()}>
-          <div className="modal" style={{ maxWidth: 760 }}>
+          <div className="modal" style={{ maxWidth: 980 }}>
             <div className="modal-header">
               <div className="modal-title">Editar condominio</div>
               <button className="btn btn-ghost btn-icon" onClick={closeEdit}>
@@ -265,55 +319,123 @@ export default function PlatformCondominiums({
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                <label className="form-label">Nome do condominio</label>
-                <input className="input" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+            <div className="platform-condo-edit-grid">
+              <div className="platform-condo-edit-form">
+                <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                  <label className="form-label">Nome do condominio</label>
+                  <input className="input" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">CPF/CNPJ</label>
+                  <input className="input" value={formatCpfCnpj(form.cnpj)} onChange={(event) => setForm((current) => ({ ...current, cnpj: normalizeCpfCnpj(event.target.value) }))} />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">WhatsApp do condominio e/ou sindico</label>
+                  <input className="input" value={form.whatsapp} onChange={(event) => setForm((current) => ({ ...current, whatsapp: event.target.value }))} />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Endereco</label>
+                  <input className="input" value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">CEP</label>
+                  <input className="input" value={form.zip_code} onChange={(event) => setForm((current) => ({ ...current, zip_code: event.target.value }))} />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Unidades</label>
+                  <input className="input" type="number" min="0" value={form.unit_count} onChange={(event) => setForm((current) => ({ ...current, unit_count: event.target.value }))} />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Status</label>
+                  <select className="input" value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}>
+                    <option value="pending">Pendente</option>
+                    <option value="active">Ativo</option>
+                    <option value="blocked">Bloqueado</option>
+                    <option value="rejected">Rejeitado</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Plano</label>
+                  <select className="input" value={form.plan_name} onChange={(event) => setForm((current) => ({ ...current, plan_name: event.target.value }))}>
+                    {PLAN_OPTIONS.map((plan) => (
+                      <option key={plan.value} value={plan.value}>{plan.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                  <label className="form-label">Assinatura</label>
+                  <div className={form.subscription_status === 'trial' ? 'platform-subscription-grid with-date' : 'platform-subscription-grid'}>
+                    <select className="input" value={form.subscription_status} onChange={(event) => setForm((current) => ({ ...current, subscription_status: event.target.value }))}>
+                      <option value="trial">Teste 30 dias</option>
+                      <option value="active">Ativo</option>
+                    </select>
+                    {form.subscription_status === 'trial' && (
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Valendo a partir de</div>
+                        <input
+                          className="input"
+                          type="date"
+                          value={form.trial_started_at}
+                          onChange={(event) => setForm((current) => ({ ...current, trial_started_at: event.target.value }))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                  <label className="form-label">Nota interna da plataforma</label>
+                  <textarea className="input" rows={3} value={form.platform_note} onChange={(event) => setForm((current) => ({ ...current, platform_note: event.target.value }))} placeholder="Observacoes operacionais sem dados financeiros." />
+                </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">CNPJ</label>
-                <input className="input" value={formatCnpj(form.cnpj)} onChange={(event) => setForm((current) => ({ ...current, cnpj: event.target.value.replace(/\D/g, '') }))} />
-              </div>
+              <div className="platform-condo-password-panel">
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>Acesso do sindico</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                    {editing.syndic?.nome || 'Sindico ainda nao informado'}
+                    <br />
+                    {editing.syndic?.email || 'Sem e-mail vinculado'}
+                  </div>
+                </div>
 
-              <div className="form-group">
-                <label className="form-label">WhatsApp</label>
-                <input className="input" value={form.whatsapp} onChange={(event) => setForm((current) => ({ ...current, whatsapp: event.target.value }))} />
-              </div>
+                <div className="form-group">
+                  <label className="form-label">Nova senha do sindico</label>
+                  <input
+                    className="input"
+                    type="password"
+                    value={syndicPassword}
+                    onChange={(event) => setSyndicPassword(event.target.value)}
+                    placeholder="Minimo de 6 caracteres"
+                    disabled={!editing.syndic?.id}
+                  />
+                </div>
 
-              <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                <label className="form-label">Endereco</label>
-                <input className="input" value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">CEP</label>
-                <input className="input" value={form.zip_code} onChange={(event) => setForm((current) => ({ ...current, zip_code: event.target.value }))} />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Unidades</label>
-                <input className="input" type="number" min="0" value={form.unit_count} onChange={(event) => setForm((current) => ({ ...current, unit_count: event.target.value }))} />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Status</label>
-                <select className="input" value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}>
-                  <option value="pending">Pendente</option>
-                  <option value="active">Ativo</option>
-                  <option value="blocked">Bloqueado</option>
-                  <option value="rejected">Rejeitado</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Plano</label>
-                <input className="input" value={form.plan_name} onChange={(event) => setForm((current) => ({ ...current, plan_name: event.target.value }))} placeholder="Trial, Start, Pro..." />
-              </div>
-
-              <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                <label className="form-label">Nota interna da plataforma</label>
-                <textarea className="input" rows={3} value={form.platform_note} onChange={(event) => setForm((current) => ({ ...current, platform_note: event.target.value }))} placeholder="Observacoes operacionais sem dados financeiros." />
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={handleSyndicPasswordSave}
+                  disabled={!editing.syndic?.id || savingAction === `${editing.id}:syndic-password`}
+                  style={{ justifyContent: 'center' }}
+                >
+                  {savingAction === `${editing.id}:syndic-password` ? (
+                    <>
+                      <Loader2 size={14} className="spin-icon" /> Salvando senha...
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound size={14} /> Editar senha
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 

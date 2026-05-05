@@ -8,13 +8,16 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "supabase:audit": "node scripts/supabase-audit-and-sync.mjs"
+    "supabase:audit": "node scripts/supabase-audit-and-sync.mjs",
+    "supabase:clear-registrations": "node scripts/clear-registrations.mjs --yes",
+    "supabase:create-platform-admin": "node scripts/create-platform-admin.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",
     "lucide-react": "^1.7.0",
     "papaparse": "^5.5.3",
     "pdf-lib": "^1.17.1",
+    "puppeteer": "^24.42.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

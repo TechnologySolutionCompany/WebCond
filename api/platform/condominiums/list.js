@@ -1,6 +1,9 @@
 import { json, requirePlatformAdmin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
+import { getCondominiumAccessState } from '../../../src/lib/condominiumPlan.js'
 
 function normalizeCondominium(base = {}, details = {}) {
+  const accessState = getCondominiumAccessState(base)
+
   return {
     id: base.id,
     name: base.name || base.nome || '',
@@ -9,7 +12,8 @@ function normalizeCondominium(base = {}, details = {}) {
     zip_code: base.zip_code || '',
     whatsapp: base.whatsapp || '',
     unit_count: Number(base.unit_count || 0),
-    status: base.status || 'pending',
+    raw_status: base.status || 'pending',
+    status: accessState.effectiveStatus,
     created_at: base.created_at || null,
     updated_at: base.updated_at || null,
     metadata: base.metadata && typeof base.metadata === 'object' ? base.metadata : {},
@@ -17,7 +21,14 @@ function normalizeCondominium(base = {}, details = {}) {
     active_users: details.activeUsers || 0,
     residents_count: details.residentsCount || 0,
     syndic: details.syndic || null,
-    plan_name: details.planName || 'Padrao',
+    plan_name: accessState.planName || details.planName || 'Padrao',
+    subscription_status: accessState.subscriptionStatus,
+    approved_at: accessState.approvedAt,
+    trial_started_at: accessState.trialStartedAt,
+    trial_ends_at: accessState.trialEndsAt,
+    subscription_activated_at: accessState.subscriptionActivatedAt,
+    trial_expired: accessState.isTrialExpired,
+    plan_price_label: accessState.planPriceLabel,
   }
 }
 
@@ -71,6 +82,7 @@ export async function GET(req) {
 
     if (!current.syndic && (normalizedRole === 'admin' || normalizedRole === 'admin_condominium')) {
       current.syndic = {
+        id: profile.id,
         nome: profile.nome || '',
         email: profile.email || '',
         whatsapp: profile.whatsapp || '',

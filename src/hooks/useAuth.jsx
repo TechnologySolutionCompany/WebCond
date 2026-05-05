@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { isAdminRole, normalizeRole } from '../lib/auth'
 import { getProfileCondominiumId } from '../lib/tenant'
+import { getCondominiumAccessState, STANDARD_PLAN_PRICE_LABEL } from '../lib/condominiumPlan'
 
 const AuthContext = createContext(null)
 const PROFILE_NOT_FOUND_CODE = 'PROFILE_NOT_FOUND'
@@ -9,6 +10,7 @@ const CONDOMINIUM_NOT_LINKED_CODE = 'CONDOMINIUM_NOT_LINKED'
 const CONDOMINIUM_PENDING_CODE = 'CONDOMINIUM_PENDING'
 const CONDOMINIUM_BLOCKED_CODE = 'CONDOMINIUM_BLOCKED'
 const CONDOMINIUM_REJECTED_CODE = 'CONDOMINIUM_REJECTED'
+const CONDOMINIUM_TRIAL_EXPIRED_CODE = 'CONDOMINIUM_TRIAL_EXPIRED'
 
 function createAuthError(message, code) {
   const error = new Error(message)
@@ -35,6 +37,10 @@ function getAuthIssueMessage(error) {
 
   if (error?.code === CONDOMINIUM_REJECTED_CODE) {
     return 'O cadastro do seu condominio foi rejeitado e precisa ser revisado antes da liberacao do acesso.'
+  }
+
+  if (error?.code === CONDOMINIUM_TRIAL_EXPIRED_CODE) {
+    return `O periodo de teste do seu condominio terminou. Para continuar usando o sistema, regularize o Plano Padrao de ${STANDARD_PLAN_PRICE_LABEL}.`
   }
 
   return 'Nao foi possivel validar seu acesso agora. Tente novamente em alguns instantes.'
@@ -82,7 +88,7 @@ export const AuthProvider = ({ children }) => {
 
     const { data: condominium, error: condominiumError } = await supabase
       .from('condominiums')
-      .select('id, status, name, nome')
+      .select('id, status, name, nome, metadata, created_at, updated_at')
       .eq('id', nextCondominiumId)
       .maybeSingle()
 
@@ -91,21 +97,27 @@ export const AuthProvider = ({ children }) => {
       throw createAuthError('Condominio nao encontrado.', CONDOMINIUM_NOT_LINKED_CODE)
     }
 
-    if (condominium.status === 'pending') {
+    const accessState = getCondominiumAccessState(condominium)
+
+    if (accessState.effectiveStatus === 'pending') {
       throw createAuthError('Condominio aguardando aprovacao.', CONDOMINIUM_PENDING_CODE)
     }
 
-    if (condominium.status === 'blocked') {
+    if (accessState.blockReason === 'trial_expired') {
+      throw createAuthError('Periodo de teste expirado.', CONDOMINIUM_TRIAL_EXPIRED_CODE)
+    }
+
+    if (accessState.effectiveStatus === 'blocked') {
       throw createAuthError('Condominio bloqueado.', CONDOMINIUM_BLOCKED_CODE)
     }
 
-    if (condominium.status === 'rejected') {
+    if (accessState.effectiveStatus === 'rejected') {
       throw createAuthError('Condominio rejeitado.', CONDOMINIUM_REJECTED_CODE)
     }
 
     return {
       ...data,
-      condominium_status: condominium.status,
+      condominium_status: accessState.effectiveStatus,
     }
   }
 

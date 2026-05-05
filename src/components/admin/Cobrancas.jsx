@@ -3,12 +3,14 @@ import { supabase } from '../../lib/supabase'
 import { useToast } from '../shared/Toast'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
-import { Plus, Search, CheckCircle, X, Loader2, DollarSign, QrCode, Link2, Upload, Users, Paperclip, Copy } from 'lucide-react'
+import { Plus, Search, CheckCircle, X, Loader2, DollarSign, QrCode, Link2, Upload, Users, Paperclip, Copy, Trash2, MessageCircle } from 'lucide-react'
 import QRCode from 'qrcode'
 import { formatCurrency, formatReferenceLabel, parseCurrencyInput } from '../../lib/billingShared'
-import { buildChargeStorageFileName } from '../../lib/charges'
+import { buildChargeStorageFileName, enrichChargesWithPaymentUrls } from '../../lib/charges'
 import { applyTenantFilter, withTenantFields } from '../../lib/tenant'
 import { getChargePaymentStatusMeta, isChargePaid } from '../../lib/chargeStatus'
+import { buildResidentRequestSummary, isResidentPaymentConfirmation, isResidentRequestPending, parseResidentRequest } from '../../lib/residentRequests'
+import { renderBillingPdf } from '../../lib/adminApi'
 
 const FILTER_TYPES = [
   { value: 'condominio', label: 'Condominio', color: 'blue' },
@@ -45,10 +47,7 @@ function buildPixPayload(valor, reference, pixKey) {
   const amount = Number(valor || 0)
   const resolvedPixKey = String(pixKey || '').trim()
   const pixString = `PIX|${resolvedPixKey}|${amount.toFixed(2)}|${reference}`
-  const pixLink = resolvedPixKey
-    ? `pix:${resolvedPixKey}?amount=${amount.toFixed(2)}&reference=${encodeURIComponent(reference)}`
-    : ''
-  return { pixString, pixLink }
+  return { pixString, pixLink: '' }
 }
 
 function getBadgeColor(tipo) {
@@ -85,18 +84,18 @@ function buildBreakdown(form) {
     return [
       {
         leftTitle: 'Taxa Condominial',
-        middleTitle: 'Atualizacoes, reparos e manutencoes das areas comuns',
+        middleTitle: 'Atualizações, reparos e manutenções das áreas comuns',
         value: parseCurrencyInput(form.valor_condominio),
       },
       {
-        leftTitle: 'Fatura Neoenergia',
-        middleTitle: 'Uso da conta de energia das areas comuns',
-        value: parseCurrencyInput(form.valor_energia),
+        leftTitle: 'Fatura Compesa',
+        middleTitle: 'Uso da água distribuída para todo condomínio',
+        value: parseCurrencyInput(form.valor_agua),
       },
       {
-        leftTitle: 'Fatura Compesa',
-        middleTitle: 'Uso da agua distribuida para todo condominio',
-        value: parseCurrencyInput(form.valor_agua),
+        leftTitle: 'Fatura Neoenergia',
+        middleTitle: 'Uso da conta de energia de áreas comuns',
+        value: parseCurrencyInput(form.valor_energia),
       },
     ]
   }
@@ -116,6 +115,99 @@ function buildObservation(form, breakdown) {
   return extra ? `${parts.join(' | ')} | Obs: ${extra}` : parts.join(' | ')
 }
 
+function shouldUseLegacyPdfFallback(error) {
+  if (!error) return false
+
+  return error.code === 'PDF_RENDER_UNAVAILABLE'
+    || error.status === 500
+    || error.status === 503
+}
+
+function normalizeWhatsappForUrl(value = '') {
+  const digits = String(value || '').replace(/\D/g, '')
+  if (!digits) return ''
+  if (digits.startsWith('55') && digits.length >= 12) return digits
+  return `55${digits}`
+}
+
+function buildReminderMessage(charge, condominiumSettings) {
+  const dueDate = charge.vencimento
+    ? new Date(`${charge.vencimento}T12:00:00`).toLocaleDateString('pt-BR')
+    : '-'
+  const residentName = String(charge.profiles?.nome || 'morador').trim()
+  const pixKey = String(condominiumSettings.pixKey || charge.pix_copy_paste_code || '').trim() || 'Chave Pix nao informada'
+  const boletoLink = String(charge.boleto_download_url || charge.boleto_url || '').trim()
+
+  return [
+    `Olá, ${residentName}. ainda não foi identificado o pagamento das taxas condominiais. Caso já tenha realizado o pagamento, encaminhe o comprovante para atualização no sistema.`,
+    '',
+    `Vencimento : ${dueDate}`,
+    `Valor Total : ${formatCurrency(charge.valor)}`,
+    '',
+    'Para sua comodidade, você pode pagar via PIX utilizando as chaves abaixo:',
+    '',
+    `chave pix do condomínio: ${pixKey}`,
+    boletoLink ? `PDF do Boleto - Taxas Condominiais: ${boletoLink}` : null,
+    '',
+    '`Esta é uma mensagem automatica`',
+  ].filter((line) => line !== null).join('\n')
+}
+
+async function generateChargePdfBytes({
+  condominiumSettings,
+  morador,
+  form,
+  total,
+  pixQrCode,
+  pixCopyPasteCode,
+  paymentLink,
+  breakdown,
+}) {
+  const payload = {
+    nomeMorador: morador.nome,
+    apartamento: morador.apartamento || '-',
+    numero: morador.whatsapp || condominiumSettings.whatsappLabel,
+    observacoes: String(form.observacao || '').trim() || 'N/A',
+    valorTotal: total,
+    mesReferencia: form.mes_referencia,
+    dataVencimento: form.vencimento,
+    itens: breakdown.map((item) => ({
+      nome: item.leftTitle,
+      descricao: item.middleTitle,
+      valor: item.value,
+    })),
+    qrcode_pix: pixQrCode,
+    pixCopiaCola: pixCopyPasteCode,
+    linkPagamento: paymentLink,
+  }
+
+  try {
+    return await renderBillingPdf(payload)
+  } catch (error) {
+    if (!shouldUseLegacyPdfFallback(error)) {
+      throw error
+    }
+
+    const { generateChargesPdf } = await import('../../lib/billingPdf')
+    return generateChargesPdf({
+      condominium: condominiumSettings,
+      charges: [
+        {
+          nome: morador.nome,
+          apartamento: morador.apartamento || '-',
+          whatsapp: morador.whatsapp || condominiumSettings.whatsappLabel,
+          observacao: String(form.observacao || '').trim() || 'N/A',
+          reference: form.mes_referencia,
+          vencimento: form.vencimento,
+          total,
+          qrCodeDataUrl: pixQrCode.startsWith('data:image/') ? pixQrCode : '',
+          breakdown,
+        },
+      ],
+    })
+  }
+}
+
 function buildNotificationRows(moradores, profileId, referenceLabel, condominiumId) {
   const uniqueByApartment = new Map()
   for (const morador of moradores) {
@@ -126,7 +218,7 @@ function buildNotificationRows(moradores, profileId, referenceLabel, condominium
 
   return Array.from(uniqueByApartment.values()).map((morador) => ({
     titulo: 'Nova cobranca disponivel',
-    conteudo: `Uma nova cobranca foi lancada para o seu apartamento (${referenceLabel}). Abra "Minhas cobrancas" para pagar via link/QR/anexo e acessar o boleto.`,
+    conteudo: `Uma nova cobranca foi lancada para o seu apartamento (${referenceLabel}). Abra "Minhas cobrancas" para acessar o boleto e os dados de pagamento configurados pelo sindico.`,
     tipo: 'informativo',
     destinatario: 'apartamento',
     apartamento_destino: morador.apartamento || '',
@@ -149,6 +241,7 @@ export default function Cobrancas() {
   const [pixQrImageData, setPixQrImageData] = useState('')
   const [pixQrImageName, setPixQrImageName] = useState('')
   const [saving, setSaving] = useState(false)
+  const [residentRequests, setResidentRequests] = useState([])
   const { profile, condominiumId } = useAuth()
   const { settings: condominiumSettings } = useCondominiumSettings(condominiumId)
   const { toast } = useToast()
@@ -159,7 +252,7 @@ export default function Cobrancas() {
 
   const fetchAll = async () => {
     setLoading(true)
-    const [cobRes, morRes] = await Promise.all([
+    const [cobRes, morRes, requestsRes] = await Promise.all([
       applyTenantFilter(
         supabase
         .from('cobrancas')
@@ -176,10 +269,19 @@ export default function Cobrancas() {
         .order('apartamento'),
         condominiumId,
       ),
+      applyTenantFilter(
+        supabase
+          .from('ocorrencias_predio')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        condominiumId,
+      ),
     ])
 
-    setCobrancas(cobRes.data || [])
+    const enrichedCharges = await enrichChargesWithPaymentUrls(cobRes.data || [])
+    setCobrancas(enrichedCharges)
     setMoradores(morRes.data || [])
+    setResidentRequests(requestsRes.data || [])
     setLoading(false)
   }
 
@@ -243,11 +345,10 @@ export default function Cobrancas() {
         uploadedPaths.push(pagamentoAnexoPath)
       }
 
-      const { generateChargesPdf } = await import('../../lib/billingPdf')
       const insertRows = []
 
       for (const morador of selectedMoradores) {
-        const { pixString, pixLink } = buildPixPayload(total, `${morador.apartamento}-${form.mes_referencia}`, pixKey)
+        const { pixString } = buildPixPayload(total, `${morador.apartamento}-${form.mes_referencia}`, pixKey)
         const pixCopyPasteCode = manualPixCopyPasteCode || pixString
 
         let pixQrCode = uploadedQrCode || externalQrCode
@@ -255,23 +356,17 @@ export default function Cobrancas() {
           pixQrCode = await QRCode.toDataURL(pixCopyPasteCode || pixString)
         }
 
-        const paymentLink = customPaymentLink || pixLink
+        const paymentLink = customPaymentLink
 
-        const pdfBytes = await generateChargesPdf({
-          condominium: condominiumSettings,
-          charges: [
-            {
-              nome: morador.nome,
-              apartamento: morador.apartamento || '-',
-              whatsapp: morador.whatsapp || condominiumSettings.whatsappLabel,
-              observacao: String(form.observacao || '').trim() || 'N/A',
-              reference: form.mes_referencia,
-              vencimento: form.vencimento,
-              total,
-              qrCodeDataUrl: pixQrCode.startsWith('data:image/') ? pixQrCode : '',
-              breakdown,
-            },
-          ],
+        const pdfBytes = await generateChargePdfBytes({
+          condominiumSettings,
+          morador,
+          form,
+          total,
+          pixQrCode,
+          pixCopyPasteCode,
+          paymentLink,
+          breakdown,
         })
 
         const boletoPath = buildChargeStorageFileName(`boleto-${morador.apartamento || 'morador'}-${form.mes_referencia}.pdf`, 'boletos')
@@ -296,7 +391,7 @@ export default function Cobrancas() {
           pix_qr_code: pixQrCode,
           pix_qrcode_url: pixQrCode.startsWith('data:image/') ? pixQrCode : '',
           pix_copy_paste_code: pixCopyPasteCode,
-          pix_link: pixLink,
+          pix_link: '',
           pagamento_link: paymentLink,
           pagamento_anexo_path: pagamentoAnexoPath,
           boleto_path: boletoPath,
@@ -342,7 +437,17 @@ export default function Cobrancas() {
     }
   }
 
-  const marcarPago = async (id) => {
+  const marcarPago = async (charge) => {
+    const pendingRequest = residentRequests.find((item) => {
+      if (!isResidentPaymentConfirmation(item) || !isResidentRequestPending(item)) return false
+      return parseResidentRequest(item).chargeId === charge.id
+    })
+
+    if (pendingRequest) {
+      const confirmed = window.confirm('O morador informou que ja realizou o pagamento. Verifique o comprovante e/ou o extrato do banco antes da baixa definitiva. Deseja confirmar o pagamento agora?')
+      if (!confirmed) return
+    }
+
     const { error } = await supabase
       .from('cobrancas')
       .update({
@@ -352,15 +457,64 @@ export default function Cobrancas() {
         paid_at: new Date().toISOString(),
         confirmed_by: profile.id,
       })
-      .eq('id', id)
+      .eq('id', charge.id)
 
     if (error) {
       toast('Erro ao atualizar cobranca.', 'error')
       return
     }
 
+    if (pendingRequest) {
+      await supabase
+        .from('ocorrencias_predio')
+        .update({ status: 'resolvido', updated_at: new Date().toISOString() })
+        .eq('id', pendingRequest.id)
+    }
+
     toast('Pagamento confirmado!', 'success')
     void fetchAll()
+  }
+
+  const excluirCobranca = async (charge) => {
+    const confirmed = window.confirm(`Deseja excluir a cobranca "${charge.descricao || charge.tipo}" de ${formatReferenceLabel(charge.mes_referencia)}?`)
+    if (!confirmed) return
+
+    const filesToRemove = [charge.pagamento_anexo_path, charge.boleto_path].filter(Boolean)
+
+    if (filesToRemove.length > 0) {
+      await supabase.storage.from('cobrancas').remove(filesToRemove)
+    }
+
+    const { error } = await supabase
+      .from('cobrancas')
+      .delete()
+      .eq('id', charge.id)
+
+    if (error) {
+      toast('Nao foi possivel excluir a cobranca.', 'error')
+      return
+    }
+
+    toast('Cobranca excluida com sucesso.', 'success')
+    void fetchAll()
+  }
+
+  const enviarLembrete = (charge) => {
+    const whatsapp = normalizeWhatsappForUrl(charge.profiles?.whatsapp)
+    if (!whatsapp) {
+      toast('Este morador nao possui WhatsApp cadastrado.', 'error')
+      return
+    }
+
+    const message = buildReminderMessage(charge, condominiumSettings)
+    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
+
+    const boletoUrl = charge.boleto_download_url || charge.boleto_url
+    if (boletoUrl) {
+      window.open(boletoUrl, '_blank', 'noopener,noreferrer')
+    } else {
+      toast('Cobranca sem PDF de boleto disponivel. O WhatsApp sera aberto apenas com a mensagem.', 'info')
+    }
   }
 
   const filtered = useMemo(() => cobrancas.filter((cobranca) => {
@@ -377,6 +531,14 @@ export default function Cobrancas() {
   const totalPago = filtered.filter((item) => isChargePaid(item)).reduce((sum, item) => sum + Number(item.valor || 0), 0)
   const isCondominio = form.tipo === 'condominio'
   const previewTotal = buildBreakdown(form).reduce((sum, item) => sum + Number(item.value || 0), 0)
+  const pendingPaymentRequests = residentRequests.filter((item) => isResidentPaymentConfirmation(item) && isResidentRequestPending(item))
+  const pendingPaymentByChargeId = new Map(pendingPaymentRequests.map((item) => [parseResidentRequest(item).chargeId, item]))
+  const groupedCharges = filtered.reduce((acc, charge) => {
+    const key = charge.mes_referencia || 'sem-referencia'
+    if (!acc.has(key)) acc.set(key, [])
+    acc.get(key).push(charge)
+    return acc
+  }, new Map())
 
   return (
     <div className="fade-in">
@@ -428,59 +590,90 @@ export default function Cobrancas() {
       ) : filtered.length === 0 ? (
         <div className="empty-state"><DollarSign size={40} /><p>Nenhuma cobranca encontrada.</p></div>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Morador / Apto</th>
-                <th>Descricao</th>
-                <th>Tipo</th>
-                <th>Referencia</th>
-                <th>Vencimento</th>
-                <th>Valor</th>
-                <th>Status</th>
-                <th>Pagamento enviado</th>
-                <th>Acao</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((cobranca) => (
-                <tr key={cobranca.id}>
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{cobranca.profiles?.nome || '-'}</div>
-                    <div style={{ fontSize: 12, color: '#8b949e' }}>Apt. {cobranca.profiles?.apartamento || '-'}</div>
-                  </td>
-                  <td>{cobranca.descricao || '-'}</td>
-                  <td><span className={`badge badge-${getBadgeColor(cobranca.tipo)}`}>{FILTER_TYPES.find((item) => item.value === cobranca.tipo)?.label || cobranca.tipo}</span></td>
-                  <td className="mono" style={{ color: '#8b949e' }}>{formatReferenceLabel(cobranca.mes_referencia)}</td>
-                  <td style={{ color: '#8b949e' }}>{cobranca.vencimento ? new Date(`${cobranca.vencimento}T12:00:00`).toLocaleDateString('pt-BR') : '-'}</td>
-                  <td className="mono" style={{ fontWeight: 600 }}>{formatCurrency(cobranca.valor)}</td>
-                  <td>
-                    {(() => {
-                      const statusMeta = getChargePaymentStatusMeta(cobranca)
-                      return <span className={`badge ${statusMeta.badgeClass}`}>{statusMeta.label}</span>
-                    })()}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      {(cobranca.pix_qr_code || cobranca.pix_qrcode_url) && <span className="badge badge-blue"><QrCode size={10} /> QR</span>}
-                      {cobranca.pix_copy_paste_code && <span className="badge badge-orange"><Copy size={10} /> Pix</span>}
-                      {(cobranca.pagamento_link || cobranca.pix_link) && <span className="badge badge-green"><Link2 size={10} /> Link</span>}
-                      {(cobranca.pagamento_anexo_path || cobranca.pagamento_anexo_url) && <span className="badge badge-purple"><Paperclip size={10} /> Anexo</span>}
-                      {!(cobranca.pix_qr_code || cobranca.pix_qrcode_url || cobranca.pix_copy_paste_code || cobranca.pagamento_link || cobranca.pix_link || cobranca.pagamento_anexo_path || cobranca.pagamento_anexo_url) && <span style={{ color: '#8b949e' }}>-</span>}
-                    </div>
-                  </td>
-                  <td>
-                    {!isChargePaid(cobranca) && (
-                      <button className="btn btn-ghost btn-sm" onClick={() => marcarPago(cobranca.id)} title="Marcar como pago">
-                        <CheckCircle size={13} /> Pago
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {Array.from(groupedCharges.entries()).sort((a, b) => b[0].localeCompare(a[0])).map(([reference, charges]) => (
+            <div key={reference} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: 12, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '.06em' }}>Competencia</div>
+                  <div style={{ fontSize: 18, fontWeight: 700 }}>{formatReferenceLabel(reference)}</div>
+                </div>
+                <div style={{ fontSize: 12, color: '#8b949e' }}>{charges.length} cobranca(s)</div>
+              </div>
+
+              <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Morador / Apto</th>
+                      <th>Descricao</th>
+                      <th>Tipo</th>
+                      <th>Vencimento</th>
+                      <th>Valor</th>
+                      <th>Status</th>
+                      <th>Pagamento enviado</th>
+                      <th>Acao</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {charges.map((cobranca) => {
+                      const paymentRequest = pendingPaymentByChargeId.get(cobranca.id)
+                      const statusMeta = paymentRequest && !isChargePaid(cobranca)
+                        ? { label: 'Pagamento confirmado', badgeClass: 'badge-blue' }
+                        : getChargePaymentStatusMeta(cobranca)
+
+                      return (
+                        <tr key={cobranca.id}>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>{cobranca.profiles?.nome || '-'}</div>
+                            <div style={{ fontSize: 12, color: '#8b949e' }}>Apt. {cobranca.profiles?.apartamento || '-'}</div>
+                          </td>
+                          <td>
+                            <div>{cobranca.descricao || '-'}</div>
+                            {paymentRequest && (
+                              <div style={{ fontSize: 11, color: '#8b949e', marginTop: 4 }}>
+                                {buildResidentRequestSummary(paymentRequest).detail}
+                              </div>
+                            )}
+                          </td>
+                          <td><span className={`badge badge-${getBadgeColor(cobranca.tipo)}`}>{FILTER_TYPES.find((item) => item.value === cobranca.tipo)?.label || cobranca.tipo}</span></td>
+                          <td style={{ color: '#8b949e' }}>{cobranca.vencimento ? new Date(`${cobranca.vencimento}T12:00:00`).toLocaleDateString('pt-BR') : '-'}</td>
+                          <td className="mono" style={{ fontWeight: 600 }}>{formatCurrency(cobranca.valor)}</td>
+                          <td><span className={`badge ${statusMeta.badgeClass}`}>{statusMeta.label}</span></td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              {(cobranca.pix_qr_code || cobranca.pix_qrcode_url) && <span className="badge badge-blue"><QrCode size={10} /> QR</span>}
+                              {cobranca.pix_copy_paste_code && <span className="badge badge-orange"><Copy size={10} /> Pix</span>}
+                              {(cobranca.pagamento_link || cobranca.pix_link) && <span className="badge badge-green"><Link2 size={10} /> Link</span>}
+                              {(cobranca.pagamento_anexo_path || cobranca.pagamento_anexo_url) && <span className="badge badge-purple"><Paperclip size={10} /> Anexo</span>}
+                              {!(cobranca.pix_qr_code || cobranca.pix_qrcode_url || cobranca.pix_copy_paste_code || cobranca.pagamento_link || cobranca.pix_link || cobranca.pagamento_anexo_path || cobranca.pagamento_anexo_url) && <span style={{ color: '#8b949e' }}>-</span>}
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {!isChargePaid(cobranca) && (
+                                <>
+                                  <button className="btn btn-ghost btn-sm" onClick={() => enviarLembrete(cobranca)} title="Enviar lembrete pelo WhatsApp">
+                                    <MessageCircle size={13} /> Lembrete
+                                  </button>
+                                  <button className="btn btn-ghost btn-sm" onClick={() => marcarPago(cobranca)} title="Marcar como pago">
+                                    <CheckCircle size={13} /> {paymentRequest ? 'Confirmar 2x' : 'Pago'}
+                                  </button>
+                                </>
+                              )}
+                              <button className="btn btn-danger btn-sm" onClick={() => excluirCobranca(cobranca)}>
+                                <Trash2 size={13} /> Excluir
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

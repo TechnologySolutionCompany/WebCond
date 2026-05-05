@@ -1,4 +1,5 @@
 import { ensureServiceRoleConfig, json, parseJsonBody, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
+import { STANDARD_PLAN_NAME, STANDARD_PLAN_PRICE_CENTS } from '../../../src/lib/condominiumPlan.js'
 
 function slugify(value = '') {
   const base = String(value || '')
@@ -30,6 +31,13 @@ async function ensureUniqueSyndic(email, cpf) {
   if (cpfExists) return 'Ja existe um usuario cadastrado com este CPF.'
 
   return null
+}
+
+function getCpfCnpjType(value = '') {
+  const digits = String(value || '').replace(/\D/g, '')
+  if (digits.length === 11) return 'cpf'
+  if (digits.length === 14) return 'cnpj'
+  return ''
 }
 
 async function buildUniqueSlug(name) {
@@ -66,12 +74,14 @@ export async function POST(req) {
   }
 
   const name = String(body.name || '').trim()
-  const cnpj = String(body.cnpj || '').replace(/\D/g, '')
+  const cnpj = String(body.cnpj || body.document || body.condominiumDocument || '').replace(/\D/g, '')
+  const condominiumDocumentType = getCpfCnpjType(cnpj)
   const address = String(body.address || '').trim()
   const zipCode = String(body.zip_code || body.zipCode || '').trim()
   const whatsapp = String(body.whatsapp || '').replace(/\D/g, '')
   const unitCount = Number(body.unit_count || body.unitCount || 0)
-  const bankDetails = String(body.bank_details || body.bankDetails || '').trim()
+  const pixKey = String(body.pix_key || body.pixKey || '').trim()
+  const bankDetails = String(body.bank_details || body.bankDetails || body.bank_destination || body.bankDestination || '').trim()
   const syndicName = String(body.syndic_name || body.syndicName || '').trim()
   const syndicCpf = String(body.syndic_cpf || body.syndicCpf || '').replace(/\D/g, '')
   const syndicEmail = String(body.syndic_email || body.syndicEmail || '').trim().toLowerCase()
@@ -81,8 +91,8 @@ export async function POST(req) {
     return json({ error: 'Preencha todos os dados do condominio e do sindico.' }, 400)
   }
 
-  if (cnpj.length !== 14) {
-    return json({ error: 'Informe um CNPJ valido com 14 digitos.' }, 400)
+  if (!condominiumDocumentType) {
+    return json({ error: 'Informe um CPF ou CNPJ valido para o condominio.' }, 400)
   }
 
   if (syndicCpf.length !== 11) {
@@ -100,11 +110,11 @@ export async function POST(req) {
     .maybeSingle()
 
   if (condominiumLookupError) {
-    return json({ error: 'Nao foi possivel validar o CNPJ do condominio.' }, 500)
+    return json({ error: 'Nao foi possivel validar o CPF/CNPJ do condominio.' }, 500)
   }
 
   if (existingCondominium) {
-    return json({ error: 'Ja existe um condominio cadastrado com este CNPJ.' }, 409)
+    return json({ error: 'Ja existe um condominio cadastrado com este CPF/CNPJ.' }, 409)
   }
 
   const uniquenessError = await ensureUniqueSyndic(syndicEmail, syndicCpf)
@@ -117,8 +127,11 @@ export async function POST(req) {
     request_contact_name: syndicName,
     request_contact_email: syndicEmail,
     request_contact_whatsapp: whatsapp,
-    plan_name: 'Trial',
+    plan_name: STANDARD_PLAN_NAME,
+    plan_price_cents: STANDARD_PLAN_PRICE_CENTS,
+    subscription_status: 'trial',
     registration_origin: 'landing',
+    condominium_document_type: condominiumDocumentType,
   }
 
   const { data: condominium, error: createCondominiumError } = await supabaseAdmin
@@ -133,6 +146,8 @@ export async function POST(req) {
       zip_code: zipCode,
       whatsapp,
       unit_count: Number.isFinite(unitCount) ? Math.max(unitCount, 0) : 0,
+      pix_key: pixKey,
+      chave_pix: pixKey,
       bank_details: bankDetails,
       status: 'pending',
       metadata,

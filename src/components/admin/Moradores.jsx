@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { UserPlus, Search, Edit2, X, Loader2, Home, User, Copy, KeyRound, MessageCircle, Trash2 } from 'lucide-react'
+import { UserPlus, Search, Edit2, X, Loader2, Home, User, Copy, KeyRound, MessageCircle, Trash2, Bell } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { createResident, deleteResident, updateResident } from '../../lib/adminApi'
-import { APARTMENT_OPTIONS } from '../../lib/apartments'
 import { formatCpf, normalizeCpf } from '../../lib/cpf'
-import { buildProfileObservation, getMoradiaStatus } from '../../lib/profileMeta'
+import { buildProfileObservation, getMoradiaMeta } from '../../lib/profileMeta'
 import { useToast } from '../shared/Toast'
 import { useAuth } from '../../hooks/useAuth'
 import { applyTenantFilter } from '../../lib/tenant'
+import { buildResidentRequestSummary, isResidentRequestPending } from '../../lib/residentRequests'
 
 const MORADIA_OPTIONS = [
   { value: 'morando', label: 'Morando', color: 'green' },
@@ -17,13 +17,18 @@ const MORADIA_OPTIONS = [
 
 const emptyForm = {
   nome: '',
-  email: '',
   apartamento: '',
   cpf: '',
   whatsapp: '',
-  data_entrada: '',
   nova_senha: '',
   status_moradia: 'morando',
+  inquilino_nome: '',
+  inquilino_telefone: '',
+}
+
+function buildResidentInternalEmail(cpf) {
+  const normalizedCpf = normalizeCpf(cpf)
+  return normalizedCpf ? `morador-${normalizedCpf}@login.webcond.local` : ''
 }
 
 function isBackendConfigError(message = '') {
@@ -47,6 +52,8 @@ export default function Moradores() {
   const [showMessageModal, setShowMessageModal] = useState(false)
   const [messageTarget, setMessageTarget] = useState(null)
   const [messageText, setMessageText] = useState('')
+  const [notifications, setNotifications] = useState([])
+  const [selectedResidentNotifications, setSelectedResidentNotifications] = useState(null)
   const { condominiumId } = useAuth()
   const { toast } = useToast()
 
@@ -56,14 +63,26 @@ export default function Moradores() {
 
   const fetchMoradores = async () => {
     setLoading(true)
-    const query = supabase
-      .from('profiles')
-      .select('*')
-      .in('role', ['morador', 'RESIDENT'])
-      .order('apartamento')
-    const { data } = await applyTenantFilter(query, condominiumId)
+    const [profilesRes, notificationsRes] = await Promise.all([
+      applyTenantFilter(
+        supabase
+          .from('profiles')
+          .select('*')
+          .in('role', ['morador', 'RESIDENT'])
+          .order('apartamento'),
+        condominiumId,
+      ),
+      applyTenantFilter(
+        supabase
+          .from('ocorrencias_predio')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        condominiumId,
+      ),
+    ])
 
-    setMoradores(data || [])
+    setMoradores(profilesRes.data || [])
+    setNotifications(notificationsRes.data || [])
     setLoading(false)
   }
 
@@ -76,16 +95,17 @@ export default function Moradores() {
   }
 
   const openEdit = (morador) => {
+    const moradiaMeta = getMoradiaMeta(morador)
     setEditing(morador)
     setForm({
       nome: morador.nome || '',
-      email: morador.email || '',
       apartamento: morador.apartamento || '',
       cpf: morador.cpf || '',
       whatsapp: morador.whatsapp || '',
-      data_entrada: morador.data_entrada || '',
       nova_senha: '',
-      status_moradia: getMoradiaStatus(morador),
+      status_moradia: moradiaMeta.status_moradia,
+      inquilino_nome: moradiaMeta.inquilino_nome,
+      inquilino_telefone: moradiaMeta.inquilino_telefone,
     })
     setSenhaGerada(null)
     setShowPassword(false)
@@ -93,19 +113,23 @@ export default function Moradores() {
   }
 
   const saveProfileFallback = async ({ keepAuthEmail }) => {
+    const generatedEmail = buildResidentInternalEmail(form.cpf)
     const updatePayload = {
       nome: form.nome,
       telefone: '',
       apartamento: form.apartamento,
       cpf: normalizeCpf(form.cpf),
       whatsapp: String(form.whatsapp || '').replace(/\D/g, ''),
-      data_entrada: form.data_entrada || null,
-      observacao: buildProfileObservation(editing, form.status_moradia),
+      data_entrada: null,
+      observacao: buildProfileObservation(editing, form.status_moradia, {
+        inquilino_nome: form.inquilino_nome,
+        inquilino_telefone: form.inquilino_telefone,
+      }),
       updated_at: new Date().toISOString(),
     }
 
     if (!keepAuthEmail) {
-      updatePayload.email = form.email
+      updatePayload.email = generatedEmail
     }
 
     const { error } = await supabase
@@ -117,13 +141,23 @@ export default function Moradores() {
   }
 
   const handleSave = async () => {
-    if (!form.nome || !form.email || !form.whatsapp || !form.apartamento || !form.data_entrada) {
-      toast('Preencha nome, e-mail, WhatsApp, apartamento e data de entrada.', 'error')
+    if (!form.nome || !form.whatsapp || !form.apartamento) {
+      toast('Preencha nome, apartamento e WhatsApp.', 'error')
       return
     }
 
     if (normalizeCpf(form.cpf).length !== 11) {
       toast('Informe um CPF valido com 11 digitos.', 'error')
+      return
+    }
+
+    if (!editing && String(form.nova_senha || '').trim().length < 6) {
+      toast('Defina uma senha de acesso com pelo menos 6 caracteres.', 'error')
+      return
+    }
+
+    if (form.status_moradia === 'alugado' && (!String(form.inquilino_nome || '').trim() || !String(form.inquilino_telefone || '').trim())) {
+      toast('Informe nome e telefone do inquilino quando a unidade estiver alugada.', 'error')
       return
     }
 
@@ -138,12 +172,11 @@ export default function Moradores() {
           await updateResident({
             userId: editing.id,
             nome: form.nome,
-            email: form.email,
+            email: buildResidentInternalEmail(form.cpf),
             role: editing.role || 'morador',
             apartamento: form.apartamento,
             cpf: normalizeCpf(form.cpf),
             whatsapp: String(form.whatsapp || '').replace(/\D/g, ''),
-            data_entrada: form.data_entrada || null,
             ativo: editing.ativo,
             password: form.nova_senha,
           })
@@ -151,7 +184,10 @@ export default function Moradores() {
           const { error: profileError } = await supabase
             .from('profiles')
             .update({
-              observacao: buildProfileObservation(editing, form.status_moradia),
+              observacao: buildProfileObservation(editing, form.status_moradia, {
+                inquilino_nome: form.inquilino_nome,
+                inquilino_telefone: form.inquilino_telefone,
+              }),
               updated_at: new Date().toISOString(),
             })
             .eq('id', editing.id)
@@ -162,14 +198,14 @@ export default function Moradores() {
             throw error
           }
 
-          authFieldsChanged = Boolean(form.nova_senha) || form.email !== (editing.email || '')
+          authFieldsChanged = Boolean(form.nova_senha) || normalizeCpf(form.cpf) !== normalizeCpf(editing.cpf)
           await saveProfileFallback({ keepAuthEmail: authFieldsChanged })
           usedFallback = true
         }
 
         toast(
           usedFallback && authFieldsChanged
-            ? 'Perfil atualizado. Para trocar o e-mail de login ou a senha, informe a SUPABASE_SERVICE_ROLE_KEY real no backend.'
+            ? 'Perfil atualizado. Para trocar a senha de acesso ou sincronizar o login interno apos mudar o CPF, informe a SUPABASE_SERVICE_ROLE_KEY real no backend.'
             : 'Morador atualizado com sucesso.',
           usedFallback && authFieldsChanged ? 'info' : 'success',
           usedFallback && authFieldsChanged ? 8000 : 4500,
@@ -179,11 +215,11 @@ export default function Moradores() {
       } else {
         const result = await createResident({
           nome: form.nome,
-          email: form.email,
+          email: buildResidentInternalEmail(form.cpf),
           apartamento: form.apartamento,
           cpf: normalizeCpf(form.cpf),
           whatsapp: String(form.whatsapp || '').replace(/\D/g, ''),
-          data_entrada: form.data_entrada || null,
+          password: form.nova_senha,
           role: 'morador',
         })
 
@@ -191,14 +227,17 @@ export default function Moradores() {
           await supabase
             .from('profiles')
             .update({
-              observacao: buildProfileObservation({}, form.status_moradia),
+              observacao: buildProfileObservation({}, form.status_moradia, {
+                inquilino_nome: form.inquilino_nome,
+                inquilino_telefone: form.inquilino_telefone,
+              }),
               updated_at: new Date().toISOString(),
             })
             .eq('id', result.userId)
         }
 
         setSenhaGerada(result.temporaryPassword)
-        toast(`Morador criado com sucesso. Senha temporaria: ${result.temporaryPassword}`, 'success', 10000)
+        toast(`Morador criado com sucesso. Senha de acesso: ${result.temporaryPassword}`, 'success', 10000)
       }
 
       void fetchMoradores()
@@ -297,10 +336,30 @@ export default function Moradores() {
   const filtered = useMemo(() => moradores.filter((morador) =>
     morador.nome?.toLowerCase().includes(search.toLowerCase())
       || morador.apartamento?.includes(search)
-      || morador.email?.toLowerCase().includes(search.toLowerCase())
       || String(morador.cpf || '').includes(normalizeCpf(search))
       || String(morador.whatsapp || '').includes(normalizeCpf(search))
   ), [moradores, search])
+
+  const pendingNotificationsByResident = useMemo(() => {
+    const result = new Map()
+
+    for (const item of notifications) {
+      if (!isResidentRequestPending(item)) continue
+      const residentId = item.created_by
+      if (!residentId) continue
+      result.set(residentId, (result.get(residentId) || 0) + 1)
+    }
+
+    return result
+  }, [notifications])
+
+  const openResidentNotifications = (morador) => {
+    const residentItems = notifications.filter((item) => item.created_by === morador.id)
+    setSelectedResidentNotifications({
+      morador,
+      items: residentItems,
+    })
+  }
 
   return (
     <div className="fade-in">
@@ -321,7 +380,7 @@ export default function Moradores() {
         <input
           className="input"
           style={{ paddingLeft: 34 }}
-          placeholder="Buscar por nome, apartamento, CPF, WhatsApp ou e-mail..."
+          placeholder="Buscar por nome, apartamento, CPF ou WhatsApp..."
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
@@ -346,23 +405,46 @@ export default function Moradores() {
             </thead>
             <tbody>
               {filtered.map((morador) => {
-                const moradia = getMoradiaStatus(morador)
-                const moradiaLabel = MORADIA_OPTIONS.find((option) => option.value === moradia) || MORADIA_OPTIONS[0]
+                const moradiaMeta = getMoradiaMeta(morador)
+                const moradiaLabel = MORADIA_OPTIONS.find((option) => option.value === moradiaMeta.status_moradia) || MORADIA_OPTIONS[0]
 
                 return (
                   <tr key={morador.id}>
                     <td>
                       <div style={{ fontWeight: 600 }}>{morador.nome}</div>
-                      <div style={{ fontSize: 12, color: '#8b949e' }}>{morador.email}</div>
-                      <div style={{ fontSize: 12, color: '#8b949e' }}>CPF: {morador.cpf ? formatCpf(morador.cpf) : '-'}</div>
+                      <div style={{ fontSize: 12, color: '#8b949e' }}>Login pelo CPF: {morador.cpf ? formatCpf(morador.cpf) : '-'}</div>
                     </td>
                     <td><span className="badge badge-blue"><Home size={10} /> Apt. {morador.apartamento || '-'}</span></td>
                     <td><span className={`badge ${morador.ativo ? 'badge-green' : 'badge-red'}`}>{morador.ativo ? 'Ativo' : 'Inativo'}</span></td>
-                    <td><span className={`badge badge-${moradiaLabel.color}`}>{moradiaLabel.label}</span></td>
-                    <td style={{ color: '#8b949e' }}>{morador.whatsapp || '-'}</td>
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <span className={`badge badge-${moradiaLabel.color}`}>{moradiaLabel.label}</span>
+                        {moradiaMeta.status_moradia === 'alugado' && moradiaMeta.inquilino_nome && (
+                          <div style={{ fontSize: 11, color: '#8b949e' }}>
+                            Inquilino: {moradiaMeta.inquilino_nome}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ color: '#8b949e' }}>
+                      <div>{morador.whatsapp || '-'}</div>
+                      {moradiaMeta.status_moradia === 'alugado' && moradiaMeta.inquilino_telefone && (
+                        <div style={{ fontSize: 11, marginTop: 4 }}>
+                          Inquilino: {moradiaMeta.inquilino_telefone}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         <button className="btn btn-ghost btn-sm btn-icon" onClick={() => openEdit(morador)}><Edit2 size={13} /></button>
+                        <button className="btn btn-ghost btn-sm btn-icon" onClick={() => openResidentNotifications(morador)} title="Ver notificacoes deste morador" style={{ position: 'relative' }}>
+                          <Bell size={13} />
+                          {(pendingNotificationsByResident.get(morador.id) || 0) > 0 && (
+                            <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 999, background: '#f0883e', color: '#000', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+                              {pendingNotificationsByResident.get(morador.id)}
+                            </span>
+                          )}
+                        </button>
                         <button className="btn btn-ghost btn-sm btn-icon" onClick={() => openMessageComposer(morador)} title="Enviar mensagem privada">
                           <MessageCircle size={13} style={{ color: '#25d366' }} />
                         </button>
@@ -425,15 +507,8 @@ export default function Moradores() {
                     <input className="input" value={form.nome} onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))} placeholder="Joao da Silva" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">E-mail *</label>
-                    <input className="input" type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="joao@email.com" />
-                  </div>
-                  <div className="form-group">
                     <label className="form-label">Apartamento *</label>
-                    <select className="input" value={form.apartamento} onChange={(event) => setForm((current) => ({ ...current, apartamento: event.target.value }))}>
-                      <option value="">Selecione</option>
-                      {APARTMENT_OPTIONS.map((apto) => <option key={apto} value={apto}>Apt. {apto}</option>)}
-                    </select>
+                    <input className="input" value={form.apartamento} onChange={(event) => setForm((current) => ({ ...current, apartamento: event.target.value }))} placeholder="Ex.: 101, Casa 2, Bloco B-03" />
                   </div>
                   <div className="form-group">
                     <label className="form-label">CPF *</label>
@@ -444,8 +519,13 @@ export default function Moradores() {
                     <input className="input" value={form.whatsapp} onChange={(event) => setForm((current) => ({ ...current, whatsapp: event.target.value }))} placeholder="(81) 90000-0000" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Data de entrada *</label>
-                    <input className="input" type="date" value={form.data_entrada} onChange={(event) => setForm((current) => ({ ...current, data_entrada: event.target.value }))} />
+                    <label className="form-label">{editing ? 'Nova senha de acesso' : 'Senha de acesso *'}</label>
+                    <div style={{ position: 'relative' }}>
+                      <input className="input" type={showPassword ? 'text' : 'password'} value={form.nova_senha} onChange={(event) => setForm((current) => ({ ...current, nova_senha: event.target.value }))} placeholder={editing ? 'Preencha apenas se quiser trocar' : 'Defina a senha inicial do morador'} />
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ position: 'absolute', right: 8, top: 7 }} onClick={() => setShowPassword(!showPassword)}>
+                        {showPassword ? 'Ocultar' : 'Mostrar'}
+                      </button>
+                    </div>
                   </div>
                   <div className="form-group" style={{ gridColumn: '1/-1' }}>
                     <label className="form-label">Status da moradia</label>
@@ -455,29 +535,29 @@ export default function Moradores() {
                       ))}
                     </select>
                   </div>
+
+                  {form.status_moradia === 'alugado' && (
+                    <>
+                      <div className="form-group">
+                        <label className="form-label">Nome do inquilino *</label>
+                        <input className="input" value={form.inquilino_nome} onChange={(event) => setForm((current) => ({ ...current, inquilino_nome: event.target.value }))} placeholder="Nome do inquilino" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Telefone do inquilino *</label>
+                        <input className="input" value={form.inquilino_telefone} onChange={(event) => setForm((current) => ({ ...current, inquilino_telefone: event.target.value }))} placeholder="(81) 90000-0000" />
+                      </div>
+                      <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                        <div style={{ fontSize: 12, color: '#8b949e' }}>
+                          Apenas o proprietario tera acesso ao sistema. Os dados do inquilino ficam registrados somente para controle do sindico.
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {editing && (
-                  <div style={{ marginTop: 20, padding: 16, background: '#1c2333', borderRadius: 8 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Alterar senha</div>
-                    <div className="form-group">
-                      <label className="form-label">Nova senha</label>
-                      <div style={{ position: 'relative' }}>
-                        <input
-                          className="input"
-                          type={showPassword ? 'text' : 'password'}
-                          value={form.nova_senha}
-                          onChange={(event) => setForm((current) => ({ ...current, nova_senha: event.target.value }))}
-                          placeholder="Digite a nova senha"
-                        />
-                        <button type="button" className="btn btn-ghost btn-sm" style={{ position: 'absolute', right: 8, top: 7 }} onClick={() => setShowPassword(!showPassword)}>
-                          {showPassword ? 'Ocultar' : 'Mostrar'}
-                        </button>
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 12, color: '#8b949e', marginTop: 8 }}>
-                      Sem a service role key real no backend, o sistema salva os demais dados, mas nao altera a senha ou o e-mail de login.
-                    </div>
+                  <div style={{ marginTop: 12, fontSize: 12, color: '#8b949e' }}>
+                    Se a senha for preenchida, o acesso do morador sera atualizado com o novo valor.
                   </div>
                 )}
 
@@ -523,6 +603,42 @@ export default function Moradores() {
                 <MessageCircle size={14} /> Abrir no WhatsApp
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {selectedResidentNotifications && (
+        <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && setSelectedResidentNotifications(null)}>
+          <div className="modal" style={{ maxWidth: 680 }}>
+            <div className="modal-header">
+              <div className="modal-title">Notificacoes do morador</div>
+              <button className="btn btn-ghost btn-icon" onClick={() => setSelectedResidentNotifications(null)}><X size={16} /></button>
+            </div>
+
+            <div style={{ marginBottom: 16, color: '#8b949e', fontSize: 13 }}>
+              {selectedResidentNotifications.morador.nome} {selectedResidentNotifications.morador.apartamento ? `- Apt. ${selectedResidentNotifications.morador.apartamento}` : ''}
+            </div>
+
+            {selectedResidentNotifications.items.length === 0 ? (
+              <div style={{ fontSize: 13, color: '#8b949e' }}>Nenhuma notificacao enviada por este morador.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {selectedResidentNotifications.items.map((item) => {
+                  const summary = buildResidentRequestSummary(item)
+                  return (
+                    <div key={item.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, background: 'var(--bg-3)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 6 }}>
+                        <div style={{ fontWeight: 600 }}>{summary.title}</div>
+                        <span className={`badge ${item.status === 'resolvido' ? 'badge-green' : 'badge-orange'}`}>
+                          {item.status === 'resolvido' ? 'Resolvido' : 'Em analise'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#8b949e', lineHeight: 1.6 }}>{summary.detail}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

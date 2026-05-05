@@ -1,6 +1,37 @@
 import { json, parseJsonBody, requirePlatformAdmin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
+import {
+  activatePlanMetadata,
+  buildTrialMetadata,
+  STANDARD_PLAN_NAME,
+  STANDARD_PLAN_PRICE_CENTS,
+  TRIAL_PERIOD_DAYS,
+} from '../../../src/lib/condominiumPlan.js'
 
 const ALLOWED_STATUSES = new Set(['pending', 'active', 'rejected', 'blocked'])
+
+function getCpfCnpjType(value = '') {
+  const digits = String(value || '').replace(/\D/g, '')
+  if (digits.length === 11) return 'cpf'
+  if (digits.length === 14) return 'cnpj'
+  return ''
+}
+
+function parseDate(value = '') {
+  if (!value) return null
+
+  const normalized = String(value)
+  const dateOnlyMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const date = dateOnlyMatch
+    ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
+    : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function addDays(date, days) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
 
 function sanitizePayload(body = {}) {
   const metadata = body.metadata && typeof body.metadata === 'object' ? body.metadata : {}
@@ -13,7 +44,10 @@ function sanitizePayload(body = {}) {
     whatsapp: String(body.whatsapp || '').replace(/\D/g, ''),
     unit_count: Number(body.unit_count || 0),
     status: String(body.status || '').trim().toLowerCase(),
-    metadata,
+    metadata: {
+      ...metadata,
+      subscription_status: String(metadata.subscription_status || metadata.subscriptionStatus || '').trim().toLowerCase(),
+    },
   }
 }
 
@@ -44,7 +78,7 @@ export async function POST(req) {
 
   const { data: current, error: currentError } = await supabaseAdmin
     .from('condominiums')
-    .select('id, status, metadata')
+    .select('id, status, metadata, created_at')
     .eq('id', condominiumId)
     .maybeSingle()
 
@@ -57,17 +91,48 @@ export async function POST(req) {
   }
 
   const payload = sanitizePayload(body)
+  const documentType = getCpfCnpjType(payload.cnpj)
+
+  if (action === 'save' && payload.cnpj && !documentType) {
+    return json({ error: 'Informe um CPF ou CNPJ valido para o condominio.' }, 400)
+  }
+
   const nextStatus = resolveNextStatus(action, current.status, payload.status)
   if (!ALLOWED_STATUSES.has(nextStatus)) {
     return json({ error: 'Status invalido para o condominio.' }, 400)
   }
 
   const currentMetadata = current.metadata && typeof current.metadata === 'object' ? current.metadata : {}
-  const nextMetadata = {
+  const requestedTrialStart = parseDate(payload.metadata.trial_started_at || payload.metadata.trialStartedAt)
+  let nextMetadata = {
     ...currentMetadata,
     ...payload.metadata,
+    plan_name: payload.metadata.plan_name || currentMetadata.plan_name || STANDARD_PLAN_NAME,
+    plan_price_cents: Number(payload.metadata.plan_price_cents || currentMetadata.plan_price_cents || STANDARD_PLAN_PRICE_CENTS) || STANDARD_PLAN_PRICE_CENTS,
+    condominium_document_type: documentType || currentMetadata.condominium_document_type || '',
     reviewed_by_platform_admin: auth.user?.id || null,
     reviewed_at: new Date().toISOString(),
+  }
+
+  if (requestedTrialStart) {
+    nextMetadata.trial_started_at = requestedTrialStart.toISOString()
+    nextMetadata.trial_ends_at = addDays(requestedTrialStart, TRIAL_PERIOD_DAYS).toISOString()
+  }
+
+  if (action === 'approve' && nextStatus === 'active') {
+    nextMetadata = buildTrialMetadata(nextMetadata, requestedTrialStart || new Date())
+  }
+
+  if (action === 'save' && nextStatus === 'active') {
+    if (nextMetadata.subscription_status === 'active') {
+      nextMetadata = activatePlanMetadata(nextMetadata, new Date())
+    } else {
+      if (requestedTrialStart) {
+        delete nextMetadata.trial_ends_at
+      }
+
+      nextMetadata = buildTrialMetadata(nextMetadata, requestedTrialStart || currentMetadata.approved_at || current.created_at || new Date())
+    }
   }
 
   const updatePayload = {

@@ -58,7 +58,8 @@ create table if not exists public.condominiums (
   is_default boolean not null default false,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint condominiums_document_length_check check (cnpj = '' or length(cnpj) in (11, 14))
 );
 
 alter table public.condominiums add column if not exists name text not null default '';
@@ -96,25 +97,37 @@ alter table public.condominiums
   check (status in ('pending', 'active', 'rejected', 'blocked'));
 
 update public.condominiums
-set name = coalesce(nullif(name, ''), nullif(nome, ''), 'Condominio Principal'),
-    nome = coalesce(nullif(nome, ''), nullif(name, ''), 'Condominio Principal'),
+set cnpj = regexp_replace(cnpj, '[^0-9]', '', 'g')
+where cnpj is not null and cnpj <> '';
+
+update public.condominiums
+set cnpj = ''
+where cnpj <> '' and length(cnpj) not in (11, 14);
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.table_constraints
+    where table_schema = 'public'
+      and table_name = 'condominiums'
+      and constraint_name = 'condominiums_document_length_check'
+  ) then
+    alter table public.condominiums drop constraint condominiums_document_length_check;
+  end if;
+end $$;
+
+alter table public.condominiums
+  add constraint condominiums_document_length_check
+  check (cnpj = '' or length(cnpj) in (11, 14));
+
+update public.condominiums
+set name = coalesce(nullif(name, ''), nullif(nome, ''), ''),
+    nome = coalesce(nullif(nome, ''), nullif(name, ''), ''),
     address = coalesce(nullif(address, ''), nullif(endereco, ''), ''),
     endereco = coalesce(nullif(endereco, ''), nullif(address, ''), ''),
     pix_key = coalesce(nullif(pix_key, ''), nullif(chave_pix, ''), ''),
     chave_pix = coalesce(nullif(chave_pix, ''), nullif(pix_key, ''), '');
-
-insert into public.condominiums (
-  name,
-  nome,
-  status,
-  is_default
-)
-select
-  'Condominio Principal',
-  'Condominio Principal',
-  'active',
-  true
-where not exists (select 1 from public.condominiums);
 
 with ranked_condos as (
   select
@@ -230,7 +243,7 @@ create table if not exists public.cobrancas (
   pagamento_anexo_path text not null default '',
   boleto_url text not null default '',
   boleto_path text not null default '',
-  payment_status text not null default 'PENDING' check (payment_status in ('PENDING', 'PAID', 'OVERDUE', 'UNDER_REVIEW')),
+  payment_status text not null default 'PENDING' check (payment_status in ('PENDING', 'PAID', 'OVERDUE', 'UNDER_REVIEW', 'CANCELLED')),
   paid_at timestamptz,
   confirmed_by uuid references public.profiles(id) on delete set null,
   receipt_url text not null default '',
@@ -271,13 +284,13 @@ end $$;
 
 alter table public.cobrancas
   add constraint cobrancas_payment_status_check
-  check (payment_status in ('PENDING', 'PAID', 'OVERDUE', 'UNDER_REVIEW'));
+  check (payment_status in ('PENDING', 'PAID', 'OVERDUE', 'UNDER_REVIEW', 'CANCELLED'));
 
 update public.cobrancas
 set pix_qrcode_url = coalesce(nullif(pix_qrcode_url, ''), ''),
     pix_copy_paste_code = coalesce(nullif(pix_copy_paste_code, ''), ''),
     payment_status = case
-      when upper(coalesce(payment_status, '')) in ('PENDING', 'PAID', 'OVERDUE', 'UNDER_REVIEW') then upper(payment_status)
+      when upper(coalesce(payment_status, '')) in ('PENDING', 'PAID', 'OVERDUE', 'UNDER_REVIEW', 'CANCELLED') then upper(payment_status)
       when pago = true then 'PAID'
       when vencimento < current_date then 'OVERDUE'
       else 'PENDING'
@@ -398,7 +411,7 @@ returns trigger
 language plpgsql
 as $$
 begin
-  new.name := coalesce(nullif(new.name, ''), nullif(new.nome, ''), 'Condominio Principal');
+  new.name := coalesce(nullif(new.name, ''), nullif(new.nome, ''), '');
   new.nome := coalesce(nullif(new.nome, ''), new.name);
   new.address := coalesce(nullif(new.address, ''), nullif(new.endereco, ''), '');
   new.endereco := coalesce(nullif(new.endereco, ''), new.address);
@@ -438,10 +451,6 @@ begin
     from public.profiles p
     where p.id = auth.uid()
     limit 1;
-  end if;
-
-  if resolved_id is null then
-    resolved_id := public.default_condominium_id();
   end if;
 
   if resolved_id is not null then
@@ -599,15 +608,10 @@ stable
 security definer
 set search_path = public
 as $$
-  select coalesce(
-    (
-      select coalesce(condominium_id, condominio_id)
-      from public.profiles
-      where id = auth.uid()
-      limit 1
-    ),
-    public.default_condominium_id()
-  );
+  select coalesce(condominium_id, condominio_id)
+  from public.profiles
+  where id = auth.uid()
+  limit 1;
 $$;
 
 create or replace function public.is_platform_admin()

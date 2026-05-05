@@ -1,4 +1,4 @@
-import { DEFAULT_CONDOMINIUM_SETTINGS } from './condoConfig'
+import { DEFAULT_CONDOMINIUM_SETTINGS } from './condoConfig.js'
 
 function normalizeDigits(value = '') {
   return String(value || '').replace(/\D/g, '')
@@ -47,6 +47,7 @@ export function resolveCondominiumSettings(condominium = null) {
     name: String(condominium?.name || condominium?.nome || DEFAULT_CONDOMINIUM_SETTINGS.name).trim(),
     address: String(condominium?.address || condominium?.endereco || DEFAULT_CONDOMINIUM_SETTINGS.address).trim(),
     pixKey: String(condominium?.pix_key || condominium?.chave_pix || DEFAULT_CONDOMINIUM_SETTINGS.pixKey).trim(),
+    bankDestination: String(condominium?.bank_details || metadata.bank_destination || metadata.bankDestination || '').trim(),
     pixProvider,
     whatsapp,
     whatsappLabel: formatWhatsappLabel(whatsapp),

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { LayoutDashboard, DollarSign, Bell, FileText, User, TriangleAlert, Menu } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { useMoradorPresence } from '../../hooks/useMoradorPresence'
 import { isResidentRole } from '../../lib/auth'
 import Sidebar from '../shared/Sidebar'
@@ -40,6 +41,7 @@ const pages = {
 
 export default function MoradorLayout() {
   const { profile } = useAuth()
+  const { settings: condominiumSettings } = useCondominiumSettings(profile?.condominium_id || profile?.condominio_id || null)
   const [activePage, setActivePage] = useState('dashboard')
   const [mobileOpen, setMobileOpen] = useState(false)
   const [mountedPages, setMountedPages] = useState(['dashboard'])
@@ -81,7 +83,7 @@ export default function MoradorLayout() {
             <Menu size={18} />
           </button>
           <div>
-            <div className="mobile-topbar-title">WebCond Morador</div>
+            <div className="mobile-topbar-title">{condominiumSettings.name}</div>
             <div className="mobile-topbar-sub">{currentLabel}</div>
           </div>
         </div>

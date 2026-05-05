@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { getCondominiumAccessState, STANDARD_PLAN_PRICE_LABEL } from '../../src/lib/condominiumPlan.js'
 
 function isMissing(value) {
   if (!value) return true
@@ -44,6 +45,40 @@ function createBackendClient(apiKey, accessToken) {
         }
       : undefined,
   })
+}
+
+async function resolveCondominiumAccessError(condominiumId) {
+  if (!condominiumId || !supabaseAdmin) return null
+
+  const { data: condominium, error } = await supabaseAdmin
+    .from('condominiums')
+    .select('id, status, metadata, created_at, updated_at')
+    .eq('id', condominiumId)
+    .maybeSingle()
+
+  if (error || !condominium) {
+    return json({ error: 'O condominio vinculado ao usuario autenticado nao foi encontrado.' }, 403)
+  }
+
+  const accessState = getCondominiumAccessState(condominium)
+
+  if (accessState.effectiveStatus === 'pending') {
+    return json({ error: 'O cadastro do condominio ainda aguarda aprovacao da plataforma.' }, 403)
+  }
+
+  if (accessState.blockReason === 'trial_expired') {
+    return json({ error: `O periodo de teste do condominio terminou. Regularize o Plano Padrao de ${STANDARD_PLAN_PRICE_LABEL} para liberar o acesso.` }, 403)
+  }
+
+  if (accessState.effectiveStatus === 'blocked') {
+    return json({ error: 'O acesso do condominio esta bloqueado no momento.' }, 403)
+  }
+
+  if (accessState.effectiveStatus === 'rejected') {
+    return json({ error: 'O cadastro do condominio foi rejeitado pela plataforma.' }, 403)
+  }
+
+  return null
 }
 
 export function normalizeRole(role) {
@@ -96,6 +131,8 @@ function getBackendConfigError() {
 }
 
 function getServiceRoleConfigError() {
+  if (backendConfigError) return backendConfigError
+
   return isMissing(supabaseServiceRoleKey)
     ? 'A variavel SUPABASE_SERVICE_ROLE_KEY real precisa estar configurada no backend para alterar login, senha e usuarios do Auth.'
     : null
@@ -203,6 +240,13 @@ export async function requireAdmin(req, options = {}) {
     return { error: json({ error: 'O administrador autenticado nao possui vinculo com um condominio valido.' }, 403) }
   }
 
+  if (normalizedRole !== 'platform_admin') {
+    const accessError = await resolveCondominiumAccessError(condominiumId)
+    if (accessError) {
+      return { error: accessError }
+    }
+  }
+
   return {
     user: userData.user,
     profile: {
@@ -229,4 +273,64 @@ export async function requirePlatformAdmin(req) {
   }
 
   return auth
+}
+
+export async function requireAuthenticatedProfile(req) {
+  const configError = ensureBackendConfig()
+  if (configError) {
+    return { error: json({ error: configError }, 503) }
+  }
+
+  const authHeader = req.headers.get('authorization') || ''
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+
+  if (!token) {
+    return { error: json({ error: 'Sessao invalida.' }, 401) }
+  }
+
+  const requestClient = createUserScopedServerClient(token)
+  if (!requestClient) {
+    return { error: json({ error: 'Nao foi possivel inicializar a sessao do backend.' }, 500) }
+  }
+
+  const { data: userData, error: userError } = await requestClient.auth.getUser(token)
+  if (userError || !userData.user) {
+    return { error: json({ error: 'Nao foi possivel validar o usuario autenticado.' }, 401) }
+  }
+
+  const { data: profile, error: profileError } = await requestClient
+    .from('profiles')
+    .select('id, nome, email, role, ativo, apartamento, condominium_id, condominio_id')
+    .eq('id', userData.user.id)
+    .maybeSingle()
+
+  if (profileError) {
+    return { error: json({ error: 'Falha ao validar o perfil autenticado.' }, 500) }
+  }
+
+  if (!profile || profile.ativo === false) {
+    return { error: json({ error: 'Perfil de acesso indisponivel.' }, 403) }
+  }
+
+  const normalizedRole = normalizeRole(profile.role)
+  const condominiumId = getProfileCondominiumId(profile)
+
+  if (normalizedRole !== 'platform_admin') {
+    const accessError = await resolveCondominiumAccessError(condominiumId)
+    if (accessError) {
+      return { error: accessError }
+    }
+  }
+
+  return {
+    user: userData.user,
+    profile: {
+      ...profile,
+      role: normalizedRole,
+      condominium_id: condominiumId,
+      condominio_id: condominiumId,
+    },
+    client: requestClient,
+    token,
+  }
 }

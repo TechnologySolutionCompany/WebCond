@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { LayoutDashboard, Users, DollarSign, Bell, FileText, ClipboardList, Calculator, Menu } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
+import { LayoutDashboard, Users, DollarSign, Bell, FileText, Calculator, Menu } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import { applyTenantFilter } from '../../lib/tenant'
+import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { normalizeRole } from '../../lib/auth'
 import Sidebar from '../shared/Sidebar'
 import Dashboard from './Dashboard'
@@ -10,7 +9,6 @@ import Moradores from './Moradores'
 import Cobrancas from './Cobrancas'
 import Avisos from './Avisos'
 import Documentos from './Documentos'
-import Solicitacoes from './Solicitacoes'
 import Contador from './Contador'
 
 const PAGES = {
@@ -19,43 +17,17 @@ const PAGES = {
   cobrancas: Cobrancas,
   avisos: Avisos,
   documentos: Documentos,
-  solicitacoes: Solicitacoes,
   contador: Contador,
 }
 
 export default function AdminLayout() {
   const { condominiumId, resolvedRole } = useAuth()
+  const { settings: condominiumSettings } = useCondominiumSettings(condominiumId)
   const [page, setPage] = useState('dashboard')
-  const [pendentes, setPendentes] = useState(0)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [mountedPages, setMountedPages] = useState(['dashboard'])
   const mainContentRef = useRef(null)
   const scrollPositionsRef = useRef({})
-
-  const fetchPendentes = async () => {
-    const query = supabase
-      .from('solicitacoes_cadastro')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'pendente')
-    const { count } = await applyTenantFilter(query, condominiumId)
-
-    setPendentes(count || 0)
-  }
-
-  useEffect(() => {
-    void fetchPendentes()
-
-    const channel = supabase
-      .channel('sol_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitacoes_cadastro' }, () => {
-        void fetchPendentes()
-      })
-      .subscribe()
-
-    return () => {
-      void supabase.removeChannel(channel)
-    }
-  }, [condominiumId])
 
   useEffect(() => {
     const mainContent = mainContentRef.current
@@ -87,7 +59,7 @@ export default function AdminLayout() {
       label: 'Principal',
       items: [
         { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
-        { key: 'contador', label: 'Relatórios', icon: Calculator },
+        { key: 'contador', label: 'Relatorios', icon: Calculator },
       ],
     },
   ] : [
@@ -96,26 +68,20 @@ export default function AdminLayout() {
       items: [
         { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
         { key: 'moradores', label: 'Moradores', icon: Users },
-        { key: 'cobrancas', label: 'Cobranças', icon: DollarSign },
+        { key: 'cobrancas', label: 'Cobrancas', icon: DollarSign },
       ],
     },
     {
-      label: 'Comunicação',
+      label: 'Comunicacao',
       items: [
         { key: 'avisos', label: 'Avisos', icon: Bell },
         { key: 'documentos', label: 'Documentos', icon: FileText },
       ],
     },
     {
-      label: 'Acesso',
-      items: [
-        { key: 'solicitacoes', label: pendentes > 0 ? `Solicitações (${pendentes})` : 'Solicitações', icon: ClipboardList },
-      ],
-    },
-    {
       label: 'Financeiro',
       items: [
-        { key: 'contador', label: 'Relatórios', icon: Calculator },
+        { key: 'contador', label: 'Relatorios', icon: Calculator },
       ],
     },
   ]
@@ -138,7 +104,7 @@ export default function AdminLayout() {
             <Menu size={18} />
           </button>
           <div>
-            <div className="mobile-topbar-title">WebCond Admin</div>
+            <div className="mobile-topbar-title">{condominiumSettings.name}</div>
             <div className="mobile-topbar-sub">{currentLabel}</div>
           </div>
         </div>

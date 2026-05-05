@@ -1,4 +1,5 @@
 import { useAuth } from '../../hooks/useAuth'
+import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { useTheme } from '../../hooks/useTheme'
 import { Building2, LogOut, Moon, Sun, X } from 'lucide-react'
 import { getUserRoleLabel } from '../../lib/auth'
@@ -12,6 +13,7 @@ export default function Sidebar({
   onClose = () => {},
 }) {
   const { profile, signOut } = useAuth()
+  const { settings: condominiumSettings } = useCondominiumSettings(profile?.condominium_id || profile?.condominio_id || null)
   const { themeMode, setTheme } = useTheme()
 
   const initials = profile?.nome
@@ -27,6 +29,8 @@ export default function Sidebar({
   const resolvedAccent = accentMap[theme] || accentMap.admin
   const accentColor = resolvedAccent.color
   const accentDim = resolvedAccent.dim
+  const productTitle = theme === 'platform' ? 'WebCond' : condominiumSettings.name
+  const productSubtitle = theme === 'platform' ? 'Technology Solution Company BR' : 'Painel do condominio'
 
   const handleNavigate = (key) => {
     onNav(key)
@@ -42,8 +46,8 @@ export default function Sidebar({
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <Building2 size={20} color={accentColor} />
               <div>
-                <div className="sidebar-logo-title">WebCond</div>
-                <div className="sidebar-logo-sub">Technology Solution Company BR</div>
+                <div className="sidebar-logo-title">{productTitle}</div>
+                <div className="sidebar-logo-sub">{productSubtitle}</div>
               </div>
             </div>
             <button type="button" className="sidebar-close" onClick={onClose}>

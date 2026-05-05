@@ -24,7 +24,7 @@ export function useCondominiumSettings(condominiumId) {
       try {
         const { data, error } = await supabase
           .from('condominiums')
-          .select('id, name, nome, address, endereco, pix_key, chave_pix, whatsapp, unit_count, metadata')
+          .select('id, name, nome, address, endereco, pix_key, chave_pix, whatsapp, unit_count, bank_details, metadata')
           .eq('id', condominiumId)
           .maybeSingle()
 

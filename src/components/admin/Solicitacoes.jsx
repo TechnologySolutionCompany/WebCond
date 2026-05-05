@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle, XCircle, Clock, User, Home, Mail, Copy, KeyRound, RotateCcw, AlertTriangle } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, User, Home, Mail, Copy, KeyRound, RotateCcw } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { createResident } from '../../lib/adminApi'
 import { formatCpf, normalizeCpf } from '../../lib/cpf'
@@ -35,7 +35,7 @@ export default function Solicitacoes() {
     const cpf = normalizeCpf(solicitacao.cpf)
 
     if (cpf.length !== 11) {
-      toast('Esta solicitação está sem CPF válido. Corrija o CPF antes de aprovar.', 'error')
+      toast('Esta solicitacao esta sem CPF valido. Corrija o CPF antes de aprovar.', 'error')
       return
     }
 
@@ -62,20 +62,13 @@ export default function Solicitacoes() {
         cpf,
         senha: result.temporaryPassword,
         authMode: result.authMode,
-        requiresEmailConfirmation: result.requiresEmailConfirmation,
       })
 
-      toast(
-        result.requiresEmailConfirmation
-          ? 'Solicitação aprovada. O acesso foi criado, mas o Supabase pode exigir confirmação de e-mail antes do primeiro login.'
-          : 'Solicitação aprovada com sucesso.',
-        result.requiresEmailConfirmation ? 'info' : 'success',
-        result.requiresEmailConfirmation ? 8000 : 4500,
-      )
+      toast('Solicitacao aprovada com sucesso.', 'success')
 
       void fetchSolicitacoes()
     } catch (error) {
-      toast(error.message || 'Erro ao aprovar solicitação.', 'error')
+      toast(error.message || 'Erro ao aprovar solicitacao.', 'error')
     }
   }
 
@@ -86,7 +79,7 @@ export default function Solicitacoes() {
       .eq('id', solicitacao.id)
 
     if (error) {
-      toast('Não foi possível atualizar a solicitação.', 'error')
+      toast('Nao foi possivel atualizar a solicitacao.', 'error')
       return
     }
 
@@ -107,7 +100,7 @@ export default function Solicitacoes() {
       <div className="page-header">
         <div>
           <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            Solicitações de cadastro
+            Solicitacoes de cadastro
             {pendentes > 0 && (
               <span style={{ background: '#f0883e', color: '#000', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700 }}>
                 {pendentes} nova{pendentes > 1 ? 's' : ''}
@@ -125,14 +118,14 @@ export default function Solicitacoes() {
               <KeyRound size={40} color="#3fb950" style={{ margin: '0 auto 12px' }} />
               <div style={{ fontWeight: 700, fontSize: 18, color: '#e6edf3' }}>Acesso liberado</div>
               <div style={{ fontSize: 13, color: '#8b949e', marginTop: 6 }}>
-                Passe estas informações para <strong style={{ color: '#e6edf3' }}>{senhaInfo.nome}</strong>
+                Passe estas informacoes para <strong style={{ color: '#e6edf3' }}>{senhaInfo.nome}</strong>
               </div>
             </div>
 
             <div style={{ background: '#0d1117', borderRadius: 10, padding: 16, marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: '#8b949e', marginBottom: 4 }}>Login do morador</div>
               <div style={{ fontFamily: 'monospace', fontSize: 14, color: '#e6edf3', marginBottom: 10 }}>{formatCpf(senhaInfo.cpf || '')}</div>
-              <div style={{ fontSize: 12, color: '#8b949e', marginBottom: 4 }}>Senha temporária</div>
+              <div style={{ fontSize: 12, color: '#8b949e', marginBottom: 4 }}>Senha temporaria</div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <div style={{ flex: 1, fontFamily: 'monospace', fontSize: 22, fontWeight: 700, color: '#3fb950', letterSpacing: 3 }}>{senhaInfo.senha}</div>
                 <button className="btn btn-ghost btn-sm" onClick={() => copiar(`Login: ${formatCpf(senhaInfo.cpf || '')}\nSenha: ${senhaInfo.senha}`)}>
@@ -140,15 +133,6 @@ export default function Solicitacoes() {
                 </button>
               </div>
             </div>
-
-            {senhaInfo.requiresEmailConfirmation && (
-              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#3a2010', border: '1px solid #f0883e', color: '#ffd8b2', borderRadius: 10, padding: 14, marginBottom: 16, fontSize: 12, lineHeight: 1.6 }}>
-                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-                <div>
-                  O usuário foi criado pelo modo seguro de contingência. Se o projeto Supabase estiver com confirmação de e-mail ativa, o morador precisará confirmar o e-mail antes de entrar pela primeira vez.
-                </div>
-              </div>
-            )}
 
             <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setSenhaInfo(null)}>
               Entendido
@@ -172,7 +156,7 @@ export default function Solicitacoes() {
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner" /></div>
       ) : filtradas.length === 0 ? (
-        <div className="empty-state"><Clock size={40} /><p>Nenhuma solicitação {filter}.</p></div>
+        <div className="empty-state"><Clock size={40} /><p>Nenhuma solicitacao {filter}.</p></div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {filtradas.map((solicitacao) => (
@@ -208,13 +192,13 @@ export default function Solicitacoes() {
                       <button className="btn btn-sm" style={{ background: '#3fb950', borderColor: '#3fb950', color: '#000' }} onClick={() => handleAprovar(solicitacao)}>
                         <CheckCircle size={13} /> Aprovar
                       </button>
-                      <button className="btn btn-danger btn-sm" onClick={() => updateStatus(solicitacao, 'rejeitado', 'Solicitação rejeitada.')}>
+                      <button className="btn btn-danger btn-sm" onClick={() => updateStatus(solicitacao, 'rejeitado', 'Solicitacao rejeitada.')}>
                         <XCircle size={13} /> Rejeitar
                       </button>
                     </>
                   )}
                   {solicitacao.status === 'rejeitado' && (
-                    <button className="btn btn-ghost btn-sm" onClick={() => updateStatus(solicitacao, 'pendente', 'Solicitação recuperada para análise.')}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => updateStatus(solicitacao, 'pendente', 'Solicitacao recuperada para analise.')}>
                       <RotateCcw size={13} /> Recuperar
                     </button>
                   )}

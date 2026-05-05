@@ -73,6 +73,10 @@ export function updatePlatformCondominium(payload) {
   return callPlatformApi('/api/platform/condominiums/update', payload)
 }
 
+export function updatePlatformSyndicPassword(payload) {
+  return callPlatformApi('/api/platform/condominiums/update-syndic-password', payload)
+}
+
 export async function registerCondominium(payload) {
   let response
 

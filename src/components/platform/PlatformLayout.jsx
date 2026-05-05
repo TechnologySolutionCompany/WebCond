@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Building2, LayoutDashboard, Menu } from 'lucide-react'
+import { Activity, Building2, LayoutDashboard, Menu } from 'lucide-react'
 import Sidebar from '../shared/Sidebar'
 import PlatformDashboard from './PlatformDashboard'
 import PlatformCondominiums from './PlatformCondominiums'
+import PlatformStatusPage from './PlatformStatusPage'
 import { listPlatformCondominiums } from '../../lib/platformApi'
 
 const PAGES = {
   dashboard: PlatformDashboard,
   condominiums: PlatformCondominiums,
+  status: PlatformStatusPage,
 }
 
 export default function PlatformLayout() {
@@ -34,6 +36,7 @@ export default function PlatformLayout() {
       items: [
         { key: 'dashboard', label: 'Painel global', icon: LayoutDashboard },
         { key: 'condominiums', label: 'Condominios', icon: Building2 },
+        { key: 'status', label: 'Status da plataforma', icon: Activity },
       ],
     },
   ]), [])
