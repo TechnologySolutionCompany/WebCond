@@ -1,6 +1,6 @@
-export const STANDARD_PLAN_NAME = 'Plano Padrao'
-export const STANDARD_PLAN_PRICE_CENTS = 7990
-export const STANDARD_PLAN_PRICE_LABEL = 'R$ 79,90'
+export const STANDARD_PLAN_NAME = 'FREE'
+export const STANDARD_PLAN_PRICE_CENTS = 0
+export const STANDARD_PLAN_PRICE_LABEL = 'Grátis'
 export const TRIAL_PERIOD_DAYS = 30
 
 function parseDate(value) {

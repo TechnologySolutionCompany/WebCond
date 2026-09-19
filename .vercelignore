@@ -1,0 +1,9 @@
+# Nunca enviar segredos ou artefatos locais num deploy via CLI
+.env
+.env.*
+!.env.example
+*.log
+SUPABASE_AUDIT.md
+node_modules
+dist
+.agents

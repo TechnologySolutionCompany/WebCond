@@ -1,4 +1,4 @@
-import { ensureBackendConfig, ensureServiceRoleConfig, json, parseJsonBody, supabaseAdmin, supabaseServer } from '../_lib/supabaseAdmin.js'
+import { checkRateLimit, ensureBackendConfig, ensureServiceRoleConfig, getClientIp, json, parseJsonBody, rejectForeignOrigin, supabaseAdmin, supabaseServer } from '../_lib/supabaseAdmin.js'
 
 function invalidCredentials() {
   return json({ error: 'CNPJ ou senha incorretos.' }, 401)
@@ -52,6 +52,12 @@ async function tryProfilePasswordLogin(profile, password, condominiumId = null) 
 }
 
 export async function POST(req) {
+  const originError = rejectForeignOrigin(req)
+  if (originError) return originError
+
+  const ipRateLimitError = checkRateLimit(`login:ip:${getClientIp(req)}`, { limit: 20, windowMs: 15 * 60 * 1000 })
+  if (ipRateLimitError) return ipRateLimitError
+
   const backendError = ensureBackendConfig()
   if (backendError) {
     return json({ error: backendError }, 503)
@@ -73,6 +79,9 @@ export async function POST(req) {
   if (cnpj.length !== 14 || !password) {
     return json({ error: 'Informe CNPJ e senha validos.' }, 400)
   }
+
+  const documentRateLimitError = checkRateLimit(`login:doc:${cnpj}`, { limit: 10, windowMs: 15 * 60 * 1000 })
+  if (documentRateLimitError) return documentRateLimitError
 
   const { data: platformProfiles, error: platformProfileError } = await supabaseAdmin
     .from('profiles')

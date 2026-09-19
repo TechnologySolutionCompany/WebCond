@@ -1,8 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { isAdminRole, normalizeRole } from '../lib/auth'
 import { getProfileCondominiumId } from '../lib/tenant'
-import { getCondominiumAccessState, STANDARD_PLAN_PRICE_LABEL } from '../lib/condominiumPlan'
+import { getCondominiumAccessState } from '../lib/condominiumPlan'
 
 const AuthContext = createContext(null)
 const PROFILE_NOT_FOUND_CODE = 'PROFILE_NOT_FOUND'
@@ -40,7 +40,7 @@ function getAuthIssueMessage(error) {
   }
 
   if (error?.code === CONDOMINIUM_TRIAL_EXPIRED_CODE) {
-    return `O periodo de teste do seu condominio terminou. Para continuar usando o sistema, regularize o Plano Padrao de ${STANDARD_PLAN_PRICE_LABEL}.`
+    return 'O periodo de teste do seu condominio terminou. Para continuar usando o sistema, escolha um plano (ONE, PRO ou MAX).'
   }
 
   return 'Nao foi possivel validar seu acesso agora. Tente novamente em alguns instantes.'
@@ -196,7 +196,7 @@ export const AuthProvider = ({ children }) => {
     setAuthIssue('')
   }
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     if (!user) return null
 
     try {
@@ -212,7 +212,7 @@ export const AuthProvider = ({ children }) => {
       setAuthIssue(getAuthIssueMessage(error))
       return null
     }
-  }
+  }, [user])
 
   const resolvedRole = normalizeRole(profile?.role)
   const condominiumId = getProfileCondominiumId(profile)
@@ -229,7 +229,7 @@ export const AuthProvider = ({ children }) => {
     signIn,
     signOut,
     refreshProfile,
-  }), [user, profile, loading, authIssue, condominiumId, condominiumStatus, resolvedRole])
+  }), [user, profile, loading, authIssue, condominiumId, condominiumStatus, resolvedRole, refreshProfile])
 
   return (
     <AuthContext.Provider value={value}>

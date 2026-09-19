@@ -3,6 +3,8 @@ import {
   getProfileCondominiumId,
   json,
   parseJsonBody,
+  quoteFilterValue,
+  rejectForeignOrigin,
   requireCondominiumAdmin,
   supabaseAdmin,
 } from '../../_lib/supabaseAdmin.js'
@@ -34,7 +36,7 @@ async function validateResidentUniqueness(client, { email, cpf }) {
   const { data, error } = await client
     .from('profiles')
     .select('id, email, cpf')
-    .or(`email.eq.${email},cpf.eq.${cpf}`)
+    .or(`email.eq.${quoteFilterValue(email)},cpf.eq.${quoteFilterValue(cpf)}`)
 
   if (error) {
     return 'Nao foi possivel validar os dados do morador.'
@@ -54,6 +56,9 @@ async function validateResidentUniqueness(client, { email, cpf }) {
 }
 
 export async function POST(req) {
+  const originError = rejectForeignOrigin(req)
+  if (originError) return originError
+
   const auth = await requireCondominiumAdmin(req)
   if (auth.error) return auth.error
 

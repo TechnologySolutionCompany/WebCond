@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../shared/Toast'
 import { useAuth } from '../../hooks/useAuth'
@@ -24,15 +24,15 @@ export default function Avisos() {
   const { profile, condominiumId } = useAuth()
   const { toast } = useToast()
 
-  useEffect(() => { void fetchAvisos() }, [condominiumId])
-
-  const fetchAvisos = async () => {
+  const fetchAvisos = useCallback(async () => {
     setLoading(true)
     const query = supabase.from('avisos').select('*').order('created_at', { ascending: false })
     const { data } = await applyTenantFilter(query, condominiumId)
     setAvisos(data || [])
     setLoading(false)
-  }
+  }, [condominiumId])
+
+  useEffect(() => { void fetchAvisos() }, [fetchAvisos])
 
   const handleSave = async () => {
     if (!form.titulo || !form.conteudo) {

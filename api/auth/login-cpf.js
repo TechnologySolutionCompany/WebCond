@@ -1,10 +1,16 @@
-import { ensureBackendConfig, ensureServiceRoleConfig, json, parseJsonBody, supabaseAdmin, supabaseServer } from '../_lib/supabaseAdmin.js'
+import { checkRateLimit, ensureBackendConfig, ensureServiceRoleConfig, getClientIp, json, parseJsonBody, rejectForeignOrigin, supabaseAdmin, supabaseServer } from '../_lib/supabaseAdmin.js'
 
 function invalidCredentials() {
   return json({ error: 'CPF ou senha incorretos.' }, 401)
 }
 
 export async function POST(req) {
+  const originError = rejectForeignOrigin(req)
+  if (originError) return originError
+
+  const ipRateLimitError = checkRateLimit(`login:ip:${getClientIp(req)}`, { limit: 20, windowMs: 15 * 60 * 1000 })
+  if (ipRateLimitError) return ipRateLimitError
+
   const backendError = ensureBackendConfig()
   if (backendError) {
     return json({ error: backendError }, 503)
@@ -26,6 +32,9 @@ export async function POST(req) {
   if (cpf.length !== 11 || !password) {
     return json({ error: 'Informe CPF e senha válidos.' }, 400)
   }
+
+  const documentRateLimitError = checkRateLimit(`login:doc:${cpf}`, { limit: 10, windowMs: 15 * 60 * 1000 })
+  if (documentRateLimitError) return documentRateLimitError
 
   const { data: profiles, error: profileError } = await supabaseAdmin
     .from('profiles')

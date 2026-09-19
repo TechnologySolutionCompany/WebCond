@@ -1,4 +1,4 @@
-import { ensureServiceRoleConfig, json, parseJsonBody, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
+import { checkRateLimit, ensureServiceRoleConfig, getClientIp, json, parseJsonBody, quoteFilterValue, rejectForeignOrigin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
 import { STANDARD_PLAN_NAME, STANDARD_PLAN_PRICE_CENTS } from '../../../src/lib/condominiumPlan.js'
 
 function slugify(value = '') {
@@ -17,7 +17,7 @@ async function ensureUniqueSyndic(email, cpf) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
     .select('id, email, cpf')
-    .or(`email.eq.${email},cpf.eq.${cpf}`)
+    .or(`email.eq.${quoteFilterValue(email)},cpf.eq.${quoteFilterValue(cpf)}`)
     .limit(2)
 
   if (error) {
@@ -63,6 +63,12 @@ async function buildUniqueSlug(name) {
 }
 
 export async function POST(req) {
+  const originError = rejectForeignOrigin(req)
+  if (originError) return originError
+
+  const rateLimitError = checkRateLimit(`register:${getClientIp(req)}`, { limit: 5, windowMs: 60 * 60 * 1000 })
+  if (rateLimitError) return rateLimitError
+
   const serviceRoleError = ensureServiceRoleConfig()
   if (serviceRoleError) {
     return json({ error: serviceRoleError }, 503)

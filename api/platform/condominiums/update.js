@@ -1,4 +1,4 @@
-import { json, parseJsonBody, requirePlatformAdmin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
+import { json, parseJsonBody, rejectForeignOrigin, requirePlatformAdmin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
 import {
   activatePlanMetadata,
   buildTrialMetadata,
@@ -61,6 +61,9 @@ function resolveNextStatus(action, currentStatus, payloadStatus) {
 }
 
 export async function POST(req) {
+  const originError = rejectForeignOrigin(req)
+  if (originError) return originError
+
   const auth = await requirePlatformAdmin(req)
   if (auth.error) return auth.error
 

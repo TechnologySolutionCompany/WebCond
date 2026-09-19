@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useToast } from '../shared/Toast'
@@ -36,12 +36,7 @@ export default function MoradorCobrancas() {
   const [paymentRequests, setPaymentRequests] = useState([])
   const [sendingConfirmation, setSendingConfirmation] = useState(false)
 
-  useEffect(() => {
-    if (!profile?.id) return
-    void fetchCobrancas()
-  }, [profile?.id])
-
-  const fetchCobrancas = async () => {
+  const fetchCobrancas = useCallback(async () => {
     if (!profile?.id) return
 
     setLoading(true)
@@ -62,7 +57,12 @@ export default function MoradorCobrancas() {
     setCobrancas(enriched)
     setPaymentRequests((requestsData || []).filter((item) => isResidentPaymentConfirmation(item) && isResidentRequestPending(item)))
     setLoading(false)
-  }
+  }, [profile?.id])
+
+  useEffect(() => {
+    if (!profile?.id) return
+    void fetchCobrancas()
+  }, [fetchCobrancas, profile?.id])
 
   const filtered = useMemo(() => cobrancas.filter((cobranca) => {
     if (filter === 'pendentes') return !isChargePaid(cobranca)

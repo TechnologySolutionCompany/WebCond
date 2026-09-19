@@ -1,4 +1,4 @@
-import { formatReferenceLabel } from './billingShared'
+import { formatReferenceLabel } from './billingShared.js'
 
 function safeDate(value) {
   if (!value) return null

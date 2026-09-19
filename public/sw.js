@@ -1,4 +1,5 @@
-const CACHE_NAME = 'webcond-v2'
+// v3 descarta caches antigos que guardaram respostas de /api.
+const CACHE_NAME = 'webcond-v3'
 const STATIC_ASSETS = ['/', '/manifest.json', '/favicon.svg']
 
 self.addEventListener('install', (event) => {
@@ -23,6 +24,8 @@ self.addEventListener('fetch', (event) => {
 
   const requestUrl = new URL(event.request.url)
   if (requestUrl.origin !== self.location.origin) return
+  // Respostas da API sao por usuario e mudam sempre: nunca passam pelo cache.
+  if (requestUrl.pathname.startsWith('/api/')) return
 
   if (event.request.mode === 'navigate') {
     event.respondWith(

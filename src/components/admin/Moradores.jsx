@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { UserPlus, Search, Edit2, X, Loader2, Home, User, Copy, KeyRound, MessageCircle, Trash2, Bell } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { createResident, deleteResident, updateResident } from '../../lib/adminApi'
@@ -57,11 +57,7 @@ export default function Moradores() {
   const { condominiumId } = useAuth()
   const { toast } = useToast()
 
-  useEffect(() => {
-    void fetchMoradores()
-  }, [condominiumId])
-
-  const fetchMoradores = async () => {
+  const fetchMoradores = useCallback(async () => {
     setLoading(true)
     const [profilesRes, notificationsRes] = await Promise.all([
       applyTenantFilter(
@@ -84,7 +80,11 @@ export default function Moradores() {
     setMoradores(profilesRes.data || [])
     setNotifications(notificationsRes.data || [])
     setLoading(false)
-  }
+  }, [condominiumId])
+
+  useEffect(() => {
+    void fetchMoradores()
+  }, [fetchMoradores])
 
   const openCreate = () => {
     setEditing(null)

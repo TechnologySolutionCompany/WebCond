@@ -4,11 +4,15 @@ import {
   isSameCondominium,
   json,
   parseJsonBody,
+  rejectForeignOrigin,
   requireCondominiumAdmin,
   supabaseAdmin,
 } from '../../_lib/supabaseAdmin.js'
 
 export async function POST(req) {
+  const originError = rejectForeignOrigin(req)
+  if (originError) return originError
+
   const auth = await requireCondominiumAdmin(req)
   if (auth.error) return auth.error
 

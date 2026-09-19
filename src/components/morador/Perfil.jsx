@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { formatCpf } from '../../lib/cpf'
 import { useToast } from '../shared/Toast'
@@ -21,12 +21,7 @@ export default function MoradorPerfil() {
     show: false,
   })
 
-  useEffect(() => {
-    if (!profile?.id) return
-    void fetchRequests()
-  }, [profile?.id])
-
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     const { data } = await supabase
       .from('ocorrencias_predio')
       .select('*')
@@ -35,7 +30,12 @@ export default function MoradorPerfil() {
       .order('created_at', { ascending: false })
 
     setHistory(data || [])
-  }
+  }, [profile?.id])
+
+  useEffect(() => {
+    if (!profile?.id) return
+    void fetchRequests()
+  }, [fetchRequests, profile?.id])
 
   const handleRequest = async () => {
     if (!String(requestText || '').trim()) {

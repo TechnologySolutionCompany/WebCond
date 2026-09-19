@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { buildStorageFileName, enrichDocumentsWithDownloadUrl, extractStoragePathFromUrl } from '../../lib/documents'
 import { useToast } from '../shared/Toast'
@@ -27,9 +27,7 @@ export default function Documentos() {
   const { profile, condominiumId } = useAuth()
   const { toast } = useToast()
 
-  useEffect(() => { void fetchDocs() }, [condominiumId])
-
-  const fetchDocs = async () => {
+  const fetchDocs = useCallback(async () => {
     setLoading(true)
     const query = supabase.from('documentos').select('*').order('created_at', { ascending: false })
     const { data, error } = await applyTenantFilter(query, condominiumId)
@@ -44,7 +42,9 @@ export default function Documentos() {
     const nextDocs = await enrichDocumentsWithDownloadUrl(data || [])
     setDocs(nextDocs)
     setLoading(false)
-  }
+  }, [condominiumId, toast])
+
+  useEffect(() => { void fetchDocs() }, [fetchDocs])
 
   const handleSave = async () => {
     if (!form.titulo || !file) {

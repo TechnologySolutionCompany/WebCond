@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { TriangleAlert, Send, Loader2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
@@ -20,12 +20,7 @@ export default function MoradorOcorrencias() {
   const [saving, setSaving] = useState(false)
   const [available, setAvailable] = useState(true)
 
-  useEffect(() => {
-    if (!profile?.id) return
-    void fetchOcorrencias()
-  }, [profile?.id])
-
-  const fetchOcorrencias = async () => {
+  const fetchOcorrencias = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('ocorrencias_predio')
@@ -43,7 +38,12 @@ export default function MoradorOcorrencias() {
     setAvailable(true)
     setItems(data || [])
     setLoading(false)
-  }
+  }, [profile?.id])
+
+  useEffect(() => {
+    if (!profile?.id) return
+    void fetchOcorrencias()
+  }, [fetchOcorrencias, profile?.id])
 
   const handleSubmit = async () => {
     if (!form.titulo || !form.descricao) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
@@ -16,12 +16,7 @@ export default function AdminDashboard({ isActive = true }) {
   const [ocorrencias, setOcorrencias] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (!isActive) return
-    void fetchDashboard()
-  }, [condominiumId, isActive])
-
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     setLoading(true)
 
     try {
@@ -62,7 +57,12 @@ export default function AdminDashboard({ isActive = true }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [condominiumId])
+
+  useEffect(() => {
+    if (!isActive) return
+    void fetchDashboard()
+  }, [fetchDashboard, isActive])
 
   const statusCount = useMemo(() => countChargeStatuses(cobrancas), [cobrancas])
   const totalRecebido = useMemo(() => (

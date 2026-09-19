@@ -1,8 +1,43 @@
 import { useMemo, useState } from 'react'
-import { Building2, CheckCircle2, Edit2, KeyRound, Loader2, Search, ShieldBan, ShieldCheck, XCircle } from 'lucide-react'
+import { Building2, KeyRound, Loader2, Search, XCircle, Check } from 'lucide-react'
 import { useToast } from '../shared/Toast'
 import { updatePlatformCondominium, updatePlatformSyndicPassword } from '../../lib/platformApi'
 import { formatCpfCnpj, normalizeCpfCnpj } from '../../lib/document'
+
+const PLAN_MODELS = [
+  { 
+    id: 'FREE', 
+    name: 'FREE', 
+    price: 'Grátis', 
+    priceCents: 0, 
+    color: '#8b949e',
+    description: 'Plano de teste gratuito'
+  },
+  { 
+    id: 'ONE', 
+    name: 'ONE', 
+    price: 'R$ 59,90', 
+    priceCents: 5990, 
+    color: '#3fb950',
+    description: 'Plano iniciante'
+  },
+  { 
+    id: 'PRO', 
+    name: 'PRO', 
+    price: 'R$ 79,90', 
+    priceCents: 7990, 
+    color: '#58a6ff',
+    description: 'Plano profissional'
+  },
+  { 
+    id: 'MAX', 
+    name: 'MAX', 
+    price: 'R$ 99,90', 
+    priceCents: 9990, 
+    color: '#bc8cff',
+    description: 'Plano máximo'
+  },
+]
 
 function formatDate(dateValue = '') {
   if (!dateValue) return '-'
@@ -34,11 +69,6 @@ function toDateInputValue(dateValue = '') {
   return `${year}-${month}-${day}`
 }
 
-const PLAN_OPTIONS = [
-  { value: 'Plano Padrao', label: 'Plano Padrao' },
-  { value: 'Plano Plus', label: 'Plano Plus' },
-]
-
 const emptyEditForm = {
   id: '',
   name: '',
@@ -48,7 +78,7 @@ const emptyEditForm = {
   whatsapp: '',
   unit_count: '',
   status: 'pending',
-  plan_name: 'Plano Padrao',
+  plan_name: 'FREE',
   subscription_status: 'trial',
   trial_started_at: '',
   platform_note: '',
@@ -66,6 +96,8 @@ export default function PlatformCondominiums({
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(emptyEditForm)
   const [syndicPassword, setSyndicPassword] = useState('')
+  const [planSelection, setPlanSelection] = useState(null)
+  const [planConfig, setPlanConfig] = useState({})
   const { toast } = useToast()
 
   const filtered = useMemo(() => (condominiums || []).filter((item) => {
@@ -90,7 +122,7 @@ export default function PlatformCondominiums({
       whatsapp: item.whatsapp || '',
       unit_count: String(item.unit_count || ''),
       status: item.status || 'pending',
-      plan_name: item.metadata?.plan_name || item.plan_name || 'Plano Padrao',
+      plan_name: item.metadata?.plan_name || item.plan_name || 'FREE',
       subscription_status: item.metadata?.subscription_status || item.subscription_status || 'trial',
       trial_started_at: toDateInputValue(item.trial_started_at || item.metadata?.trial_started_at || new Date()),
       platform_note: item.metadata?.platform_note || '',
@@ -104,22 +136,21 @@ export default function PlatformCondominiums({
     setSyndicPassword('')
   }
 
-  const handleAction = async (item, action) => {
-    const actionKey = `${item.id}:${action}`
-    setSavingAction(actionKey)
+  const openPlanSelection = (item) => {
+    setPlanSelection(item)
+    setPlanConfig({
+      selectedPlan: item.plan_name || 'FREE',
+      trialDays: 30,
+      maxUsuarios: 100,
+      maxMoradores: 500,
+      maxDocumentos: 1000,
+      maxAvisos: -1,
+    })
+  }
 
-    try {
-      await updatePlatformCondominium({
-        condominiumId: item.id,
-        action,
-      })
-      toast('Condominio atualizado com sucesso.', 'success')
-      await reload()
-    } catch (actionError) {
-      toast(actionError.message || 'Nao foi possivel atualizar o condominio.', 'error')
-    } finally {
-      setSavingAction('')
-    }
+  const closePlanSelection = () => {
+    setPlanSelection(null)
+    setPlanConfig({})
   }
 
   const handleSave = async () => {
@@ -137,7 +168,7 @@ export default function PlatformCondominiums({
         unit_count: Number(form.unit_count || 0),
         status: form.status,
         metadata: {
-          plan_name: form.plan_name || 'Plano Padrao',
+          plan_name: form.plan_name || 'FREE',
           subscription_status: form.subscription_status || 'trial',
           trial_started_at: form.trial_started_at || '',
           platform_note: form.platform_note || '',
@@ -174,6 +205,35 @@ export default function PlatformCondominiums({
       toast('Senha do sindico atualizada com sucesso.', 'success')
     } catch (passwordError) {
       toast(passwordError.message || 'Nao foi possivel atualizar a senha do sindico.', 'error')
+    } finally {
+      setSavingAction('')
+    }
+  }
+
+  const handleSavePlanConfiguration = async () => {
+    if (!planSelection || !planConfig.selectedPlan) return
+
+    setSavingAction(`${planSelection.id}:plan`)
+
+    try {
+      await updatePlatformCondominium({
+        condominiumId: planSelection.id,
+        action: 'save',
+        metadata: {
+          plan_name: planConfig.selectedPlan,
+          max_usuarios: planConfig.maxUsuarios,
+          max_moradores: planConfig.maxMoradores,
+          max_documentos: planConfig.maxDocumentos,
+          max_avisos: planConfig.maxAvisos,
+          trial_days: planConfig.trialDays,
+        },
+      })
+
+      toast(`Plano ${planConfig.selectedPlan} configurado com sucesso!`, 'success')
+      closePlanSelection()
+      await reload()
+    } catch (error) {
+      toast(error.message || 'Erro ao salvar configuração do plano.', 'error')
     } finally {
       setSavingAction('')
     }
@@ -239,12 +299,12 @@ export default function PlatformCondominiums({
               <tr>
                 <th>Condominio</th>
                 <th>Status</th>
-                <th>Plano</th>
+                <th>Plano Atual</th>
                 <th>Usuarios</th>
                 <th>Sindico</th>
                 <th>Criado em</th>
                 <th>Assinatura</th>
-                <th>Acoes</th>
+                <th>Escolher Plano</th>
               </tr>
             </thead>
             <tbody>
@@ -256,7 +316,7 @@ export default function PlatformCondominiums({
                     <div style={{ fontSize: 12, color: '#8b949e' }}>{item.address || '-'}</div>
                   </td>
                   <td><span className={`badge ${getStatusBadge(item.status)}`}>{item.status}</span></td>
-                  <td>{item.plan_name || 'Padrao'}</td>
+                  <td>{item.plan_name || 'FREE'}</td>
                   <td>
                     <div style={{ fontWeight: 600 }}>{item.total_users || 0}</div>
                     <div style={{ fontSize: 12, color: '#8b949e' }}>{item.residents_count || 0} morador(es)</div>
@@ -273,39 +333,169 @@ export default function PlatformCondominiums({
                     </div>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => openEdit(item)}>
-                        <Edit2 size={13} /> Editar
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button className="btn btn-sm" onClick={() => openPlanSelection(item)} style={{ padding: '6px 12px', fontSize: '12px' }}>
+                        <span style={{ color: '#0969da' }}>Planos</span>
                       </button>
-                      {item.status !== 'active' && (
-                        <button className="btn btn-primary btn-sm" onClick={() => handleAction(item, 'approve')} disabled={savingAction === `${item.id}:approve`}>
-                          {savingAction === `${item.id}:approve` ? <Loader2 size={13} className="spin-icon" /> : <CheckCircle2 size={13} />}
-                          Aprovar
-                        </button>
-                      )}
-                      {item.status === 'pending' && (
-                        <button className="btn btn-danger btn-sm" onClick={() => handleAction(item, 'reject')} disabled={savingAction === `${item.id}:reject`}>
-                          {savingAction === `${item.id}:reject` ? <Loader2 size={13} className="spin-icon" /> : <XCircle size={13} />}
-                          Rejeitar
-                        </button>
-                      )}
-                      {item.status === 'active' ? (
-                        <button className="btn btn-danger btn-sm" onClick={() => handleAction(item, 'block')} disabled={savingAction === `${item.id}:block`}>
-                          {savingAction === `${item.id}:block` ? <Loader2 size={13} className="spin-icon" /> : <ShieldBan size={13} />}
-                          Bloquear
-                        </button>
-                      ) : item.status === 'blocked' ? (
-                        <button className="btn btn-ghost btn-sm" onClick={() => handleAction(item, 'unblock')} disabled={savingAction === `${item.id}:unblock`}>
-                          {savingAction === `${item.id}:unblock` ? <Loader2 size={13} className="spin-icon" /> : <ShieldCheck size={13} />}
-                          Reativar
-                        </button>
-                      ) : null}
+                      <button className="btn btn-sm" onClick={() => openEdit(item)} style={{ padding: '6px 12px', fontSize: '12px' }}>
+                        <span style={{ color: '#58a6ff' }}>Editar</span>
+                      </button>
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {planSelection && (
+        <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && closePlanSelection()}>
+          <div className="modal" style={{ maxWidth: 1100 }}>
+            <div className="modal-header">
+              <div>
+                <div className="modal-title">{planSelection.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{planSelection.cnpj ? formatCpfCnpj(planSelection.cnpj) : 'CNPJ não informado'} • {planSelection.address || 'Endereço não informado'}</div>
+              </div>
+              <button className="btn btn-ghost btn-icon" onClick={closePlanSelection}>
+                <XCircle size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: '20px', borderBottom: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+                {PLAN_MODELS.map((plan) => (
+                  <div
+                    key={plan.id}
+                    onClick={() => setPlanConfig((current) => ({ ...current, selectedPlan: plan.id }))}
+                    style={{
+                      padding: 16,
+                      border: `2px solid ${planConfig.selectedPlan === plan.id ? plan.color : 'var(--border-color)'}`,
+                      borderRadius: 8,
+                      background: planConfig.selectedPlan === plan.id ? `${plan.color}11` : 'var(--bg-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: plan.color }}>{plan.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{plan.description}</div>
+                      </div>
+                      {planConfig.selectedPlan === plan.id && (
+                        <Check size={16} color={plan.color} />
+                      )}
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginTop: 8 }}>{plan.price}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ padding: '20px', overflowY: 'auto', maxHeight: '400px' }}>
+              <div style={{ marginBottom: 20 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Configurações do Plano {planConfig.selectedPlan || 'FREE'}</h3>
+                
+                {planConfig.selectedPlan === 'FREE' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                    <div className="form-group">
+                      <label className="form-label">Dias de teste</label>
+                      <input 
+                        className="input" 
+                        type="number" 
+                        min="1" 
+                        max="365"
+                        value={planConfig.trialDays || 30} 
+                        onChange={(event) => setPlanConfig((current) => ({ ...current, trialDays: Number(event.target.value) }))} 
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Máximo de usuários</label>
+                      <input 
+                        className="input" 
+                        type="number" 
+                        min="1"
+                        value={planConfig.maxUsuarios || 100} 
+                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxUsuarios: Number(event.target.value) }))} 
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Máximo de moradores</label>
+                      <input 
+                        className="input" 
+                        type="number" 
+                        min="1"
+                        value={planConfig.maxMoradores || 500} 
+                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxMoradores: Number(event.target.value) }))} 
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Máximo de documentos</label>
+                      <input 
+                        className="input" 
+                        type="number" 
+                        min="1"
+                        value={planConfig.maxDocumentos || 1000} 
+                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxDocumentos: Number(event.target.value) }))} 
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {['ONE', 'PRO', 'MAX'].includes(planConfig.selectedPlan) && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                    <div className="form-group">
+                      <label className="form-label">Máximo de usuários</label>
+                      <input 
+                        className="input" 
+                        type="number" 
+                        min="1"
+                        value={planConfig.maxUsuarios || 100} 
+                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxUsuarios: Number(event.target.value) }))} 
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Máximo de moradores</label>
+                      <input 
+                        className="input" 
+                        type="number" 
+                        min="1"
+                        value={planConfig.maxMoradores || 500} 
+                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxMoradores: Number(event.target.value) }))} 
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Máximo de documentos</label>
+                      <input 
+                        className="input" 
+                        type="number" 
+                        min="1"
+                        value={planConfig.maxDocumentos || 1000} 
+                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxDocumentos: Number(event.target.value) }))} 
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Máximo de avisos (-1 = ilimitado)</label>
+                      <input 
+                        className="input" 
+                        type="number" 
+                        min="-1"
+                        value={planConfig.maxAvisos !== undefined ? planConfig.maxAvisos : -1} 
+                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxAvisos: Number(event.target.value) }))} 
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={closePlanSelection}>Cancelar</button>
+              <button className="btn btn-primary" onClick={handleSavePlanConfiguration} disabled={savingAction === `${planSelection?.id}:plan`}>
+                {savingAction === `${planSelection?.id}:plan` ? <><Loader2 size={14} className="spin-icon" /> Salvando...</> : 'Salvar configuração'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -359,36 +549,6 @@ export default function PlatformCondominiums({
                     <option value="blocked">Bloqueado</option>
                     <option value="rejected">Rejeitado</option>
                   </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Plano</label>
-                  <select className="input" value={form.plan_name} onChange={(event) => setForm((current) => ({ ...current, plan_name: event.target.value }))}>
-                    {PLAN_OPTIONS.map((plan) => (
-                      <option key={plan.value} value={plan.value}>{plan.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">Assinatura</label>
-                  <div className={form.subscription_status === 'trial' ? 'platform-subscription-grid with-date' : 'platform-subscription-grid'}>
-                    <select className="input" value={form.subscription_status} onChange={(event) => setForm((current) => ({ ...current, subscription_status: event.target.value }))}>
-                      <option value="trial">Teste 30 dias</option>
-                      <option value="active">Ativo</option>
-                    </select>
-                    {form.subscription_status === 'trial' && (
-                      <div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Valendo a partir de</div>
-                        <input
-                          className="input"
-                          type="date"
-                          value={form.trial_started_at}
-                          onChange={(event) => setForm((current) => ({ ...current, trial_started_at: event.target.value }))}
-                        />
-                      </div>
-                    )}
-                  </div>
                 </div>
 
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { LayoutDashboard, Users, DollarSign, Bell, FileText, Calculator, Menu } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
@@ -54,7 +54,7 @@ export default function AdminLayout() {
 
   const isAccountant = normalizeRole(resolvedRole) === 'contador'
 
-  const nav = isAccountant ? [
+  const nav = useMemo(() => (isAccountant ? [
     {
       label: 'Principal',
       items: [
@@ -84,7 +84,7 @@ export default function AdminLayout() {
         { key: 'contador', label: 'Relatorios', icon: Calculator },
       ],
     },
-  ]
+  ]), [isAccountant])
 
   useEffect(() => {
     const allowedPages = new Set(nav.flatMap((section) => section.items).map((item) => item.key))

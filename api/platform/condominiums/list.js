@@ -93,7 +93,7 @@ export async function GET(req) {
   const items = (condominiums || []).map((condominium) => {
     const details = detailsByCondominium.get(condominium.id) || {}
     const metadata = condominium.metadata && typeof condominium.metadata === 'object' ? condominium.metadata : {}
-    details.planName = metadata.plan_name || metadata.planName || details.planName || 'Padrao'
+    details.planName = metadata.plan_name || metadata.planName || details.planName || 'FREE'
     return normalizeCondominium(condominium, details)
   })
 

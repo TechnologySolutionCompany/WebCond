@@ -112,6 +112,11 @@ export default function Sidebar({
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="user-name">{profile?.nome || 'Usuario'}</div>
               <div className="user-role">{getUserRoleLabel(profile?.role, profile?.apartamento)}</div>
+              {theme === 'admin' && (
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
+                  Plano: <span style={{ color: 'var(--text)', fontWeight: 600 }}>Em breve</span>
+                </div>
+              )}
             </div>
           </div>
           <button

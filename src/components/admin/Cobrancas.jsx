@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../shared/Toast'
 import { useAuth } from '../../hooks/useAuth'
@@ -246,11 +246,7 @@ export default function Cobrancas() {
   const { settings: condominiumSettings } = useCondominiumSettings(condominiumId)
   const { toast } = useToast()
 
-  useEffect(() => {
-    void fetchAll()
-  }, [condominiumId])
-
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async () => {
     setLoading(true)
     const [cobRes, morRes, requestsRes] = await Promise.all([
       applyTenantFilter(
@@ -283,7 +279,11 @@ export default function Cobrancas() {
     setMoradores(morRes.data || [])
     setResidentRequests(requestsRes.data || [])
     setLoading(false)
-  }
+  }, [condominiumId])
+
+  useEffect(() => {
+    void fetchAll()
+  }, [fetchAll])
 
   const handleSave = async () => {
     const isCondominio = form.tipo === 'condominio'

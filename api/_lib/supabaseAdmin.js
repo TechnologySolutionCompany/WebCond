@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { getCondominiumAccessState, STANDARD_PLAN_PRICE_LABEL } from '../../src/lib/condominiumPlan.js'
+import { getCondominiumAccessState } from '../../src/lib/condominiumPlan.js'
 
 function isMissing(value) {
   if (!value) return true
@@ -67,7 +67,7 @@ async function resolveCondominiumAccessError(condominiumId) {
   }
 
   if (accessState.blockReason === 'trial_expired') {
-    return json({ error: `O periodo de teste do condominio terminou. Regularize o Plano Padrao de ${STANDARD_PLAN_PRICE_LABEL} para liberar o acesso.` }, 403)
+    return json({ error: 'O periodo de teste do condominio terminou. Escolha um plano (ONE, PRO ou MAX) para liberar o acesso.' }, 403)
   }
 
   if (accessState.effectiveStatus === 'blocked') {
@@ -182,6 +182,58 @@ export async function parseJsonBody(req) {
   } catch {
     return null
   }
+}
+
+// Escapa um valor para uso seguro dentro de filtros PostgREST como .or('col.eq.valor').
+export function quoteFilterValue(value) {
+  return `"${String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+// Bloqueia requisicoes de navegador vindas de outra origem. Chamadas sem Origin (curl, server-to-server) passam.
+export function rejectForeignOrigin(req) {
+  const origin = req.headers.get('origin')
+  if (!origin) return null
+
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host')
+  try {
+    if (host && new URL(origin).host === host) return null
+  } catch {
+    // Origin malformado cai no bloqueio abaixo.
+  }
+
+  return json({ error: 'Origem da requisicao nao permitida.' }, 403)
+}
+
+export function getClientIp(req) {
+  const forwarded = req.headers.get('x-forwarded-for') || ''
+  return forwarded.split(',')[0].trim() || req.headers.get('x-real-ip') || 'unknown'
+}
+
+// Rate limit em memoria: vale por instancia serverless ativa (best effort contra forca bruta e cadastro em massa).
+const rateLimitBuckets = new Map()
+
+export function checkRateLimit(key, { limit, windowMs }) {
+  const now = Date.now()
+
+  if (rateLimitBuckets.size > 5000) {
+    for (const [bucketKey, bucket] of rateLimitBuckets) {
+      if (bucket.resetAt <= now) rateLimitBuckets.delete(bucketKey)
+    }
+  }
+
+  const bucket = rateLimitBuckets.get(key)
+  if (!bucket || bucket.resetAt <= now) {
+    rateLimitBuckets.set(key, { count: 1, resetAt: now + windowMs })
+    return null
+  }
+
+  bucket.count += 1
+  if (bucket.count <= limit) return null
+
+  const retryAfterSeconds = Math.ceil((bucket.resetAt - now) / 1000)
+  const response = json({ error: 'Muitas tentativas. Aguarde alguns minutos e tente novamente.' }, 429)
+  response.headers.set('Retry-After', String(retryAfterSeconds))
+  return response
 }
 
 export async function requireAdmin(req, options = {}) {

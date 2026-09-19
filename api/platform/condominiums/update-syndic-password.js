@@ -1,4 +1,4 @@
-import { json, parseJsonBody, requirePlatformAdmin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
+import { json, parseJsonBody, rejectForeignOrigin, requirePlatformAdmin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
 
 function isCondominiumAdminRole(role = '') {
   const normalized = String(role || '').trim().toLowerCase()
@@ -6,6 +6,9 @@ function isCondominiumAdminRole(role = '') {
 }
 
 export async function POST(req) {
+  const originError = rejectForeignOrigin(req)
+  if (originError) return originError
+
   const auth = await requirePlatformAdmin(req)
   if (auth.error) return auth.error
 

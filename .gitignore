@@ -5,3 +5,5 @@ dist/
 !.env.example
 .vercel/
 *.log
+SUPABASE_AUDIT.md
+.DS_Store

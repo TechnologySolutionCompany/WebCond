@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import QRCode from 'qrcode'
-import { requireCondominiumAdmin, json, parseJsonBody, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
+import { requireCondominiumAdmin, json, parseJsonBody, rejectForeignOrigin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
 import { resolveCondominiumSettings } from '../../../src/lib/condominium.js'
 import { buildChargePdfHtml } from '../../../src/lib/billingPdfTemplate.js'
 
@@ -68,13 +68,30 @@ async function loadCondominiumData(condominiumId) {
   return data
 }
 
-async function renderPdfBuffer(html) {
-  const puppeteerModule = await import('puppeteer')
-  const puppeteer = puppeteerModule.default || puppeteerModule
-  const browser = await puppeteer.launch({
+// Na Vercel usa o Chromium enxuto do @sparticuz/chromium; localmente usa o Chrome instalado
+// (ou o caminho definido em CHROME_EXECUTABLE_PATH).
+async function launchBrowser() {
+  const { default: puppeteer } = await import('puppeteer-core')
+
+  if (process.env.VERCEL) {
+    const { default: chromium } = await import('@sparticuz/chromium')
+    return puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    })
+  }
+
+  const executablePath = process.env.CHROME_EXECUTABLE_PATH
+  return puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    ...(executablePath ? { executablePath } : { channel: 'chrome' }),
   })
+}
+
+async function renderPdfBuffer(html) {
+  const browser = await launchBrowser()
 
   try {
     const page = await browser.newPage()
@@ -97,6 +114,9 @@ async function renderPdfBuffer(html) {
 }
 
 export async function POST(req) {
+  const originError = rejectForeignOrigin(req)
+  if (originError) return originError
+
   const auth = await requireCondominiumAdmin(req)
   if (auth.error) return auth.error
 

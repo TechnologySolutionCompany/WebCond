@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../shared/Toast'
 import { useAuth } from '../../hooks/useAuth'
@@ -24,11 +24,7 @@ export default function Contador() {
   const { condominiumId } = useAuth()
   const { toast } = useToast()
 
-  useEffect(() => {
-    void fetchChartData()
-  }, [condominiumId])
-
-  const fetchChartData = async () => {
+  const fetchChartData = useCallback(async () => {
     const { data } = await applyTenantFilter(
       supabase
         .from('cobrancas')
@@ -38,7 +34,11 @@ export default function Contador() {
     )
 
     setChartCharges(data || [])
-  }
+  }, [condominiumId])
+
+  useEffect(() => {
+    void fetchChartData()
+  }, [fetchChartData])
 
   const chartData = useMemo(() => buildChargeStatusChartData(chartCharges), [chartCharges])
 

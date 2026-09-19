@@ -89,7 +89,7 @@ export default function PlatformDashboard({
                     <div style={{ fontWeight: 700 }}>{item.name}</div>
                     <span className="badge badge-orange">Pendente</span>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Plano: {item.plan_name || 'Padrao'} · Usuarios: {item.total_users || 0}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Plano: {item.plan_name || 'FREE'} · Usuarios: {item.total_users || 0}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
                     Sindico: {item.syndic?.nome || 'Nao informado'}
                   </div>

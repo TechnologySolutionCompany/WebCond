@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { enrichDocumentsWithDownloadUrl } from '../../lib/documents'
 import { useAuth } from '../../hooks/useAuth'
@@ -27,12 +27,7 @@ export function MoradorAvisos() {
   const [avisos, setAvisos] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (!profile?.apartamento) return
-    void fetchAvisos()
-  }, [profile?.apartamento])
-
-  const fetchAvisos = async () => {
+  const fetchAvisos = useCallback(async () => {
     const { data } = await supabase
       .from('avisos')
       .select('*')
@@ -42,7 +37,12 @@ export function MoradorAvisos() {
     const filtrados = (data || []).filter((aviso) => aviso.destinatario === 'todos' || (aviso.destinatario === 'apartamento' && aviso.apartamento_destino === profile.apartamento))
     setAvisos(filtrados)
     setLoading(false)
-  }
+  }, [profile?.apartamento])
+
+  useEffect(() => {
+    if (!profile?.apartamento) return
+    void fetchAvisos()
+  }, [fetchAvisos, profile?.apartamento])
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner" /></div>
 
