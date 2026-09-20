@@ -11,7 +11,9 @@ const headers = { 'content-type': 'application/json', host: 'app.test', origin: 
 let failures = 0
 
 async function expect(label, path, method, expectedStatus, body, extraHeaders = {}) {
-  const mod = await import(`../api/${path}.js`)
+  // Cada area tem uma funcao unica na Vercel; os modulos ficam em api/_<area>/.
+  const modulePath = path === 'health' || path.startsWith('admin/billing/') ? path : path.replace(/^([a-z]+)\//, '_$1/')
+  const mod = await import(`../api/${modulePath}.js`)
   const response = await mod[method](new Request(`http://app.test/api/${path}`, {
     method,
     headers: { ...headers, ...extraHeaders },

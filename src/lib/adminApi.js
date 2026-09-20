@@ -125,17 +125,17 @@ export async function renderBillingPdf(payload) {
 }
 
 export function createResident(payload) {
-  return callAdminApi('/api/admin/residents/create', payload)
+  return callAdminApi('/api/admin/residents-create', payload)
 }
 
 export function deleteResident(payload) {
-  return callAdminApi('/api/admin/residents/delete', payload)
+  return callAdminApi('/api/admin/residents-delete', payload)
 }
 
 export function saveUnit(payload) {
-  return callAdminApi('/api/admin/units/save', payload)
+  return callAdminApi('/api/admin/units-save', payload)
 }
 
 export function deleteUnit(payload) {
-  return callAdminApi('/api/admin/units/delete', payload)
+  return callAdminApi('/api/admin/units-delete', payload)
 }

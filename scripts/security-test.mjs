@@ -27,7 +27,9 @@ function cnpj() {
   return d.join('')
 }
 async function call(path, { token, body, method = 'POST' } = {}) {
-  const mod = await import(`../api/${path}.js`)
+  // Cada area tem uma funcao unica na Vercel; os modulos ficam em api/_<area>/.
+  const modulePath = path === 'health' || path.startsWith('admin/billing/') ? path : path.replace(/^([a-z]+)\//, '_$1/')
+  const mod = await import(`../api/${modulePath}.js`)
   const res = await mod[method](new Request(`http://localhost/api/${path}`, {
     method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
     body: method === 'GET' ? undefined : JSON.stringify(body || {}),

@@ -110,6 +110,9 @@ As variáveis `NEXT_PUBLIC_SUPABASE_*` são nomes alternativos aceitos pelo back
 
 ## 3. Vercel
 
+Projeto em produção: **webcond** (https://webcond.vercel.app), conectado ao repositório e publicando
+sozinho a cada push na `main`.
+
 1. **Add New > Project**, importe o repositório do GitHub.
    Em **Settings > Git > Production Branch**, use `main`. A `master` do GitHub é uma versão antiga e sem relação com esta.
 2. Cadastre as variáveis da seção 2 em **Settings > Environment Variables**.
@@ -120,9 +123,23 @@ O `vercel.json` já define:
 - Rewrites de SPA para `/admin`, `/platform` e `/morador`.
 - Headers de segurança (CSP, HSTS, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`).
   Se passar a carregar recursos de outro domínio, inclua-o na CSP.
-- Função `render-pdf` com 1024 MB, 30 s e o binário do Chromium incluído.
+- Função `render-pdf` com 30 s e o binário do Chromium incluído.
+- `regions: ["gru1"]`: as funções rodam em São Paulo, perto do Supabase. Em Washington (padrão) o
+  banco respondia em ~230 ms; em São Paulo, ~70 ms.
 
 Domínio próprio: **Settings > Domains** (SSL automático).
+
+### 3.1 Rotas da API e o limite do plano Hobby
+
+O plano Hobby aceita no máximo **12 Serverless Functions**, e o projeto tem 16 rotas. Por isso cada área
+tem uma função única que distribui as chamadas (`api/<area>/[...segments].js` + `api/_lib/router.js`),
+e os módulos de cada rota ficam em `api/_auth/`, `api/_admin/`, `api/_platform/` e `api/_tenant/`
+(pastas com `_` não viram funções). São 6 funções no total, incluindo `render-pdf`, que fica separada
+por carregar o Chromium.
+
+Na Vercel o roteador só captura **um** nível de caminho, então os endereços têm um segmento só depois da
+área: `/api/admin/units-save`, `/api/platform/condominiums-list`. Ao criar uma rota nova: coloque o
+módulo em `api/_<area>/`, registre no roteador da área e em `apiModules` no `vite.config.js`.
 
 ---
 

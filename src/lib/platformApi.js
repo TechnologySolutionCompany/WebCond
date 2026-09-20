@@ -66,7 +66,7 @@ async function callPlatformApi(path, payload, { method = 'POST', timeoutMs } = {
 }
 
 export function listPlatformCondominiums() {
-  return callPlatformApi('/api/platform/condominiums/list', undefined, { method: 'GET' })
+  return callPlatformApi('/api/platform/condominiums-list', undefined, { method: 'GET' })
 }
 
 export function getPlatformStatus() {
@@ -74,18 +74,18 @@ export function getPlatformStatus() {
 }
 
 export function updatePlatformCondominium(payload) {
-  return callPlatformApi('/api/platform/condominiums/update', payload)
+  return callPlatformApi('/api/platform/condominiums-update', payload)
 }
 
 export function updatePlatformSyndicPassword(payload) {
-  return callPlatformApi('/api/platform/condominiums/update-syndic-password', payload)
+  return callPlatformApi('/api/platform/condominiums-syndic-password', payload)
 }
 
 export async function registerCondominium(payload) {
   let response
 
   try {
-    response = await fetchWithTimeout('/api/platform/condominiums/register', {
+    response = await fetchWithTimeout('/api/platform/condominiums-register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -109,9 +109,9 @@ export async function registerCondominium(payload) {
 }
 
 export function exportPlatformCondominium(condominiumId) {
-  return callPlatformApi(`/api/platform/condominiums/export?id=${encodeURIComponent(condominiumId)}`, undefined, { method: 'GET' })
+  return callPlatformApi(`/api/platform/condominiums-export?id=${encodeURIComponent(condominiumId)}`, undefined, { method: 'GET' })
 }
 
 export function importPlatformResidents(payload) {
-  return callPlatformApi('/api/platform/condominiums/import', payload, { timeoutMs: 60000 })
+  return callPlatformApi('/api/platform/condominiums-import', payload, { timeoutMs: 60000 })
 }

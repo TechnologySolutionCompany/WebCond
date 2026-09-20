@@ -19,11 +19,10 @@
   ],
   "functions": {
     "api/admin/billing/render-pdf.js": {
-      "memory": 1024,
       "maxDuration": 30,
       "includeFiles": "{node_modules/@sparticuz/chromium/bin/**,public/logo.png}"
     },
-    "api/platform/condominiums/import.js": {
+    "api/platform/[...segments].js": {
       "maxDuration": 60
     }
   },
@@ -57,5 +56,8 @@
         }
       ]
     }
+  ],
+  "regions": [
+    "gru1"
   ]
 }
