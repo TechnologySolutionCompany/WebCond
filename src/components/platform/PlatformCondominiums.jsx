@@ -1,42 +1,29 @@
 import { useMemo, useState } from 'react'
-import { Building2, KeyRound, Loader2, Search, XCircle, Check } from 'lucide-react'
+import { AlertTriangle, Building2, CheckCircle2, Download, FileSpreadsheet, KeyRound, Loader2, Search, Upload, XCircle } from 'lucide-react'
 import { useToast } from '../shared/Toast'
-import { updatePlatformCondominium, updatePlatformSyndicPassword } from '../../lib/platformApi'
+import AddressFields from '../shared/AddressFields'
+import {
+  exportPlatformCondominium,
+  importPlatformResidents,
+  updatePlatformCondominium,
+  updatePlatformSyndicPassword,
+} from '../../lib/platformApi'
 import { formatCpfCnpj, normalizeCpfCnpj } from '../../lib/document'
+import { PLAN_LIST, PLAN_PERIOD_DAYS, PLAN_WARNING_DAYS, TRIAL_PERIOD_DAYS } from '../../lib/condominiumPlan'
+import { emptyAddress } from '../../lib/address'
 
-const PLAN_MODELS = [
-  { 
-    id: 'FREE', 
-    name: 'FREE', 
-    price: 'Grátis', 
-    priceCents: 0, 
-    color: '#8b949e',
-    description: 'Plano de teste gratuito'
-  },
-  { 
-    id: 'ONE', 
-    name: 'ONE', 
-    price: 'R$ 59,90', 
-    priceCents: 5990, 
-    color: '#3fb950',
-    description: 'Plano iniciante'
-  },
-  { 
-    id: 'PRO', 
-    name: 'PRO', 
-    price: 'R$ 79,90', 
-    priceCents: 7990, 
-    color: '#58a6ff',
-    description: 'Plano profissional'
-  },
-  { 
-    id: 'MAX', 
-    name: 'MAX', 
-    price: 'R$ 99,90', 
-    priceCents: 9990, 
-    color: '#bc8cff',
-    description: 'Plano máximo'
-  },
+const STATUS_LABELS = {
+  pending: { label: 'Pendente', badge: 'badge-orange' },
+  active: { label: 'Ativo', badge: 'badge-green' },
+  blocked: { label: 'Bloqueado', badge: 'badge-red' },
+  rejected: { label: 'Rejeitado', badge: 'badge-red' },
+}
+
+const TABS = [
+  { key: 'config', label: 'Configuracoes do condominio' },
+  { key: 'plan', label: 'Status / Plano' },
+  { key: 'access', label: 'Acesso do sindico' },
+  { key: 'data', label: 'Exportar / Importar' },
 ]
 
 function formatDate(dateValue = '') {
@@ -45,198 +32,208 @@ function formatDate(dateValue = '') {
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('pt-BR')
 }
 
-function getStatusBadge(status = '') {
-  if (status === 'active') return 'badge-green'
-  if (status === 'blocked') return 'badge-red'
-  if (status === 'rejected') return 'badge-red'
-  return 'badge-orange'
+function getPlanChoice(item) {
+  return item.subscription_status === 'active' ? item.plan_name : 'trial'
 }
 
-function toDateInputValue(dateValue = '') {
+function toDateInput(dateValue) {
   if (!dateValue) return ''
-
-  const normalized = String(dateValue)
-  if (/^\d{4}-\d{2}-\d{2}/.test(normalized)) {
-    return normalized.slice(0, 10)
-  }
-
   const date = new Date(dateValue)
   if (Number.isNaN(date.getTime())) return ''
-
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
 }
 
-const emptyEditForm = {
-  id: '',
-  name: '',
-  cnpj: '',
-  address: '',
-  zip_code: '',
-  whatsapp: '',
-  unit_count: '',
-  status: 'pending',
-  plan_name: 'FREE',
-  subscription_status: 'trial',
-  trial_started_at: '',
-  platform_note: '',
+function defaultExpiry() {
+  const date = new Date()
+  date.setDate(date.getDate() + PLAN_PERIOD_DAYS)
+  return toDateInput(date)
 }
 
-export default function PlatformCondominiums({
-  condominiums,
-  loading,
-  error,
-  reload,
-}) {
+function buildForm(item) {
+  return {
+    name: item.name || '',
+    cnpj: item.cnpj || '',
+    whatsapp: item.whatsapp || item.syndic?.whatsapp || '',
+    unit_count: String(item.unit_count || ''),
+    syndic_name: item.syndic?.nome || '',
+    syndic_email: item.syndic?.email || '',
+    sub_syndic: { name: item.sub_syndic?.name || '', whatsapp: item.sub_syndic?.whatsapp || '' },
+    address_details: { ...emptyAddress, ...item.address_details },
+    platform_note: item.platform_note || '',
+    status: item.raw_status || item.status || 'pending',
+    plan: getPlanChoice(item),
+    plan_expires_at: toDateInput(item.plan_expires_at),
+  }
+}
+
+function PlanSummary({ item }) {
+  if (item.status === 'pending') return <span style={{ color: 'var(--text-muted)' }}>Aguardando aprovacao</span>
+  if (item.plan_locked) {
+    return <span className="badge badge-orange"><AlertTriangle size={10} /> {item.subscription_status === 'active' ? `Plano ${item.plan_name} vencido` : 'Teste encerrado'}</span>
+  }
+  if (item.subscription_status === 'active') {
+    return (
+      <div>
+        <span className="badge badge-green">{item.plan_name === 'PARCERIA' ? 'Parceria' : `Plano ${item.plan_name}`}</span>
+        {item.plan_ends_at && <div style={{ fontSize: 12, color: item.plan_expiring_soon ? 'var(--orange)' : 'var(--text-muted)', marginTop: 4 }}>Valido ate {formatDate(item.plan_ends_at)}</div>}
+      </div>
+    )
+  }
+  return (
+    <div>
+      <div style={{ fontWeight: 600 }}>Teste</div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Vence em {formatDate(item.trial_ends_at)}</div>
+    </div>
+  )
+}
+
+export default function PlatformCondominiums({ condominiums, loading, error, reload }) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
-  const [savingAction, setSavingAction] = useState('')
-  const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState(emptyEditForm)
+  const [selected, setSelected] = useState(null)
+  const [tab, setTab] = useState('config')
+  const [form, setForm] = useState(null)
   const [syndicPassword, setSyndicPassword] = useState('')
-  const [planSelection, setPlanSelection] = useState(null)
-  const [planConfig, setPlanConfig] = useState({})
+  const [busy, setBusy] = useState('')
+  const [importRows, setImportRows] = useState(null)
+  const [importFileName, setImportFileName] = useState('')
+  const [importResult, setImportResult] = useState(null)
   const { toast } = useToast()
 
   const filtered = useMemo(() => (condominiums || []).filter((item) => {
     const query = search.trim().toLowerCase()
+    const digits = query.replace(/\D/g, '')
     const matchSearch = !query
       || String(item.name || '').toLowerCase().includes(query)
-      || String(item.cnpj || '').includes(query.replace(/\D/g, ''))
+      || (digits && String(item.cnpj || '').includes(digits))
       || String(item.syndic?.nome || '').toLowerCase().includes(query)
 
-    const matchStatus = !filterStatus || item.status === filterStatus
-    return matchSearch && matchStatus
+    return matchSearch && (!filterStatus || item.status === filterStatus)
   }), [condominiums, filterStatus, search])
 
-  const openEdit = (item) => {
-    setEditing(item)
-    setForm({
-      id: item.id,
-      name: item.name || '',
-      cnpj: item.cnpj || '',
-      address: item.address || '',
-      zip_code: item.zip_code || '',
-      whatsapp: item.whatsapp || '',
-      unit_count: String(item.unit_count || ''),
-      status: item.status || 'pending',
-      plan_name: item.metadata?.plan_name || item.plan_name || 'FREE',
-      subscription_status: item.metadata?.subscription_status || item.subscription_status || 'trial',
-      trial_started_at: toDateInputValue(item.trial_started_at || item.metadata?.trial_started_at || new Date()),
-      platform_note: item.metadata?.platform_note || '',
-    })
+  const updateForm = (patch) => setForm((current) => ({ ...current, ...patch }))
+
+  const openCondominium = (item) => {
+    setSelected(item)
+    setForm(buildForm(item))
+    setTab('config')
     setSyndicPassword('')
+    setImportRows(null)
+    setImportFileName('')
+    setImportResult(null)
   }
 
-  const closeEdit = () => {
-    setEditing(null)
-    setForm(emptyEditForm)
-    setSyndicPassword('')
-  }
-
-  const openPlanSelection = (item) => {
-    setPlanSelection(item)
-    setPlanConfig({
-      selectedPlan: item.plan_name || 'FREE',
-      trialDays: 30,
-      maxUsuarios: 100,
-      maxMoradores: 500,
-      maxDocumentos: 1000,
-      maxAvisos: -1,
-    })
-  }
-
-  const closePlanSelection = () => {
-    setPlanSelection(null)
-    setPlanConfig({})
+  const closeCondominium = () => {
+    if (busy) return
+    setSelected(null)
+    setForm(null)
   }
 
   const handleSave = async () => {
-    setSavingAction(`${form.id}:save`)
+    const password = syndicPassword.trim()
+    if (password && password.length < 6) {
+      setTab('access')
+      toast('A nova senha do sindico precisa ter pelo menos 6 caracteres.', 'error')
+      return
+    }
 
+    setBusy('save')
     try {
       await updatePlatformCondominium({
-        condominiumId: form.id,
+        condominiumId: selected.id,
         action: 'save',
         name: form.name,
         cnpj: form.cnpj,
-        address: form.address,
-        zip_code: form.zip_code,
         whatsapp: form.whatsapp,
-        unit_count: Number(form.unit_count || 0),
+        unit_count: Number(form.unit_count),
+        syndic_name: form.syndic_name,
+        syndic_email: form.syndic_email,
+        sub_syndic: form.sub_syndic,
+        address_details: form.address_details,
+        platform_note: form.platform_note,
         status: form.status,
-        metadata: {
-          plan_name: form.plan_name || 'FREE',
-          subscription_status: form.subscription_status || 'trial',
-          trial_started_at: form.trial_started_at || '',
-          platform_note: form.platform_note || '',
-        },
+        plan: form.plan,
+        plan_expires_at: form.plan === 'trial' ? '' : form.plan_expires_at,
       })
 
-      toast('Cadastro do condominio salvo com sucesso.', 'success')
-      closeEdit()
+      // A senha e aplicada no mesmo "Salvar": antes ela exigia um botao separado e era ignorada ao salvar.
+      if (password) {
+        await updatePlatformSyndicPassword({ condominiumId: selected.id, password })
+      }
+
+      toast(password ? 'Condominio salvo e senha do sindico atualizada.' : 'Condominio salvo com sucesso.', 'success')
+      setSelected(null)
+      setForm(null)
       await reload()
     } catch (saveError) {
       toast(saveError.message || 'Nao foi possivel salvar o condominio.', 'error')
     } finally {
-      setSavingAction('')
+      setBusy('')
     }
   }
 
-  const handleSyndicPasswordSave = async () => {
-    if (!editing?.id) return
-
-    if (syndicPassword.trim().length < 6) {
-      toast('Informe uma senha com pelo menos 6 caracteres.', 'error')
-      return
-    }
-
-    const actionKey = `${editing.id}:syndic-password`
-    setSavingAction(actionKey)
-
+  const handleQuickAction = async (action) => {
+    setBusy(action)
     try {
-      await updatePlatformSyndicPassword({
-        condominiumId: editing.id,
-        password: syndicPassword.trim(),
-      })
-      setSyndicPassword('')
-      toast('Senha do sindico atualizada com sucesso.', 'success')
-    } catch (passwordError) {
-      toast(passwordError.message || 'Nao foi possivel atualizar a senha do sindico.', 'error')
-    } finally {
-      setSavingAction('')
-    }
-  }
-
-  const handleSavePlanConfiguration = async () => {
-    if (!planSelection || !planConfig.selectedPlan) return
-
-    setSavingAction(`${planSelection.id}:plan`)
-
-    try {
-      await updatePlatformCondominium({
-        condominiumId: planSelection.id,
-        action: 'save',
-        metadata: {
-          plan_name: planConfig.selectedPlan,
-          max_usuarios: planConfig.maxUsuarios,
-          max_moradores: planConfig.maxMoradores,
-          max_documentos: planConfig.maxDocumentos,
-          max_avisos: planConfig.maxAvisos,
-          trial_days: planConfig.trialDays,
-        },
-      })
-
-      toast(`Plano ${planConfig.selectedPlan} configurado com sucesso!`, 'success')
-      closePlanSelection()
+      await updatePlatformCondominium({ condominiumId: selected.id, action })
+      toast(action === 'approve' ? `Condominio aprovado. Teste de ${TRIAL_PERIOD_DAYS} dias iniciado hoje.` : 'Cadastro rejeitado.', 'success')
+      setSelected(null)
+      setForm(null)
       await reload()
-    } catch (error) {
-      toast(error.message || 'Erro ao salvar configuração do plano.', 'error')
+    } catch (actionError) {
+      toast(actionError.message || 'Nao foi possivel concluir a acao.', 'error')
     } finally {
-      setSavingAction('')
+      setBusy('')
     }
+  }
+
+  const handleExport = async () => {
+    setBusy('export')
+    try {
+      const data = await exportPlatformCondominium(selected.id)
+      const { downloadResidentsWorkbook } = await import('../../lib/residentSpreadsheet')
+      await downloadResidentsWorkbook(data)
+      toast(`Planilha exportada com ${data.residents.length} cadastro(s).`, 'success')
+    } catch (exportError) {
+      toast(exportError.message || 'Nao foi possivel exportar os dados.', 'error')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const handleImportFile = async (file) => {
+    setImportRows(null)
+    setImportResult(null)
+    setImportFileName(file?.name || '')
+    if (!file) return
+
+    try {
+      const { readResidentsWorkbook } = await import('../../lib/residentSpreadsheet')
+      setImportRows(await readResidentsWorkbook(file))
+    } catch (readError) {
+      toast(readError.message || 'Nao foi possivel ler a planilha.', 'error')
+      setImportFileName('')
+    }
+  }
+
+  const handleImport = async () => {
+    setBusy('import')
+    try {
+      const result = await importPlatformResidents({ condominiumId: selected.id, rows: importRows })
+      setImportResult(result)
+      setImportRows(null)
+      toast('Importacao concluida. Confira o resultado abaixo.', 'success')
+      await reload()
+    } catch (importError) {
+      toast(importError.message || 'Nao foi possivel importar os cadastros.', 'error')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const handleDownloadReport = async () => {
+    const { downloadImportReport } = await import('../../lib/residentSpreadsheet')
+    await downloadImportReport(importResult.results)
   }
 
   if (loading) {
@@ -256,15 +253,13 @@ export default function PlatformCondominiums({
     )
   }
 
+  const selectedPlan = PLAN_LIST.find((plan) => plan.id === (form?.plan === 'trial' ? 'ONE' : form?.plan))
+
   return (
     <div className="fade-in">
       <div className="page-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-          <div>
-            <div className="page-title">Condominios</div>
-            <div className="page-subtitle">Aprovacao, bloqueio e edicao cadastral sem acesso aos dados financeiros internos</div>
-          </div>
-        </div>
+        <div className="page-title">Condominios</div>
+        <div className="page-subtitle">Clique em um condominio para ver e editar todos os dados, status e plano</div>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -280,10 +275,7 @@ export default function PlatformCondominiums({
         </div>
         <select className="input" style={{ width: 180 }} value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
           <option value="">Todos os status</option>
-          <option value="pending">Pendentes</option>
-          <option value="active">Ativos</option>
-          <option value="blocked">Bloqueados</option>
-          <option value="rejected">Rejeitados</option>
+          {Object.entries(STATUS_LABELS).map(([value, { label }]) => <option key={value} value={value}>{label}</option>)}
         </select>
       </div>
 
@@ -298,50 +290,42 @@ export default function PlatformCondominiums({
             <thead>
               <tr>
                 <th>Condominio</th>
-                <th>Status</th>
-                <th>Plano Atual</th>
-                <th>Usuarios</th>
+                <th>Situacao</th>
+                <th>Plano</th>
+                <th>Unidades</th>
+                <th>Documentos</th>
                 <th>Sindico</th>
                 <th>Criado em</th>
-                <th>Assinatura</th>
-                <th>Escolher Plano</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((item) => (
-                <tr key={item.id}>
+                <tr
+                  key={item.id}
+                  className="platform-condo-row"
+                  tabIndex={0}
+                  onClick={() => openCondominium(item)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      openCondominium(item)
+                    }
+                  }}
+                >
                   <td>
                     <div style={{ fontWeight: 700 }}>{item.name}</div>
                     <div style={{ fontSize: 12, color: '#8b949e' }}>{item.cnpj ? formatCpfCnpj(item.cnpj) : '-'}</div>
                     <div style={{ fontSize: 12, color: '#8b949e' }}>{item.address || '-'}</div>
                   </td>
-                  <td><span className={`badge ${getStatusBadge(item.status)}`}>{item.status}</span></td>
-                  <td>{item.plan_name || 'FREE'}</td>
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{item.total_users || 0}</div>
-                    <div style={{ fontSize: 12, color: '#8b949e' }}>{item.residents_count || 0} morador(es)</div>
-                  </td>
+                  <td><span className={`badge ${STATUS_LABELS[item.status]?.badge || 'badge-orange'}`}>{STATUS_LABELS[item.status]?.label || item.status}</span></td>
+                  <td><PlanSummary item={item} /></td>
+                  <td>{item.apartments_count || 0} / {item.unit_count || '-'}</td>
+                  <td>{item.documents_count || 0} / {item.document_limit}</td>
                   <td>
                     <div style={{ fontWeight: 600 }}>{item.syndic?.nome || '-'}</div>
-                    <div style={{ fontSize: 12, color: '#8b949e' }}>{item.syndic?.email || '-'}</div>
+                    <div style={{ fontSize: 12, color: '#8b949e' }}>{item.sub_syndic?.name ? `Sub.: ${item.sub_syndic.name}` : item.syndic?.email || '-'}</div>
                   </td>
                   <td>{formatDate(item.created_at)}</td>
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{item.subscription_status === 'active' ? 'Ativa' : 'Trial'}</div>
-                    <div style={{ fontSize: 12, color: '#8b949e' }}>
-                      {item.trial_ends_at ? `Vence em ${formatDate(item.trial_ends_at)}` : 'Aguardando aprovacao'}
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button className="btn btn-sm" onClick={() => openPlanSelection(item)} style={{ padding: '6px 12px', fontSize: '12px' }}>
-                        <span style={{ color: '#0969da' }}>Planos</span>
-                      </button>
-                      <button className="btn btn-sm" onClick={() => openEdit(item)} style={{ padding: '6px 12px', fontSize: '12px' }}>
-                        <span style={{ color: '#58a6ff' }}>Editar</span>
-                      </button>
-                    </div>
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -349,262 +333,250 @@ export default function PlatformCondominiums({
         </div>
       )}
 
-      {planSelection && (
-        <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && closePlanSelection()}>
-          <div className="modal" style={{ maxWidth: 1100 }}>
-            <div className="modal-header">
+      {selected && form && (
+        <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && closeCondominium()}>
+          <div className="modal condo-modal" role="dialog" aria-modal="true" aria-label={`Condominio ${selected.name}`}>
+            <div className="modal-header" style={{ alignItems: 'flex-start', gap: 12 }}>
               <div>
-                <div className="modal-title">{planSelection.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{planSelection.cnpj ? formatCpfCnpj(planSelection.cnpj) : 'CNPJ não informado'} • {planSelection.address || 'Endereço não informado'}</div>
+                <div className="modal-title">{selected.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                  <span className={`badge ${STATUS_LABELS[selected.status]?.badge}`}>{STATUS_LABELS[selected.status]?.label}</span>
+                  {' '}Cadastrado em {formatDate(selected.created_at)}
+                </div>
               </div>
-              <button className="btn btn-ghost btn-icon" onClick={closePlanSelection}>
-                <XCircle size={16} />
-              </button>
-            </div>
-
-            <div style={{ padding: '20px', borderBottom: '1px solid var(--border-color)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-                {PLAN_MODELS.map((plan) => (
-                  <div
-                    key={plan.id}
-                    onClick={() => setPlanConfig((current) => ({ ...current, selectedPlan: plan.id }))}
-                    style={{
-                      padding: 16,
-                      border: `2px solid ${planConfig.selectedPlan === plan.id ? plan.color : 'var(--border-color)'}`,
-                      borderRadius: 8,
-                      background: planConfig.selectedPlan === plan.id ? `${plan.color}11` : 'var(--bg-secondary)',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 14, color: plan.color }}>{plan.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{plan.description}</div>
-                      </div>
-                      {planConfig.selectedPlan === plan.id && (
-                        <Check size={16} color={plan.color} />
-                      )}
-                    </div>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginTop: 8 }}>{plan.price}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ padding: '20px', overflowY: 'auto', maxHeight: '400px' }}>
-              <div style={{ marginBottom: 20 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Configurações do Plano {planConfig.selectedPlan || 'FREE'}</h3>
-                
-                {planConfig.selectedPlan === 'FREE' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-                    <div className="form-group">
-                      <label className="form-label">Dias de teste</label>
-                      <input 
-                        className="input" 
-                        type="number" 
-                        min="1" 
-                        max="365"
-                        value={planConfig.trialDays || 30} 
-                        onChange={(event) => setPlanConfig((current) => ({ ...current, trialDays: Number(event.target.value) }))} 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Máximo de usuários</label>
-                      <input 
-                        className="input" 
-                        type="number" 
-                        min="1"
-                        value={planConfig.maxUsuarios || 100} 
-                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxUsuarios: Number(event.target.value) }))} 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Máximo de moradores</label>
-                      <input 
-                        className="input" 
-                        type="number" 
-                        min="1"
-                        value={planConfig.maxMoradores || 500} 
-                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxMoradores: Number(event.target.value) }))} 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Máximo de documentos</label>
-                      <input 
-                        className="input" 
-                        type="number" 
-                        min="1"
-                        value={planConfig.maxDocumentos || 1000} 
-                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxDocumentos: Number(event.target.value) }))} 
-                      />
-                    </div>
-                  </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {selected.status === 'pending' && (
+                  <>
+                    <button className="btn btn-primary btn-sm" onClick={() => handleQuickAction('approve')} disabled={Boolean(busy)}>
+                      {busy === 'approve' ? <Loader2 size={14} className="spin-icon" /> : <CheckCircle2 size={14} />} Aprovar
+                    </button>
+                    <button className="btn btn-danger btn-sm" onClick={() => handleQuickAction('reject')} disabled={Boolean(busy)}>
+                      Rejeitar
+                    </button>
+                  </>
                 )}
-
-                {['ONE', 'PRO', 'MAX'].includes(planConfig.selectedPlan) && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-                    <div className="form-group">
-                      <label className="form-label">Máximo de usuários</label>
-                      <input 
-                        className="input" 
-                        type="number" 
-                        min="1"
-                        value={planConfig.maxUsuarios || 100} 
-                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxUsuarios: Number(event.target.value) }))} 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Máximo de moradores</label>
-                      <input 
-                        className="input" 
-                        type="number" 
-                        min="1"
-                        value={planConfig.maxMoradores || 500} 
-                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxMoradores: Number(event.target.value) }))} 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Máximo de documentos</label>
-                      <input 
-                        className="input" 
-                        type="number" 
-                        min="1"
-                        value={planConfig.maxDocumentos || 1000} 
-                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxDocumentos: Number(event.target.value) }))} 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Máximo de avisos (-1 = ilimitado)</label>
-                      <input 
-                        className="input" 
-                        type="number" 
-                        min="-1"
-                        value={planConfig.maxAvisos !== undefined ? planConfig.maxAvisos : -1} 
-                        onChange={(event) => setPlanConfig((current) => ({ ...current, maxAvisos: Number(event.target.value) }))} 
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={closePlanSelection}>Cancelar</button>
-              <button className="btn btn-primary" onClick={handleSavePlanConfiguration} disabled={savingAction === `${planSelection?.id}:plan`}>
-                {savingAction === `${planSelection?.id}:plan` ? <><Loader2 size={14} className="spin-icon" /> Salvando...</> : 'Salvar configuração'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editing && (
-        <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && closeEdit()}>
-          <div className="modal" style={{ maxWidth: 980 }}>
-            <div className="modal-header">
-              <div className="modal-title">Editar condominio</div>
-              <button className="btn btn-ghost btn-icon" onClick={closeEdit}>
-                <XCircle size={16} />
-              </button>
-            </div>
-
-            <div className="platform-condo-edit-grid">
-              <div className="platform-condo-edit-form">
-                <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">Nome do condominio</label>
-                  <input className="input" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">CPF/CNPJ</label>
-                  <input className="input" value={formatCpfCnpj(form.cnpj)} onChange={(event) => setForm((current) => ({ ...current, cnpj: normalizeCpfCnpj(event.target.value) }))} />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">WhatsApp do condominio e/ou sindico</label>
-                  <input className="input" value={form.whatsapp} onChange={(event) => setForm((current) => ({ ...current, whatsapp: event.target.value }))} />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Endereco</label>
-                  <input className="input" value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">CEP</label>
-                  <input className="input" value={form.zip_code} onChange={(event) => setForm((current) => ({ ...current, zip_code: event.target.value }))} />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Unidades</label>
-                  <input className="input" type="number" min="0" value={form.unit_count} onChange={(event) => setForm((current) => ({ ...current, unit_count: event.target.value }))} />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Status</label>
-                  <select className="input" value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}>
-                    <option value="pending">Pendente</option>
-                    <option value="active">Ativo</option>
-                    <option value="blocked">Bloqueado</option>
-                    <option value="rejected">Rejeitado</option>
-                  </select>
-                </div>
-
-                <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">Nota interna da plataforma</label>
-                  <textarea className="input" rows={3} value={form.platform_note} onChange={(event) => setForm((current) => ({ ...current, platform_note: event.target.value }))} placeholder="Observacoes operacionais sem dados financeiros." />
-                </div>
-              </div>
-
-              <div className="platform-condo-password-panel">
-                <div>
-                  <div style={{ fontWeight: 700, marginBottom: 6 }}>Acesso do sindico</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                    {editing.syndic?.nome || 'Sindico ainda nao informado'}
-                    <br />
-                    {editing.syndic?.email || 'Sem e-mail vinculado'}
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Nova senha do sindico</label>
-                  <input
-                    className="input"
-                    type="password"
-                    value={syndicPassword}
-                    onChange={(event) => setSyndicPassword(event.target.value)}
-                    placeholder="Minimo de 6 caracteres"
-                    disabled={!editing.syndic?.id}
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={handleSyndicPasswordSave}
-                  disabled={!editing.syndic?.id || savingAction === `${editing.id}:syndic-password`}
-                  style={{ justifyContent: 'center' }}
-                >
-                  {savingAction === `${editing.id}:syndic-password` ? (
-                    <>
-                      <Loader2 size={14} className="spin-icon" /> Salvando senha...
-                    </>
-                  ) : (
-                    <>
-                      <KeyRound size={14} /> Editar senha
-                    </>
-                  )}
+                <button className="btn btn-ghost btn-icon" onClick={closeCondominium} aria-label="Fechar">
+                  <XCircle size={16} />
                 </button>
               </div>
             </div>
 
-            <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={closeEdit}>Cancelar</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={savingAction === `${form.id}:save`}>
-                {savingAction === `${form.id}:save` ? <><Loader2 size={14} className="spin-icon" /> Salvando...</> : 'Salvar alteracoes'}
-              </button>
+            <div className="condo-tabs" role="tablist">
+              {TABS.map((item) => (
+                <button key={item.key} className="condo-tab" role="tab" aria-selected={tab === item.key} onClick={() => setTab(item.key)}>
+                  {item.label}
+                </button>
+              ))}
             </div>
+
+            {tab === 'config' && (
+              <div className="condo-form-grid">
+                <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                  <label className="form-label">Nome do condominio</label>
+                  <input className="input" value={form.name} onChange={(event) => updateForm({ name: event.target.value })} />
+                </div>
+
+                <div className="condo-section-title">Responsaveis</div>
+                <div className="form-group">
+                  <label className="form-label">Sindico</label>
+                  <input className="input" value={form.syndic_name} onChange={(event) => updateForm({ syndic_name: event.target.value })} disabled={!selected.syndic?.id} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">E-mail do condominio / sindico</label>
+                  <input className="input" type="email" value={form.syndic_email} onChange={(event) => updateForm({ syndic_email: event.target.value })} disabled={!selected.syndic?.id} />
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Corrige o e-mail cadastrado. O login continua pelo CNPJ e a senha nao muda.</span>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Contato do sindico (WhatsApp)</label>
+                  <input className="input" value={form.whatsapp} onChange={(event) => updateForm({ whatsapp: event.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Subsindico (opcional)</label>
+                  <input className="input" value={form.sub_syndic.name} onChange={(event) => updateForm({ sub_syndic: { ...form.sub_syndic, name: event.target.value } })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Contato do subsindico (opcional)</label>
+                  <input className="input" value={form.sub_syndic.whatsapp} onChange={(event) => updateForm({ sub_syndic: { ...form.sub_syndic, whatsapp: event.target.value } })} />
+                </div>
+
+                <div className="condo-section-title">Documento e unidades</div>
+                <div className="form-group">
+                  <label className="form-label">CNPJ ou CPF administrativo</label>
+                  <input className="input" value={formatCpfCnpj(form.cnpj)} onChange={(event) => updateForm({ cnpj: normalizeCpfCnpj(event.target.value) })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Quantidade de unidades</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={Math.max(selected.apartments_count || 0, 1)}
+                    step="1"
+                    value={form.unit_count}
+                    onChange={(event) => updateForm({ unit_count: event.target.value })}
+                  />
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                    {selected.apartments_count || 0} ocupadas. Somente a plataforma altera este limite; o sindico nao tem acesso.
+                  </div>
+                </div>
+
+                <div className="condo-section-title">Endereco completo</div>
+                <AddressFields value={form.address_details} onChange={(address_details) => updateForm({ address_details })} />
+
+                <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                  <label className="form-label">Nota interna da plataforma</label>
+                  <textarea className="input" rows={3} value={form.platform_note} onChange={(event) => updateForm({ platform_note: event.target.value })} placeholder="Visivel apenas para o administrador da plataforma." />
+                </div>
+              </div>
+            )}
+
+            {tab === 'plan' && (
+              <div style={{ display: 'grid', gap: 18 }}>
+                <div className="form-group" style={{ maxWidth: 280 }}>
+                  <label className="form-label">Situacao do cadastro</label>
+                  <select className="input" value={form.status} onChange={(event) => updateForm({ status: event.target.value })}>
+                    {Object.entries(STATUS_LABELS).map(([value, { label }]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <div className="form-label" style={{ marginBottom: 8 }}>Plano</div>
+                  <div className="plan-grid">
+                    <button type="button" className="plan-card" aria-pressed={form.plan === 'trial'} onClick={() => updateForm({ plan: 'trial' })}>
+                      <span className="plan-card-name">Teste</span>
+                      <span className="plan-card-meta">{TRIAL_PERIOD_DAYS} dias a partir da aprovacao</span>
+                      <span className="plan-card-meta">Recursos do ONE</span>
+                    </button>
+                    {PLAN_LIST.map((plan) => (
+                      <button
+                        key={plan.id}
+                        type="button"
+                        className="plan-card"
+                        aria-pressed={form.plan === plan.id}
+                        disabled={!plan.available}
+                        onClick={() => updateForm({ plan: plan.id, plan_expires_at: form.plan_expires_at || defaultExpiry() })}
+                      >
+                        <span className="plan-card-name">{plan.label}</span>
+                        <span className="plan-card-meta">{plan.partnership ? '100% gratuito, sem vencimento' : `${plan.priceLabel}/mes`}</span>
+                        <span className="plan-card-meta">{plan.partnership ? 'Todas as funcionalidades' : `Ate ${plan.documentLimit} documentos`}</span>
+                        {!plan.available && <span className="plan-card-dev">Em desenvolvimento</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {form.plan !== 'trial' && !selectedPlan?.partnership && (
+                  <div className="form-group" style={{ maxWidth: 280 }}>
+                    <label className="form-label">Plano valido ate</label>
+                    <input className="input" type="date" value={form.plan_expires_at} onChange={(event) => updateForm({ plan_expires_at: event.target.value })} />
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Para renovar, altere a data. Faltando {PLAN_WARNING_DAYS} dias o sindico ve o aviso "Atualize seu plano".</span>
+                  </div>
+                )}
+
+                <div className="condo-readonly" style={{ display: 'grid', gap: 4 }}>
+                  <div>Aprovado em: <strong>{formatDate(selected.approved_at)}</strong></div>
+                  <div>Teste: {formatDate(selected.trial_started_at)} ate <strong>{formatDate(selected.trial_ends_at)}</strong></div>
+                  <div>Limite de documentos: <strong>{selectedPlan?.documentLimit}</strong> ({selected.documents_count || 0} usados)</div>
+                  {selected.subscription_status === 'active' && <div>Plano valido ate: <strong>{selected.plan_name === 'PARCERIA' ? 'sem vencimento (parceria)' : formatDate(selected.plan_ends_at)}</strong></div>}
+                  {selected.plan_locked && (
+                    <div style={{ color: 'var(--orange)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <AlertTriangle size={14} /> {selected.subscription_status === 'active' ? 'Plano vencido' : 'Teste encerrado'}: o painel do condominio esta somente para visualizacao ate a renovacao.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {tab === 'access' && (
+              <div style={{ display: 'grid', gap: 14, maxWidth: 420 }}>
+                <div className="condo-readonly">
+                  <div style={{ fontWeight: 700 }}>{selected.syndic?.nome || 'Sindico nao encontrado'}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{selected.syndic?.email || 'Sem e-mail vinculado'}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Entra com o proprio CPF ou com o CNPJ do condominio.</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label"><KeyRound size={12} /> Nova senha do sindico</label>
+                  <input
+                    className="input"
+                    type="password"
+                    autoComplete="new-password"
+                    value={syndicPassword}
+                    onChange={(event) => setSyndicPassword(event.target.value)}
+                    placeholder="Minimo de 6 caracteres. Deixe em branco para manter."
+                    disabled={!selected.syndic?.id}
+                  />
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>A senha e aplicada ao clicar em "Salvar alteracoes".</div>
+                </div>
+              </div>
+            )}
+
+            {tab === 'data' && (
+              <div style={{ display: 'grid', gap: 18 }}>
+                <div className="card" style={{ margin: 0 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Exportar dados</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+                    Gera uma planilha .xlsx com todos os moradores e contadores deste condominio (resumo geral ou migracao).
+                  </div>
+                  <button className="btn btn-ghost" onClick={handleExport} disabled={Boolean(busy)}>
+                    {busy === 'export' ? <Loader2 size={14} className="spin-icon" /> : <Download size={14} />} Exportar planilha
+                  </button>
+                </div>
+
+                <div className="card" style={{ margin: 0 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Importar cadastros</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
+                    Envie a planilha exportada do condominio antigo (.xls ou .xlsx). Quem ja tem acesso e transferido para este condominio e mantem a senha;
+                    cadastros novos recebem senha temporaria. O limite de {selected.unit_count || '-'} unidades e respeitado.
+                  </div>
+                  <label className="btn btn-ghost" style={{ display: 'inline-flex' }}>
+                    <FileSpreadsheet size={14} /> {importFileName || 'Escolher planilha'}
+                    <input
+                      type="file"
+                      accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      className="sr-only"
+                      onChange={(event) => { void handleImportFile(event.target.files?.[0]); event.target.value = '' }}
+                    />
+                  </label>
+
+                  {importRows && (
+                    <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13 }}>{importRows.length} cadastro(s) encontrados na planilha.</span>
+                      <button className="btn btn-primary" onClick={handleImport} disabled={Boolean(busy)}>
+                        {busy === 'import' ? <Loader2 size={14} className="spin-icon" /> : <Upload size={14} />} Importar {importRows.length} cadastro(s)
+                      </button>
+                    </div>
+                  )}
+
+                  {importResult && (
+                    <div className="condo-readonly" style={{ marginTop: 12 }}>
+                      <div style={{ marginBottom: 8 }}>
+                        Criados: <strong>{importResult.summary.criado || 0}</strong> · Transferidos: <strong>{importResult.summary.transferido || 0}</strong> ·
+                        Atualizados: <strong>{importResult.summary.atualizado || 0}</strong> · Erros: <strong>{importResult.summary.erro || 0}</strong>
+                      </div>
+                      {importResult.results.filter((item) => item.status === 'erro').slice(0, 5).map((item) => (
+                        <div key={item.linha} style={{ fontSize: 12, color: 'var(--red)' }}>Linha {item.linha} ({item.nome || item.cpf}): {item.detalhe}</div>
+                      ))}
+                      <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={handleDownloadReport}>
+                        <Download size={12} /> Baixar relatorio completo
+                      </button>
+                      {(importResult.summary.criado || 0) > 0 && (
+                        <div style={{ fontSize: 12, color: 'var(--orange)', marginTop: 6 }}>
+                          O relatorio contem as senhas temporarias dos novos acessos: entregue a cada morador e apague o arquivo depois.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {tab !== 'data' && (
+              <div className="modal-footer">
+                <button className="btn btn-ghost" onClick={closeCondominium} disabled={Boolean(busy)}>Cancelar</button>
+                <button className="btn btn-primary" onClick={handleSave} disabled={Boolean(busy)}>
+                  {busy === 'save' ? <><Loader2 size={14} className="spin-icon" /> Salvando...</> : 'Salvar alteracoes'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

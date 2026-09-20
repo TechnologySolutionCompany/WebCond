@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { enrichDocumentsWithDownloadUrl } from '../../lib/documents'
 import { useAuth } from '../../hooks/useAuth'
+import { isNoticeForProfile } from '../../lib/units'
+import { isNoticeCurrent } from '../../lib/avisos'
 import { Bell, Info, AlertTriangle, Wrench, Megaphone, FileText, Download } from 'lucide-react'
 
 const TIPOS = {
@@ -34,10 +36,10 @@ export function MoradorAvisos() {
       .eq('ativo', true)
       .order('created_at', { ascending: false })
 
-    const filtrados = (data || []).filter((aviso) => aviso.destinatario === 'todos' || (aviso.destinatario === 'apartamento' && aviso.apartamento_destino === profile.apartamento))
+    const filtrados = (data || []).filter((aviso) => isNoticeCurrent(aviso) && isNoticeForProfile(aviso, profile))
     setAvisos(filtrados)
     setLoading(false)
-  }, [profile?.apartamento])
+  }, [profile])
 
   useEffect(() => {
     if (!profile?.apartamento) return

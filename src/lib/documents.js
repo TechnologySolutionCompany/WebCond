@@ -6,7 +6,9 @@ function sanitizePath(path = '') {
   return String(path).trim().replace(/^\/+/, '')
 }
 
-export function buildStorageFileName(fileName = '') {
+// Caminho sempre dentro da pasta do condominio: o Storage so libera arquivos da propria pasta.
+export function buildStorageFileName(fileName = '', condominiumId = '') {
+  if (!condominiumId) throw new Error('Condominio nao identificado para salvar o arquivo.')
   const normalized = String(fileName)
     .trim()
     .normalize('NFD')
@@ -16,7 +18,7 @@ export function buildStorageFileName(fileName = '') {
     .replace(/^-|-$/g, '')
 
   const safeName = normalized || 'documento'
-  return `${Date.now()}-${safeName}`
+  return `${condominiumId}/${Date.now()}-${safeName}`
 }
 
 export function extractStoragePathFromUrl(url = '') {

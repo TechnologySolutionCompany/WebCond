@@ -89,7 +89,7 @@ export default function PlatformDashboard({
                     <div style={{ fontWeight: 700 }}>{item.name}</div>
                     <span className="badge badge-orange">Pendente</span>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Plano: {item.plan_name || 'FREE'} · Usuarios: {item.total_users || 0}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Plano: {item.status === 'active' && item.subscription_status !== 'active' ? 'Teste' : item.plan_name}{item.plan_locked ? ' (vencido - somente visualizacao)' : item.plan_expiring_soon ? ` (vence em ${item.plan_days_left} dia${item.plan_days_left === 1 ? '' : 's'})` : ''} · Usuarios: {item.total_users || 0}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
                     Sindico: {item.syndic?.nome || 'Nao informado'}
                   </div>

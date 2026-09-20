@@ -1,8 +1,10 @@
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { useTheme } from '../../hooks/useTheme'
-import { Building2, LogOut, Moon, Sun, X } from 'lucide-react'
+import { Building2, Lock, LogOut, Moon, Sun, X } from 'lucide-react'
 import { getUserRoleLabel } from '../../lib/auth'
+import { getPlan } from '../../lib/condominiumPlan'
+import { describeResidentAccess } from '../../lib/units'
 
 export default function Sidebar({
   items,
@@ -19,6 +21,8 @@ export default function Sidebar({
   const initials = profile?.nome
     ? profile.nome.split(' ').map((name) => name[0]).slice(0, 2).join('').toUpperCase()
     : '?'
+
+  const planInfo = getPlanInfo(profile)
 
   const accentMap = {
     admin: { color: '#3fb950', dim: '#1a3a24', label: 'Administrador' },
@@ -74,6 +78,7 @@ export default function Sidebar({
                 >
                   <item.icon size={16} />
                   {item.label}
+                  {item.locked && <Lock size={12} style={{ marginLeft: 'auto', opacity: 0.6 }} aria-label="Bloqueado: atualize o plano" />}
                   {item.badge > 0 && (
                     <span style={{ marginLeft: 'auto', background: '#f0883e', color: '#000', borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
                       {item.badge}
@@ -110,12 +115,23 @@ export default function Sidebar({
               {initials}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="user-name">{profile?.nome || 'Usuario'}</div>
-              <div className="user-role">{getUserRoleLabel(profile?.role, profile?.apartamento)}</div>
-              {theme === 'admin' && (
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
-                  Plano: <span style={{ color: 'var(--text)', fontWeight: 600 }}>Em breve</span>
-                </div>
+              {theme === 'admin' ? (
+                <>
+                  <div className="user-role">{getUserRoleLabel(profile?.role, profile?.apartamento)}</div>
+                  <div className="user-name">{profile?.nome || 'Usuario'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
+                    Plano: <span style={{ color: planInfo.warn ? 'var(--orange)' : 'var(--text)', fontWeight: 600 }}>{planInfo.label}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="user-name">{profile?.nome || 'Usuario'}</div>
+                  <div className="user-role">
+                    {theme === 'morador'
+                      ? `${describeResidentAccess(profile).label} · ${describeResidentAccess(profile).unitsLabel}`
+                      : getUserRoleLabel(profile?.role, profile?.apartamento)}
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -133,4 +149,20 @@ export default function Sidebar({
       </aside>
     </>
   )
+}
+
+// Plano contratado ou, no teste, os dias restantes (30 dias contados da aprovacao pelo admin).
+function getPlanInfo(profile) {
+  if (!profile?.condominium_plan_name) return { label: '-', warn: false }
+
+  const isTrial = profile.condominium_subscription_status !== 'active'
+  const name = isTrial ? 'Teste' : getPlan(profile.condominium_plan_name).label
+  const days = profile.condominium_plan_days_left
+
+  if (profile.condominium_plan_locked) return { label: isTrial ? 'Teste encerrado' : `${name} vencido`, warn: true }
+  if (days === null || days === undefined) return { label: name, warn: false }
+  if (isTrial || profile.condominium_plan_expiring_soon) {
+    return { label: `${name} · ${days} ${days === 1 ? 'dia restante' : 'dias restantes'}`, warn: Boolean(profile.condominium_plan_expiring_soon) }
+  }
+  return { label: name, warn: false }
 }

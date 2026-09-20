@@ -72,4 +72,3 @@ export function signInWithCpf(cpf, password) {
   return signInWithDocument(cpf, password)
 }
 
-export const signInResidentWithCpf = signInWithCpf

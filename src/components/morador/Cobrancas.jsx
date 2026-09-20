@@ -43,8 +43,7 @@ export default function MoradorCobrancas() {
     const [{ data }, { data: requestsData }] = await Promise.all([
       supabase
       .from('cobrancas')
-      .select('*')
-      .eq('morador_id', profile.id)
+      .select('*') // RLS: cobrancas da pessoa e das unidades dela
       .order('created_at', { ascending: false }),
       supabase
         .from('ocorrencias_predio')
@@ -115,7 +114,7 @@ export default function MoradorCobrancas() {
         descricao: `O morador informou que realizou o pagamento da cobranca "${charge.descricao || charge.tipo}" referente a ${formatReferenceLabel(charge.mes_referencia)}. Verifique o comprovante e/ou o extrato do banco antes da baixa definitiva.`,
         categoria: 'geral',
         status: 'em_analise',
-        apartamento: profile?.apartamento || '',
+        apartamento: charge.unidade_numero || profile?.apartamento || '',
         created_by: profile.id,
       }, condominiumId))
     setSendingConfirmation(false)
@@ -133,7 +132,7 @@ export default function MoradorCobrancas() {
     <div className="fade-in">
       <div className="page-header">
         <div className="page-title">Minhas cobrancas</div>
-        <div className="page-subtitle">Historico financeiro do seu apartamento</div>
+        <div className="page-subtitle">Historico financeiro das suas unidades</div>
       </div>
 
       <div className="stats-grid" style={{ marginBottom: 20 }}>
@@ -192,7 +191,7 @@ export default function MoradorCobrancas() {
                     : getChargePaymentStatusMeta(cobranca)
                   return (
                     <tr key={cobranca.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(cobranca)}>
-                      <td>{cobranca.descricao || TIPOS_LABEL[cobranca.tipo] || cobranca.tipo}</td>
+                      <td>{cobranca.descricao || TIPOS_LABEL[cobranca.tipo] || cobranca.tipo}{cobranca.unidade_numero && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Unidade {cobranca.unidade_numero}</div>}</td>
                       <td><span className="badge badge-blue">{TIPOS_LABEL[cobranca.tipo] || cobranca.tipo}</span></td>
                       <td className="mono" style={{ color: '#8b949e' }}>{formatReferenceLabel(cobranca.mes_referencia)}</td>
                       <td style={{ color: '#8b949e' }}>{formatDate(cobranca.vencimento)}</td>
@@ -231,7 +230,7 @@ export default function MoradorCobrancas() {
                     <span><CalendarClock size={12} /> {formatDate(cobranca.vencimento)}</span>
                     <span className="mono" style={{ fontWeight: 700 }}>{formatCurrency(cobranca.valor)}</span>
                   </div>
-                  <div className="charge-card-sub">{formatReferenceLabel(cobranca.mes_referencia)}</div>
+                  <div className="charge-card-sub">{formatReferenceLabel(cobranca.mes_referencia)}{cobranca.unidade_numero ? ` · Unidade ${cobranca.unidade_numero}` : ''}</div>
                 </button>
               )
             })}

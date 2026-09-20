@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, Building2, LayoutDashboard, Menu } from 'lucide-react'
 import Sidebar from '../shared/Sidebar'
+import { useSidebarMenu } from '../../hooks/useSidebarMenu'
 import PlatformDashboard from './PlatformDashboard'
 import PlatformCondominiums from './PlatformCondominiums'
 import PlatformStatusPage from './PlatformStatusPage'
@@ -14,7 +15,7 @@ const PAGES = {
 
 export default function PlatformLayout() {
   const [page, setPage] = useState('dashboard')
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const { mobileOpen, toggleMenu, closeMobile, layoutClassName } = useSidebarMenu()
   const [mountedPages, setMountedPages] = useState(['dashboard'])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -93,11 +94,11 @@ export default function PlatformLayout() {
   const currentLabel = nav.flatMap((section) => section.items).find((item) => item.key === page)?.label || 'Painel global'
 
   return (
-    <div className="app-layout">
-      <Sidebar items={nav} activeKey={page} onNav={handleNavigate} theme="platform" mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+    <div className={`app-layout ${layoutClassName}`}>
+      <Sidebar items={nav} activeKey={page} onNav={handleNavigate} theme="platform" mobileOpen={mobileOpen} onClose={closeMobile} />
       <main className="main-content" ref={mainContentRef}>
         <div className="mobile-topbar">
-          <button className="btn btn-ghost btn-icon" onClick={() => setMobileOpen(true)}>
+          <button className="btn btn-ghost btn-icon" onClick={toggleMenu} aria-label="Abrir ou recolher o menu" aria-expanded={mobileOpen || !layoutClassName}>
             <Menu size={18} />
           </button>
           <div>

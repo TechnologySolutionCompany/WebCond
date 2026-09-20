@@ -8,6 +8,7 @@ import {
   requireCondominiumAdmin,
   supabaseAdmin,
 } from '../../_lib/supabaseAdmin.js'
+import { checkUnitAvailability, loadUnitUsage } from '../../_lib/unitLimit.js'
 
 function generateTemporaryPassword() {
   const words = ['Sol', 'Rio', 'Mar', 'Lua', 'Eco']
@@ -76,8 +77,9 @@ export async function POST(req) {
   const condominiumId = getProfileCondominiumId(auth.profile)
   const email = String(body.email || '').trim().toLowerCase() || buildInternalResidentEmail(cpf, condominiumId)
 
-  if (!nome || !apartamento || !whatsapp) {
-    return json({ error: 'Nome, apartamento e WhatsApp sao obrigatorios.' }, 400)
+  // Contador nao pertence a uma unidade; so o morador exige apartamento.
+  if (!nome || !whatsapp || (role === 'morador' && !apartamento)) {
+    return json({ error: role === 'morador' ? 'Nome, apartamento e WhatsApp sao obrigatorios.' : 'Nome e WhatsApp sao obrigatorios.' }, 400)
   }
 
   if (cpf.length !== 11) {
@@ -86,6 +88,16 @@ export async function POST(req) {
 
   if (password.length < 6) {
     return json({ error: 'Informe uma senha de acesso com pelo menos 6 caracteres.' }, 400)
+  }
+
+
+  if (role === 'morador') {
+    try {
+      const unitError = checkUnitAvailability(await loadUnitUsage(condominiumId), apartamento)
+      if (unitError) return json({ error: unitError }, 409)
+    } catch (unitLimitError) {
+      return json({ error: unitLimitError.message }, 500)
+    }
   }
 
   const uniquenessError = await validateResidentUniqueness(supabaseAdmin || auth.client, { email, cpf })

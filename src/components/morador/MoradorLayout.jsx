@@ -5,6 +5,8 @@ import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { useMoradorPresence } from '../../hooks/useMoradorPresence'
 import { isResidentRole } from '../../lib/auth'
 import Sidebar from '../shared/Sidebar'
+import { useSidebarMenu } from '../../hooks/useSidebarMenu'
+import PlanAttentionBanner from '../shared/PlanAttentionBanner'
 import MoradorDashboard from './Dashboard'
 import MoradorCobrancas from './Cobrancas'
 import { MoradorAvisos, MoradorDocumentos } from './AvisosDocumentos'
@@ -43,7 +45,7 @@ export default function MoradorLayout() {
   const { profile } = useAuth()
   const { settings: condominiumSettings } = useCondominiumSettings(profile?.condominium_id || profile?.condominio_id || null)
   const [activePage, setActivePage] = useState('dashboard')
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const { mobileOpen, toggleMenu, closeMobile, layoutClassName } = useSidebarMenu()
   const [mountedPages, setMountedPages] = useState(['dashboard'])
   const mainContentRef = useRef(null)
   const scrollPositionsRef = useRef({})
@@ -75,11 +77,11 @@ export default function MoradorLayout() {
   }
 
   return (
-    <div className="app-layout theme-morador">
-      <Sidebar items={nav} activeKey={activePage} onNav={handleNavigate} theme="morador" mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+    <div className={`app-layout theme-morador ${layoutClassName}`}>
+      <Sidebar items={nav} activeKey={activePage} onNav={handleNavigate} theme="morador" mobileOpen={mobileOpen} onClose={closeMobile} />
       <main className="main-content" ref={mainContentRef}>
         <div className="mobile-topbar">
-          <button className="btn btn-ghost btn-icon" onClick={() => setMobileOpen(true)}>
+          <button className="btn btn-ghost btn-icon" onClick={toggleMenu} aria-label="Abrir ou recolher o menu" aria-expanded={mobileOpen || !layoutClassName}>
             <Menu size={18} />
           </button>
           <div>
@@ -88,6 +90,7 @@ export default function MoradorLayout() {
           </div>
         </div>
         <div className="page-content">
+          {activePage === 'dashboard' && <PlanAttentionBanner audience="resident" />}
           {mountedPages.map((pageKey) => {
             const PageComponent = pages[pageKey] || MoradorDashboard
             const isActive = pageKey === activePage

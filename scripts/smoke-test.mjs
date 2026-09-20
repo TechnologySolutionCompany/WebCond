@@ -32,7 +32,7 @@ await expect('register de origem externa', 'platform/condominiums/register', 'PO
 await expect('register com corpo vazio', 'platform/condominiums/register', 'POST', 400, {})
 
 const { supabaseAdmin } = await import('../api/_lib/supabaseAdmin.js')
-const tables = ['condominiums', 'profiles', 'solicitacoes_cadastro', 'cobrancas', 'avisos', 'documentos', 'ocorrencias_predio', 'app_health']
+const tables = ['condominiums', 'profiles', 'solicitacoes_cadastro', 'cobrancas', 'avisos', 'documentos', 'ocorrencias_predio', 'app_health', 'unidades', 'unidade_vinculos']
 for (const table of tables) {
   const { error } = await supabaseAdmin.from(table).select('*', { count: 'exact', head: true })
   if (error) failures += 1

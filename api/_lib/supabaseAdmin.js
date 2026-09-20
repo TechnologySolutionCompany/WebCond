@@ -47,7 +47,8 @@ function createBackendClient(apiKey, accessToken) {
   })
 }
 
-async function resolveCondominiumAccessError(condominiumId) {
+// blockLockedPlan: rotas do sindico (todas alteram dados) param quando o teste/plano venceu.
+async function resolveCondominiumAccessError(condominiumId, { blockLockedPlan = false } = {}) {
   if (!condominiumId || !supabaseAdmin) return null
 
   const { data: condominium, error } = await supabaseAdmin
@@ -66,16 +67,19 @@ async function resolveCondominiumAccessError(condominiumId) {
     return json({ error: 'O cadastro do condominio ainda aguarda aprovacao da plataforma.' }, 403)
   }
 
-  if (accessState.blockReason === 'trial_expired') {
-    return json({ error: 'O periodo de teste do condominio terminou. Escolha um plano (ONE, PRO ou MAX) para liberar o acesso.' }, 403)
-  }
-
   if (accessState.effectiveStatus === 'blocked') {
     return json({ error: 'O acesso do condominio esta bloqueado no momento.' }, 403)
   }
 
   if (accessState.effectiveStatus === 'rejected') {
     return json({ error: 'O cadastro do condominio foi rejeitado pela plataforma.' }, 403)
+  }
+
+  if (blockLockedPlan && accessState.planLocked) {
+    return json({
+      code: 'PLAN_EXPIRED',
+      error: 'O plano do condominio venceu. O painel esta somente para visualizacao: atualize o plano para voltar a fazer alteracoes.',
+    }, 402)
   }
 
   return null
@@ -293,7 +297,7 @@ export async function requireAdmin(req, options = {}) {
   }
 
   if (normalizedRole !== 'platform_admin') {
-    const accessError = await resolveCondominiumAccessError(condominiumId)
+    const accessError = await resolveCondominiumAccessError(condominiumId, { blockLockedPlan: true })
     if (accessError) {
       return { error: accessError }
     }

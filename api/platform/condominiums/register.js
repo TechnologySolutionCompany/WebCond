@@ -1,5 +1,6 @@
 import { checkRateLimit, ensureServiceRoleConfig, getClientIp, json, parseJsonBody, quoteFilterValue, rejectForeignOrigin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
 import { STANDARD_PLAN_NAME, STANDARD_PLAN_PRICE_CENTS } from '../../../src/lib/condominiumPlan.js'
+import { composeAddress, sanitizeAddress } from '../../../src/lib/address.js'
 
 function slugify(value = '') {
   const base = String(value || '')
@@ -82,8 +83,11 @@ export async function POST(req) {
   const name = String(body.name || '').trim()
   const cnpj = String(body.cnpj || body.document || body.condominiumDocument || '').replace(/\D/g, '')
   const condominiumDocumentType = getCpfCnpjType(cnpj)
-  const address = String(body.address || '').trim()
-  const zipCode = String(body.zip_code || body.zipCode || '').trim()
+  const addressDetails = sanitizeAddress(body.addressDetails || body.address_details)
+  const address = composeAddress(addressDetails) || String(body.address || '').trim()
+  const zipCode = addressDetails.zip_code || String(body.zip_code || body.zipCode || '').replace(/\D/g, '')
+  const subSyndicName = String(body.subSyndicName || body.sub_syndic_name || '').trim()
+  const subSyndicWhatsapp = String(body.subSyndicWhatsapp || body.sub_syndic_whatsapp || '').replace(/\D/g, '')
   const whatsapp = String(body.whatsapp || '').replace(/\D/g, '')
   const unitCount = Number(body.unit_count || body.unitCount || 0)
   const pixKey = String(body.pix_key || body.pixKey || '').trim()
@@ -95,6 +99,10 @@ export async function POST(req) {
 
   if (!name || !cnpj || !address || !zipCode || !whatsapp || !syndicName || !syndicCpf || !syndicEmail || !password) {
     return json({ error: 'Preencha todos os dados do condominio e do sindico.' }, 400)
+  }
+
+  if (!Number.isFinite(unitCount) || unitCount < 1) {
+    return json({ error: 'Informe a quantidade de unidades do condominio.' }, 400)
   }
 
   if (!condominiumDocumentType) {
@@ -138,6 +146,8 @@ export async function POST(req) {
     subscription_status: 'trial',
     registration_origin: 'landing',
     condominium_document_type: condominiumDocumentType,
+    address_details: addressDetails,
+    sub_syndic: { name: subSyndicName, whatsapp: subSyndicWhatsapp },
   }
 
   const { data: condominium, error: createCondominiumError } = await supabaseAdmin
@@ -151,7 +161,7 @@ export async function POST(req) {
       endereco: address,
       zip_code: zipCode,
       whatsapp,
-      unit_count: Number.isFinite(unitCount) ? Math.max(unitCount, 0) : 0,
+      unit_count: Math.floor(unitCount),
       pix_key: pixKey,
       chave_pix: pixKey,
       bank_details: bankDetails,

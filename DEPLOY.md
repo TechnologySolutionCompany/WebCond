@@ -34,9 +34,18 @@ No **SQL Editor**, execute:
 
 - Projeto novo: todo o `schema.sql`.
 - Projeto que já tem dados: todo o `schema_updates.sql`.
+- Depois, em ordem, os arquivos da pasta `sql/` que ainda não foram aplicados (cada um pode ser executado
+  de novo sem risco):
+  1. `2026-09-19_unidades_e_limite_documentos.sql`
+  2. `2026-09-20_vinculos_e_cobranca_por_unidade.sql`
+  3. `2026-09-21_plano_vencido_somente_leitura.sql`
+  4. `2026-09-22_seguranca_parceria_avisos.sql`
+
+Em **Authentication > Sign In / Providers**, desative **Allow new users to sign up**. Todas as contas são
+criadas pelo backend (service role); o cadastro público do Supabase Auth não é usado pelo sistema.
 
 Confira se existem as tabelas `condominiums`, `profiles`, `solicitacoes_cadastro`, `cobrancas`, `avisos`,
-`documentos`, `ocorrencias_predio`, `app_health`, os buckets privados `documentos` e `cobrancas`, e RLS
+`documentos`, `ocorrencias_predio`, `app_health`, `unidades`, `unidade_vinculos`, os buckets privados `documentos` e `cobrancas`, e RLS
 habilitado em todas as tabelas:
 
 ```sql
@@ -142,8 +151,8 @@ npm run smoke-test      # somente leitura: testa API, tabelas, buckets e PLATFOR
    houver CNPJ). O condomínio nasce `pending`.
 3. `PLATFORM_ADMIN` aprova em `/platform > Condomínios`. Antes disso o síndico autentica, mas o acesso é bloqueado.
 4. Síndico entra por CPF ou pelo CNPJ do condomínio e acessa `/admin`.
-5. Síndico cadastra moradores em `/admin > Moradores`; o sistema gera uma senha temporária para cada um.
-6. Morador entra com CPF + senha temporária e acessa `/morador`.
+5. Síndico cadastra as unidades em `/admin > Unidades` (proprietário e, se alugada, inquilino, com senha).
+6. Proprietário/inquilino entra com CPF + senha e acessa `/morador`.
 7. Síndico cria uma cobrança com Pix/anexo/boleto; morador vê a cobrança, QR Code/código Pix e documentos.
 8. Síndico marca o pagamento como recebido.
 9. Bloqueie o condomínio em `/platform` e confirme que síndico e moradores perdem o acesso.
@@ -189,9 +198,10 @@ A `anon key` é pública por natureza (o RLS protege os dados), mas rotacione se
 ## 7. Manutenção
 
 - Logs: Vercel **Deployments > Logs**; Supabase **Logs**.
-- `npm run supabase:audit` gera `SUPABASE_AUDIT.md` com inconsistências de perfis. **O relatório contém
-  CPF, e-mail e WhatsApp reais**: está no `.gitignore`, não compartilhe e apague após o uso.
-- `npm run supabase:clear-registrations` apaga cadastros — destrutivo, use só em ambiente de teste.
+- `npm run smoke-test`: checagem somente leitura do backend contra o Supabase do `.env`.
+- `/platform > Status`: saúde de banco, login, arquivos e rotinas, com tempo de resposta.
+- Avisos são apagados automaticamente 30 dias após o envio (a cada novo aviso e, se a extensão `pg_cron`
+  estiver habilitada, diariamente às 03:00 UTC).
 
 ## 8. Problemas comuns
 

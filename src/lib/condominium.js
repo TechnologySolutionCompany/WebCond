@@ -1,4 +1,14 @@
-import { DEFAULT_CONDOMINIUM_SETTINGS } from './condoConfig.js'
+// Valores neutros enquanto os dados do condominio nao carregam. Nunca usar dados de um
+// condominio real aqui: o fallback apareceria para todos os outros (ex.: chave PIX no boleto).
+const DEFAULT_CONDOMINIUM_SETTINGS = {
+  name: 'Condominio',
+  address: '',
+  pixProvider: '',
+  pixKey: '',
+  whatsapp: '',
+  whatsappLabel: '',
+  unitCount: 0,
+}
 
 function normalizeDigits(value = '') {
   return String(value || '').replace(/\D/g, '')

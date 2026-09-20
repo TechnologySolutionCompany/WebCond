@@ -103,10 +103,6 @@ export const AuthProvider = ({ children }) => {
       throw createAuthError('Condominio aguardando aprovacao.', CONDOMINIUM_PENDING_CODE)
     }
 
-    if (accessState.blockReason === 'trial_expired') {
-      throw createAuthError('Periodo de teste expirado.', CONDOMINIUM_TRIAL_EXPIRED_CODE)
-    }
-
     if (accessState.effectiveStatus === 'blocked') {
       throw createAuthError('Condominio bloqueado.', CONDOMINIUM_BLOCKED_CODE)
     }
@@ -115,9 +111,31 @@ export const AuthProvider = ({ children }) => {
       throw createAuthError('Condominio rejeitado.', CONDOMINIUM_REJECTED_CODE)
     }
 
+    // Unidades da pessoa (um proprietario pode ter varias). Sem vinculos, vale o apartamento do perfil.
+    const { data: unitLinks } = await supabase
+      .from('unidade_vinculos')
+      .select('vinculo, unidades(numero)')
+      .eq('profile_id', data.id)
+    const links = (unitLinks || [])
+      .filter((link) => link.unidades?.numero)
+      .map((link) => ({ numero: link.unidades.numero, vinculo: link.vinculo }))
+    const unitNumbers = links.map((link) => link.numero)
+
     return {
       ...data,
+      unit_numbers: unitNumbers.length ? unitNumbers : [data.apartamento].filter(Boolean),
+      unit_links: links,
+      // Proprietario em pelo menos uma unidade: pode solicitar alteracao de cadastro e ve o inquilino.
+      is_owner: links.length ? links.some((link) => link.vinculo === 'proprietario') : data.vinculo !== 'inquilino',
       condominium_status: accessState.effectiveStatus,
+      condominium_plan_attention: accessState.planAttention,
+      condominium_document_limit: accessState.documentLimit,
+      condominium_plan_name: accessState.planName,
+      condominium_subscription_status: accessState.subscriptionStatus,
+      condominium_plan_ends_at: accessState.planEndsAt,
+      condominium_plan_days_left: accessState.planDaysLeft,
+      condominium_plan_locked: accessState.planLocked,
+      condominium_plan_expiring_soon: accessState.planExpiringSoon,
     }
   }
 

@@ -2,19 +2,21 @@ import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { formatCpf } from '../../lib/cpf'
 import { useToast } from '../shared/Toast'
-import { User, Home, Phone, CreditCard, Send, FilePenLine, X, KeyRound } from 'lucide-react'
+import { User, Home, Phone, CreditCard, Send, FilePenLine, X, KeyRound, Mail, Wallet } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { withTenantFields } from '../../lib/tenant'
 import { buildProfileUpdateTitle } from '../../lib/residentRequests'
-import { getMoradiaMeta } from '../../lib/profileMeta'
+import { compareUnitNumbers, describeResidentAccess, getUnitStatusMeta } from '../../lib/units'
 
 export default function MoradorPerfil() {
   const { profile, condominiumId } = useAuth()
+  const access = describeResidentAccess(profile)
   const { toast } = useToast()
   const [showRequestModal, setShowRequestModal] = useState(false)
   const [requestText, setRequestText] = useState('')
   const [history, setHistory] = useState([])
   const [saving, setSaving] = useState(false)
+  const [units, setUnits] = useState([])
   const [passwordForm, setPasswordForm] = useState({
     password: '',
     confirmPassword: '',
@@ -37,7 +39,24 @@ export default function MoradorPerfil() {
     void fetchRequests()
   }, [fetchRequests, profile?.id])
 
+  // Unidades da pessoa e, para o proprietario de unidade alugada, o inquilino (sem CPF e so "Nome Sobrenome").
+  useEffect(() => {
+    if (!profile?.id) return
+    void (async () => {
+      const { data, error } = await supabase.rpc('my_unit_people')
+      if (error) {
+        setUnits((profile.unit_links || []).map((link) => ({ unidade_numero: link.numero, meu_vinculo: link.vinculo })))
+        return
+      }
+      setUnits([...(data || [])].sort((a, b) => compareUnitNumbers(a.unidade_numero, b.unidade_numero)))
+    })()
+  }, [profile?.id, profile?.unit_links])
+
   const handleRequest = async () => {
+    if (!access.isOwner) {
+      toast('Somente o proprietario pode solicitar alteracao do cadastro.', 'error')
+      return
+    }
     if (!String(requestText || '').trim()) {
       toast('Descreva quais dados voce deseja alterar.', 'error')
       return
@@ -100,8 +119,6 @@ export default function MoradorPerfil() {
 
   if (!profile) return null
 
-  const moradiaMeta = getMoradiaMeta(profile)
-
   return (
     <div className="fade-in">
       <div className="page-header">
@@ -115,35 +132,58 @@ export default function MoradorPerfil() {
             <div>
               <div style={{ fontSize: 20, fontWeight: 700 }}>{profile.nome}</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                <span className="badge badge-blue">
-                  <Home size={10} /> Apt. {profile.apartamento || '-'}
-                </span>
+                <span className={`badge ${access.isOwner ? 'badge-green' : 'badge-blue'}`}>{access.label}</span>
+                <span className="badge badge-purple"><Home size={10} /> {access.unitsLabel}</span>
                 <span className="badge badge-green">Cadastro gerenciado pelo sindico</span>
               </div>
             </div>
 
-            <button className="btn btn-primary" onClick={() => setShowRequestModal(true)}>
-              <FilePenLine size={14} /> Solicitar alteracao do cadastro
-            </button>
+            {access.isOwner ? (
+              <button className="btn btn-primary" onClick={() => setShowRequestModal(true)}>
+                <FilePenLine size={14} /> Solicitar alteracao do cadastro
+              </button>
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 260 }}>
+                Alteracoes de cadastro sao solicitadas pelo proprietario da unidade.
+              </div>
+            )}
           </div>
         </div>
 
         <div className="card" style={{ marginBottom: 20 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 18 }}>Informacoes cadastrais</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 18 }}>{access.label}: meus dados</div>
+          <div className="profile-fields">
             <ProfileField icon={User} label="Nome completo" value={profile.nome} />
-            <ProfileField icon={Home} label="Apartamento" value={profile.apartamento ? `Apt. ${profile.apartamento}` : '-'} />
             <ProfileField icon={CreditCard} label="CPF" value={profile.cpf ? formatCpf(profile.cpf) : '-'} />
             <ProfileField icon={Phone} label="WhatsApp" value={profile.whatsapp || '-'} />
-            <ProfileField icon={Home} label="Status da unidade" value={moradiaMeta.status_moradia === 'alugado' ? 'Alugado' : 'Residindo'} />
-            {moradiaMeta.status_moradia === 'alugado' && (
-              <>
-                <ProfileField icon={User} label="Inquilino" value={moradiaMeta.inquilino_nome || '-'} />
-                <ProfileField icon={Phone} label="Telefone do inquilino" value={moradiaMeta.inquilino_telefone || '-'} />
-              </>
-            )}
+            <ProfileField icon={Mail} label="E-mail" value={profile.email && !profile.email.endsWith('@login.webcond.local') ? profile.email : '-'} />
           </div>
         </div>
+
+        {units.map((unit) => {
+          const status = unit.situacao ? getUnitStatusMeta(unit.situacao) : null
+          const tenantPays = unit.responsavel_financeiro === 'inquilino'
+          return (
+            <div key={unit.unidade_id || unit.unidade_numero} className="card" style={{ marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>Unidade {unit.unidade_numero}</span>
+                {status && <span className={`badge ${status.badge}`}>{status.label}</span>}
+                <span className="badge badge-blue">{unit.meu_vinculo === 'inquilino' ? 'Voce e o inquilino' : 'Voce e o proprietario'}</span>
+              </div>
+              <div className="profile-fields">
+                {unit.responsavel_financeiro && (
+                  <ProfileField icon={Wallet} label="Responsavel financeiro" value={tenantPays ? 'Inquilino' : 'Proprietario'} />
+                )}
+                {unit.pessoa_vinculo === 'inquilino' && (
+                  <>
+                    <ProfileField icon={User} label="Inquilino" value={unit.pessoa_nome || '-'} />
+                    <ProfileField icon={Phone} label="WhatsApp do inquilino" value={unit.pessoa_whatsapp || '-'} />
+                  </>
+                )}
+              </div>
+            </div>
+          )
+        })}
 
         <div className="card" style={{ marginBottom: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 18 }}>Senha de acesso</div>
@@ -241,11 +281,11 @@ export default function MoradorPerfil() {
 function ProfileField({ icon: Icon, label, value }) {
   return (
     <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-      <div style={{ width: 36, height: 36, borderRadius: 8, background: '#1c2333', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <Icon size={15} color="#8b949e" />
+      <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon size={15} color="var(--text-muted)" />
       </div>
       <div>
-        <div style={{ fontSize: 11, color: '#484f58', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600 }}>{label}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600 }}>{label}</div>
         <div style={{ fontSize: 13, fontWeight: 500, marginTop: 1 }}>{value}</div>
       </div>
     </div>

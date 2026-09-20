@@ -1,12 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
+import { describeResidentAccess, isNoticeForProfile } from '../../lib/units'
+import { isNoticeCurrent } from '../../lib/avisos'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
-import { Bell, CalendarClock, DollarSign, MessageSquareText } from 'lucide-react'
+import { Bell, CalendarClock, DollarSign, KeyRound, MessageSquareText } from 'lucide-react'
 import { countChargeStatuses, getChargeStatus } from '../../lib/chargeStatus'
 import { formatReferenceLabel } from '../../lib/billingShared'
 import ChargeSummaryBars from '../shared/ChargeSummaryBars'
 import { getTenantChargeSummary } from '../../lib/tenantApi'
+
+const EMPTY_SUMMARY = {
+  total_unidades: 0,
+  competencia: '',
+  unidades_cobradas: 0,
+  proximo_vencimento: '',
+  carencia_horas: 48,
+  em_aberto: 0,
+  pago: 0,
+  inadimplente: 0,
+}
+
+function formatDate(value) {
+  return value ? new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR') : '-'
+}
 
 function formatMoney(value = 0) {
   return Number(value || 0).toLocaleString('pt-BR', {
@@ -21,12 +38,7 @@ export default function MoradorDashboard({ isActive = true }) {
   const [cobrancas, setCobrancas] = useState([])
   const [avisos, setAvisos] = useState([])
   const [loading, setLoading] = useState(true)
-  const [tenantSummary, setTenantSummary] = useState({
-    total_apartamentos: 0,
-    em_aberto: 0,
-    pago: 0,
-    inadimplente: 0,
-  })
+  const [tenantSummary, setTenantSummary] = useState(EMPTY_SUMMARY)
 
   useEffect(() => {
     if (!isActive || !profile?.id) return
@@ -35,32 +47,24 @@ export default function MoradorDashboard({ isActive = true }) {
       setLoading(true)
 
       const [cobrancasRes, avisosRes, summaryRes] = await Promise.all([
-        supabase.from('cobrancas').select('*').eq('morador_id', profile.id).order('created_at', { ascending: false }),
+        // RLS: cobrancas da pessoa e das unidades dela (inquilino: desde que entrou na unidade).
+        supabase.from('cobrancas').select('*').order('created_at', { ascending: false }),
         supabase.from('avisos').select('*').eq('ativo', true).order('created_at', { ascending: false }).limit(12),
-        getTenantChargeSummary().catch(() => ({
-          total_apartamentos: 0,
-          em_aberto: 0,
-          pago: 0,
-          inadimplente: 0,
-        })),
+        getTenantChargeSummary().catch(() => EMPTY_SUMMARY),
       ])
 
       const avisosFiltrados = (avisosRes.data || [])
-        .filter((aviso) => aviso.destinatario === 'todos' || (aviso.destinatario === 'apartamento' && aviso.apartamento_destino === profile.apartamento))
+        .filter((aviso) => isNoticeCurrent(aviso) && isNoticeForProfile(aviso, profile))
 
       setCobrancas(cobrancasRes.data || [])
       setAvisos(avisosFiltrados)
-      setTenantSummary(summaryRes || {
-        total_apartamentos: 0,
-        em_aberto: 0,
-        pago: 0,
-        inadimplente: 0,
-      })
+      setTenantSummary({ ...EMPTY_SUMMARY, ...summaryRes })
       setLoading(false)
     })()
-  }, [isActive, profile?.id, profile?.apartamento])
+  }, [isActive, profile])
 
   const statusCount = useMemo(() => countChargeStatuses(cobrancas), [cobrancas])
+  const access = describeResidentAccess(profile)
   const avisosRecentes = avisos.slice(0, 3)
   const avisosHistorico = avisos.slice(0, 6)
 
@@ -83,22 +87,42 @@ export default function MoradorDashboard({ isActive = true }) {
       <div className="page-header">
         <div className="page-title">Ola, {profile?.nome?.split(' ')[0]}</div>
         <div className="page-subtitle">Bem-vindo ao Sistema do {condominiumSettings.name}</div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+          <span className={`badge ${access.isOwner ? 'badge-green' : 'badge-blue'}`}>
+            <KeyRound size={10} /> Acesso de {access.isOwner ? 'proprietario' : 'inquilino'}
+          </span>
+          <span className="badge badge-purple">{access.unitsLabel}</span>
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           <CalendarClock size={16} color="#58a6ff" />
-          <span style={{ fontWeight: 700, fontSize: 14 }}>Resumo anonimizado do condominio</span>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>Resumo financeiro do condominio</span>
+          {tenantSummary.competencia && <span className="badge badge-blue">{formatReferenceLabel(tenantSummary.competencia)}</span>}
         </div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-          De {tenantSummary.total_apartamentos || 0} apartamentos registrados, {tenantSummary.inadimplente || 0} estao atrasados e {tenantSummary.em_aberto || 0} seguem em aberto.
-        </div>
-        <ChargeSummaryBars
-          totalApartamentos={tenantSummary.total_apartamentos}
-          emAberto={tenantSummary.em_aberto}
-          pago={tenantSummary.pago}
-          inadimplente={tenantSummary.inadimplente}
-        />
+        {tenantSummary.unidades_cobradas === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            {tenantSummary.total_unidades} unidades cadastradas. Nenhuma cobranca lancada ate o momento.
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
+              {tenantSummary.total_unidades} unidades cadastradas. Ja foram identificados {tenantSummary.pago} pagamentos,
+              {' '}{tenantSummary.em_aberto} seguem em aberto e {tenantSummary.inadimplente} estao inadimplentes.
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 16 }}>
+              {tenantSummary.proximo_vencimento && <>Vencimento em {formatDate(tenantSummary.proximo_vencimento)}. </>}
+              Sem identificacao do pagamento em ate {tenantSummary.carencia_horas}h apos o vencimento, a unidade passa para inadimplente.
+            </div>
+            <ChargeSummaryBars
+              emAberto={tenantSummary.em_aberto}
+              pago={tenantSummary.pago}
+              inadimplente={tenantSummary.inadimplente}
+              helper={`de ${tenantSummary.unidades_cobradas} unidades cobradas`}
+            />
+          </>
+        )}
       </div>
 
       <div className="grid-2" style={{ marginBottom: 24, alignItems: 'start' }}>

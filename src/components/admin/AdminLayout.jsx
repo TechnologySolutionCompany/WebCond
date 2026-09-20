@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { LayoutDashboard, Users, DollarSign, Bell, FileText, Calculator, Menu } from 'lucide-react'
+import { LayoutDashboard, Home, DollarSign, Bell, FileText, Calculator, Menu } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { normalizeRole } from '../../lib/auth'
 import Sidebar from '../shared/Sidebar'
+import { useSidebarMenu } from '../../hooks/useSidebarMenu'
+import PlanUpgradeNotice from '../shared/PlanUpgradeNotice'
 import Dashboard from './Dashboard'
-import Moradores from './Moradores'
+import Unidades from './Unidades'
 import Cobrancas from './Cobrancas'
 import Avisos from './Avisos'
 import Documentos from './Documentos'
@@ -13,7 +15,7 @@ import Contador from './Contador'
 
 const PAGES = {
   dashboard: Dashboard,
-  moradores: Moradores,
+  unidades: Unidades,
   cobrancas: Cobrancas,
   avisos: Avisos,
   documentos: Documentos,
@@ -21,10 +23,13 @@ const PAGES = {
 }
 
 export default function AdminLayout() {
-  const { condominiumId, resolvedRole } = useAuth()
+  const { condominiumId, resolvedRole, profile } = useAuth()
+  // Teste/plano vencido: so o Painel abre (somente visualizacao); o resto do menu fica com cadeado.
+  const planLocked = Boolean(profile?.condominium_plan_locked)
+  const [upgradeOpen, setUpgradeOpen] = useState(planLocked)
   const { settings: condominiumSettings } = useCondominiumSettings(condominiumId)
   const [page, setPage] = useState('dashboard')
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const { mobileOpen, toggleMenu, closeMobile, layoutClassName } = useSidebarMenu()
   const [mountedPages, setMountedPages] = useState(['dashboard'])
   const mainContentRef = useRef(null)
   const scrollPositionsRef = useRef({})
@@ -42,6 +47,10 @@ export default function AdminLayout() {
   }, [page])
 
   const handleNavigate = (nextPage) => {
+    if (planLocked && nextPage !== 'dashboard') {
+      setUpgradeOpen(true)
+      return
+    }
     if (nextPage === page) return
 
     if (mainContentRef.current) {
@@ -54,7 +63,7 @@ export default function AdminLayout() {
 
   const isAccountant = normalizeRole(resolvedRole) === 'contador'
 
-  const nav = useMemo(() => (isAccountant ? [
+  const baseNav = useMemo(() => (isAccountant ? [
     {
       label: 'Principal',
       items: [
@@ -67,7 +76,7 @@ export default function AdminLayout() {
       label: 'Principal',
       items: [
         { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
-        { key: 'moradores', label: 'Moradores', icon: Users },
+        { key: 'unidades', label: 'Unidades', icon: Home },
         { key: 'cobrancas', label: 'Cobrancas', icon: DollarSign },
       ],
     },
@@ -86,21 +95,26 @@ export default function AdminLayout() {
     },
   ]), [isAccountant])
 
+  const nav = useMemo(() => (planLocked
+    ? baseNav.map((section) => ({ ...section, items: section.items.map((item) => ({ ...item, locked: item.key !== 'dashboard' })) }))
+    : baseNav), [baseNav, planLocked])
+
   useEffect(() => {
-    const allowedPages = new Set(nav.flatMap((section) => section.items).map((item) => item.key))
+    const allowedPages = new Set(nav.flatMap((section) => section.items).filter((item) => !item.locked).map((item) => item.key))
     if (!allowedPages.has(page)) {
-      setPage(nav[0]?.items?.[0]?.key || 'dashboard')
+      setPage('dashboard')
+      setMountedPages(['dashboard'])
     }
   }, [nav, page])
 
   const currentLabel = nav.flatMap((section) => section.items).find((item) => item.key === page)?.label || 'Painel'
 
   return (
-    <div className="app-layout">
-      <Sidebar items={nav} activeKey={page} onNav={handleNavigate} theme="admin" mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+    <div className={`app-layout ${layoutClassName}`}>
+      <Sidebar items={nav} activeKey={page} onNav={handleNavigate} theme="admin" mobileOpen={mobileOpen} onClose={closeMobile} />
       <main className="main-content" ref={mainContentRef}>
         <div className="mobile-topbar">
-          <button className="btn btn-ghost btn-icon" onClick={() => setMobileOpen(true)}>
+          <button className="btn btn-ghost btn-icon" onClick={toggleMenu} aria-label="Abrir ou recolher o menu" aria-expanded={mobileOpen || !layoutClassName}>
             <Menu size={18} />
           </button>
           <div>
@@ -109,6 +123,13 @@ export default function AdminLayout() {
           </div>
         </div>
         <div className="page-content">
+          <PlanUpgradeNotice
+            profile={profile}
+            open={upgradeOpen}
+            onOpen={() => setUpgradeOpen(true)}
+            onClose={() => setUpgradeOpen(false)}
+            isAccountant={isAccountant}
+          />
           {mountedPages.map((pageKey) => {
             const PageComponent = PAGES[pageKey] || Dashboard
             const isActive = pageKey === page

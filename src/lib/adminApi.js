@@ -68,7 +68,12 @@ async function callAdminApi(path, payload) {
 
   const result = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw new Error(buildApiError(response.status, result.error))
+    const apiError = new Error(buildApiError(response.status, result.error))
+    // Dados extras (ex.: code NEEDS_LINK + pessoa encontrada) para a tela decidir o proximo passo.
+    apiError.status = response.status
+    apiError.code = result.code
+    apiError.details = result
+    throw apiError
   }
 
   return result
@@ -127,10 +132,10 @@ export function deleteResident(payload) {
   return callAdminApi('/api/admin/residents/delete', payload)
 }
 
-export function updateResident(payload) {
-  return callAdminApi('/api/admin/residents/update', payload)
+export function saveUnit(payload) {
+  return callAdminApi('/api/admin/units/save', payload)
 }
 
-export function updateResidentPassword(payload) {
-  return callAdminApi('/api/admin/residents/update-password', payload)
+export function deleteUnit(payload) {
+  return callAdminApi('/api/admin/units/delete', payload)
 }

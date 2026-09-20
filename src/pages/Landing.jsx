@@ -9,6 +9,7 @@ import {
   Loader2,
   LockKeyhole,
   ShieldCheck,
+  X,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { getHomePathForRole } from '../lib/auth'
@@ -16,12 +17,13 @@ import { signInWithDocument } from '../lib/authApi'
 import { formatCpf, normalizeCpf } from '../lib/cpf'
 import { formatCpfCnpj, getCpfCnpjType, normalizeCpfCnpj } from '../lib/document'
 import { registerCondominium } from '../lib/platformApi'
+import AddressFields from '../components/shared/AddressFields'
+import { composeAddress, emptyAddress, sanitizeAddress } from '../lib/address'
 
 const emptyCondominiumForm = {
   name: '',
   cnpj: '',
-  address: '',
-  zipCode: '',
+  addressDetails: emptyAddress,
   whatsapp: '',
   unitCount: '',
   pixKey: '',
@@ -29,6 +31,8 @@ const emptyCondominiumForm = {
   syndicName: '',
   syndicCpf: '',
   syndicEmail: '',
+  subSyndicName: '',
+  subSyndicWhatsapp: '',
   password: '',
 }
 
@@ -83,8 +87,7 @@ export default function Landing() {
     const payload = {
       name: condominiumForm.name,
       cnpj: normalizeCpfCnpj(condominiumForm.cnpj),
-      address: condominiumForm.address,
-      zipCode: condominiumForm.zipCode,
+      addressDetails: sanitizeAddress(condominiumForm.addressDetails),
       whatsapp: condominiumForm.whatsapp,
       unitCount: Number(condominiumForm.unitCount || 0),
       pixKey: condominiumForm.pixKey,
@@ -92,11 +95,19 @@ export default function Landing() {
       syndicName: condominiumForm.syndicName,
       syndicCpf: normalizeCpf(condominiumForm.syndicCpf),
       syndicEmail: condominiumForm.syndicEmail,
+      subSyndicName: condominiumForm.subSyndicName,
+      subSyndicWhatsapp: condominiumForm.subSyndicWhatsapp,
       password: condominiumForm.password,
     }
+    const address = payload.addressDetails
 
-    if (!payload.name || !payload.cnpj || !payload.address || !payload.zipCode || !payload.whatsapp || !payload.syndicName || !payload.syndicCpf || !payload.syndicEmail || !payload.password) {
+    if (!payload.name || !payload.cnpj || !composeAddress(address) || address.zip_code.length !== 8 || !address.number || !address.city || !payload.whatsapp || !payload.syndicName || !payload.syndicCpf || !payload.syndicEmail || !payload.password) {
       setError('Preencha os dados do condominio e do sindico responsavel.')
+      return
+    }
+
+    if (payload.unitCount < 1) {
+      setError('Informe a quantidade de unidades do condominio.')
       return
     }
 
@@ -126,6 +137,11 @@ export default function Landing() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const closeCondominiumModal = () => {
+    setTab('login')
+    setError('')
   }
 
   if (successMode) {
@@ -188,34 +204,8 @@ export default function Landing() {
         </div>
 
         <div style={S.card} className="landing-card">
-          {!hasBlockedSession && (
-            <div style={S.tabs} className="landing-tabs">
-              {[
-                ['login', 'Entrar'],
-                ['condominio', 'Sou sindico / cadastrar condominio'],
-              ].map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className="landing-tab-button"
-                  onClick={() => {
-                    setTab(key)
-                    setError('')
-                  }}
-                  style={{
-                    ...S.tabButton,
-                    color: tab === key ? '#F2F4F7' : '#9CA3AF',
-                    background: tab === key ? 'rgba(67,160,71,0.16)' : 'transparent',
-                    borderColor: tab === key ? 'rgba(67,160,71,0.28)' : 'transparent',
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
 
-          {error && <div style={S.err}>{error}</div>}
+          {error && tab === 'login' && <div style={S.err}>{error}</div>}
 
           {hasBlockedSession && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -239,7 +229,7 @@ export default function Landing() {
             </div>
           )}
 
-          {!hasBlockedSession && tab === 'login' && (
+          {!hasBlockedSession && (
             <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column' }}>
               <div className="form-group">
                 <label className="form-label" style={S.label}>CPF ou CNPJ</label>
@@ -300,7 +290,21 @@ export default function Landing() {
             </form>
           )}
 
-          {!hasBlockedSession && tab === 'condominio' && (
+        </div>
+
+        {!hasBlockedSession && tab === 'condominio' && (
+          <div style={S.modalOverlay} onClick={(event) => event.target === event.currentTarget && !loading && closeCondominiumModal()}>
+            <div style={S.modalCard} className="landing-card" role="dialog" aria-modal="true" aria-labelledby="condo-register-title">
+              <div style={S.modalHeader}>
+                <div>
+                  <div id="condo-register-title" style={S.modalTitle}>Cadastre seu condominio</div>
+                  <div style={S.modalSub}>Preencha os dados e envie a solicitacao. A administracao da WebCond analisa e libera o acesso.</div>
+                </div>
+                <button type="button" onClick={closeCondominiumModal} disabled={loading} style={S.modalClose} aria-label="Fechar">
+                  <X size={18} />
+                </button>
+              </div>
+              {error && <div style={S.err}>{error}</div>}
             <form onSubmit={handleCondominiumRegister} style={{ display: 'flex', flexDirection: 'column' }}>
               <div className="landing-condo-grid" style={S.condominiumGrid}>
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
@@ -328,7 +332,7 @@ export default function Landing() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" style={S.label}>WhatsApp do condominio *</label>
+                  <label className="form-label" style={S.label}>WhatsApp de contato do sindico *</label>
                   <input
                     className="input"
                     style={S.standardInput}
@@ -339,32 +343,16 @@ export default function Landing() {
                   />
                 </div>
 
-                <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label" style={S.label}>Endereco *</label>
-                  <input
-                    className="input"
-                    style={S.standardInput}
-                    placeholder="Rua Exemplo, 100 - Bairro - Cidade/UF"
-                    value={condominiumForm.address}
-                    onChange={(event) => setCondominiumForm((current) => ({ ...current, address: event.target.value }))}
-                    required
-                  />
-                </div>
+                <AddressFields
+                  value={condominiumForm.addressDetails}
+                  onChange={(addressDetails) => setCondominiumForm((current) => ({ ...current, addressDetails }))}
+                  required
+                  inputStyle={S.standardInput}
+                  labelStyle={S.label}
+                />
 
                 <div className="form-group">
-                  <label className="form-label" style={S.label}>CEP *</label>
-                  <input
-                    className="input"
-                    style={S.standardInput}
-                    placeholder="00000-000"
-                    value={condominiumForm.zipCode}
-                    onChange={(event) => setCondominiumForm((current) => ({ ...current, zipCode: event.target.value }))}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" style={S.label}>Unidades *</label>
+                  <label className="form-label" style={S.label}>Quantidade de unidades *</label>
                   <input
                     className="input"
                     style={S.standardInput}
@@ -441,6 +429,28 @@ export default function Landing() {
                   />
                 </div>
 
+                <div className="form-group">
+                  <label className="form-label" style={S.label}>Subsindico (opcional)</label>
+                  <input
+                    className="input"
+                    style={S.standardInput}
+                    placeholder="Nome do subsindico"
+                    value={condominiumForm.subSyndicName}
+                    onChange={(event) => setCondominiumForm((current) => ({ ...current, subSyndicName: event.target.value }))}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" style={S.label}>WhatsApp do subsindico (opcional)</label>
+                  <input
+                    className="input"
+                    style={S.standardInput}
+                    placeholder="(81) 90000-0000"
+                    value={condominiumForm.subSyndicWhatsapp}
+                    onChange={(event) => setCondominiumForm((current) => ({ ...current, subSyndicWhatsapp: event.target.value }))}
+                  />
+                </div>
+
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
                   <label className="form-label" style={S.label}>Senha inicial *</label>
                   <input
@@ -472,8 +482,9 @@ export default function Landing() {
               </button>
               <style>{'@keyframes spin{to{transform:rotate(360deg)}}'}</style>
             </form>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
 
         <div style={S.footer}>
           <div>© 2026 WebCond</div>
@@ -497,11 +508,6 @@ const RESPONSIVE_STYLES = `
     transform: translateY(-1px);
   }
 
-  .landing-tab-button:hover {
-    border-color: rgba(67,160,71,0.18) !important;
-    color: #F2F4F7 !important;
-  }
-
   .landing-input-shell:focus-within {
     border-color: rgba(67,160,71,0.85) !important;
     box-shadow: 0 0 0 4px rgba(67,160,71,0.12);
@@ -515,10 +521,6 @@ const RESPONSIVE_STYLES = `
     .landing-card {
       width: min(92vw, 720px) !important;
       padding: 24px !important;
-    }
-
-    .landing-tabs {
-      flex-direction: column;
     }
 
     .landing-condo-grid {
@@ -640,21 +642,6 @@ const S = {
     boxShadow: '0 28px 70px rgba(0,0,0,0.34)',
     backdropFilter: 'blur(10px)',
   },
-  tabs: {
-    display: 'flex',
-    gap: 10,
-    marginBottom: 22,
-  },
-  tabButton: {
-    flex: 1,
-    borderRadius: 12,
-    border: '1px solid transparent',
-    padding: '12px 14px',
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: 'pointer',
-    transition: 'all .18s ease',
-  },
   err: {
     background: 'rgba(127,29,29,0.38)',
     border: '1px solid rgba(248,81,73,0.55)',
@@ -729,6 +716,56 @@ const S = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 0,
+  },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 50,
+    background: 'rgba(3, 7, 12, 0.72)',
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    padding: '32px 16px',
+    overflowY: 'auto',
+  },
+  modalCard: {
+    width: 'min(92vw, 760px)',
+    background: '#111820',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 20,
+    padding: 28,
+    boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+  },
+  modalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 16,
+    marginBottom: 18,
+  },
+  modalTitle: {
+    color: '#F2F4F7',
+    fontSize: 20,
+    fontWeight: 700,
+  },
+  modalSub: {
+    color: '#9CA3AF',
+    fontSize: 13,
+    lineHeight: 1.6,
+    marginTop: 4,
+  },
+  modalClose: {
+    background: 'transparent',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 10,
+    color: '#9CA3AF',
+    width: 36,
+    height: 36,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    flexShrink: 0,
   },
   condoLink: {
     marginTop: 14,

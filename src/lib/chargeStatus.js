@@ -1,5 +1,9 @@
 import { formatReferenceLabel } from './billingShared.js'
 
+// Prazo para identificar o pagamento: sem confirmacao ate 48h apos o vencimento, vira inadimplente.
+// Ex.: vencimento 15/09 -> em aberto ate 17/09 -> inadimplente a partir de 18/09.
+export const OVERDUE_GRACE_DAYS = 2
+
 function safeDate(value) {
   if (!value) return null
   const date = new Date(`${value}T12:00:00`)
@@ -59,7 +63,10 @@ function resolveLegacyPaymentStatus(charge, baseDate = new Date()) {
 
   const compareDate = new Date(baseDate)
   compareDate.setHours(0, 0, 0, 0)
-  return dueDate < compareDate ? 'OVERDUE' : 'PENDING'
+  const graceLimit = new Date(dueDate)
+  graceLimit.setDate(graceLimit.getDate() + OVERDUE_GRACE_DAYS)
+  graceLimit.setHours(0, 0, 0, 0)
+  return graceLimit < compareDate ? 'OVERDUE' : 'PENDING'
 }
 
 export function getChargePaymentStatus(charge, baseDate = new Date()) {

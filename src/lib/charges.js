@@ -18,10 +18,12 @@ function sanitizeFileName(fileName = '') {
   return normalized || 'arquivo'
 }
 
-export function buildChargeStorageFileName(fileName = '', folder = 'geral') {
+// Caminho sempre dentro da pasta do condominio: o Storage so libera arquivos da propria pasta.
+export function buildChargeStorageFileName(fileName = '', folder = 'geral', condominiumId = '') {
+  if (!condominiumId) throw new Error('Condominio nao identificado para salvar o arquivo.')
   const safeFolder = sanitizeFileName(folder).toLowerCase()
   const safeName = sanitizeFileName(fileName)
-  return `${safeFolder}/${Date.now()}-${safeName}`
+  return `${condominiumId}/${safeFolder}/${Date.now()}-${safeName}`
 }
 
 export function extractChargeStoragePathFromUrl(url = '') {

@@ -3,14 +3,16 @@ import { supabase } from '../../lib/supabase'
 import { useToast } from '../shared/Toast'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
-import { Plus, Search, CheckCircle, X, Loader2, DollarSign, QrCode, Link2, Upload, Users, Paperclip, Copy, Trash2, MessageCircle } from 'lucide-react'
+import WhatsAppIcon from '../shared/WhatsAppIcon'
+import { Plus, Search, CheckCircle, X, Loader2, DollarSign, QrCode, Upload, Paperclip, Trash2, Mail, Eye, RefreshCcw, CalendarDays, FileText, Link2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { formatCurrency, formatReferenceLabel, parseCurrencyInput } from '../../lib/billingShared'
 import { buildChargeStorageFileName, enrichChargesWithPaymentUrls } from '../../lib/charges'
 import { applyTenantFilter, withTenantFields } from '../../lib/tenant'
-import { getChargePaymentStatusMeta, isChargePaid } from '../../lib/chargeStatus'
+import { getChargePaymentStatus, getChargePaymentStatusMeta, isChargePaid } from '../../lib/chargeStatus'
 import { buildResidentRequestSummary, isResidentPaymentConfirmation, isResidentRequestPending, parseResidentRequest } from '../../lib/residentRequests'
 import { renderBillingPdf } from '../../lib/adminApi'
+import { compareUnitNumbers } from '../../lib/units'
 
 const FILTER_TYPES = [
   { value: 'condominio', label: 'Condominio', color: 'blue' },
@@ -26,9 +28,16 @@ const CREATE_TYPES = [
   { value: 'outro', label: 'Outro', color: 'purple' },
 ]
 
+const BREAKDOWN_TITLES = {
+  condominio: 'Taxa Condominial',
+  agua: 'Fatura Compesa',
+  energia: 'Fatura Neoenergia',
+}
+
 const emptyForm = {
-  destinatario: 'single',
-  morador_id: '',
+  chargeId: null,
+  destinatario: 'all',
+  unidade_id: '',
   tipo: 'condominio',
   descricao: '',
   valor: '',
@@ -45,13 +54,11 @@ const emptyForm = {
 
 function buildPixPayload(valor, reference, pixKey) {
   const amount = Number(valor || 0)
-  const resolvedPixKey = String(pixKey || '').trim()
-  const pixString = `PIX|${resolvedPixKey}|${amount.toFixed(2)}|${reference}`
-  return { pixString, pixLink: '' }
+  return `PIX|${String(pixKey || '').trim()}|${amount.toFixed(2)}|${reference}`
 }
 
-function getBadgeColor(tipo) {
-  return FILTER_TYPES.find((item) => item.value === tipo)?.color || 'blue'
+function getTypeMeta(tipo) {
+  return FILTER_TYPES.find((item) => item.value === tipo) || { label: tipo, color: 'blue' }
 }
 
 function readFileAsDataUrl(file) {
@@ -64,49 +71,22 @@ function readFileAsDataUrl(file) {
 }
 
 function buildChargeDescription(form) {
-  if (String(form.descricao || '').trim()) {
-    return String(form.descricao || '').trim()
-  }
-
-  if (form.tipo === 'condominio') {
-    return `Taxas condominiais ${formatReferenceLabel(form.mes_referencia)}`
-  }
-
-  if (form.tipo === 'multa') {
-    return `Multa ${formatReferenceLabel(form.mes_referencia)}`
-  }
-
+  if (String(form.descricao || '').trim()) return String(form.descricao || '').trim()
+  if (form.tipo === 'condominio') return `Taxas condominiais ${formatReferenceLabel(form.mes_referencia)}`
+  if (form.tipo === 'multa') return `Multa ${formatReferenceLabel(form.mes_referencia)}`
   return `Cobranca avulsa ${formatReferenceLabel(form.mes_referencia)}`
 }
 
 function buildBreakdown(form) {
   if (form.tipo === 'condominio') {
     return [
-      {
-        leftTitle: 'Taxa Condominial',
-        middleTitle: 'Atualizações, reparos e manutenções das áreas comuns',
-        value: parseCurrencyInput(form.valor_condominio),
-      },
-      {
-        leftTitle: 'Fatura Compesa',
-        middleTitle: 'Uso da água distribuída para todo condomínio',
-        value: parseCurrencyInput(form.valor_agua),
-      },
-      {
-        leftTitle: 'Fatura Neoenergia',
-        middleTitle: 'Uso da conta de energia de áreas comuns',
-        value: parseCurrencyInput(form.valor_energia),
-      },
+      { leftTitle: BREAKDOWN_TITLES.condominio, middleTitle: 'Atualizações, reparos e manutenções das áreas comuns', value: parseCurrencyInput(form.valor_condominio) },
+      { leftTitle: BREAKDOWN_TITLES.agua, middleTitle: 'Uso da água distribuída para todo condomínio', value: parseCurrencyInput(form.valor_agua) },
+      { leftTitle: BREAKDOWN_TITLES.energia, middleTitle: 'Uso da conta de energia de áreas comuns', value: parseCurrencyInput(form.valor_energia) },
     ]
   }
 
-  return [
-    {
-      leftTitle: form.tipo === 'multa' ? 'Multa' : 'Outro',
-      middleTitle: buildChargeDescription(form),
-      value: parseCurrencyInput(form.valor),
-    },
-  ]
+  return [{ leftTitle: form.tipo === 'multa' ? 'Multa' : 'Outro', middleTitle: buildChargeDescription(form), value: parseCurrencyInput(form.valor) }]
 }
 
 function buildObservation(form, breakdown) {
@@ -115,67 +95,74 @@ function buildObservation(form, breakdown) {
   return extra ? `${parts.join(' | ')} | Obs: ${extra}` : parts.join(' | ')
 }
 
-function shouldUseLegacyPdfFallback(error) {
-  if (!error) return false
+// Relancar: recupera os valores da observacao gravada ("Taxa Condominial: R$ 100,00 | ... | Obs: texto").
+function parseStoredObservation(observacao = '') {
+  const result = { valor_condominio: '', valor_agua: '', valor_energia: '', observacao: '' }
+  for (const part of String(observacao || '').split(' | ')) {
+    const [label, ...rest] = part.split(': ')
+    const value = rest.join(': ')
+    const amount = value.replace(/[^\d,.-]/g, '').trim()
+    if (label === BREAKDOWN_TITLES.condominio) result.valor_condominio = amount
+    else if (label === BREAKDOWN_TITLES.agua) result.valor_agua = amount
+    else if (label === BREAKDOWN_TITLES.energia) result.valor_energia = amount
+    else if (label === 'Obs') result.observacao = value
+  }
+  return result
+}
 
-  return error.code === 'PDF_RENDER_UNAVAILABLE'
-    || error.status === 500
-    || error.status === 503
+function shouldUseLegacyPdfFallback(error) {
+  return Boolean(error) && (error.code === 'PDF_RENDER_UNAVAILABLE' || error.status === 500 || error.status === 503)
 }
 
 function normalizeWhatsappForUrl(value = '') {
   const digits = String(value || '').replace(/\D/g, '')
   if (!digits) return ''
-  if (digits.startsWith('55') && digits.length >= 12) return digits
-  return `55${digits}`
+  return digits.startsWith('55') && digits.length >= 12 ? digits : `55${digits}`
 }
 
-function buildReminderMessage(charge, condominiumSettings) {
-  const dueDate = charge.vencimento
-    ? new Date(`${charge.vencimento}T12:00:00`).toLocaleDateString('pt-BR')
-    : '-'
+function isRealEmail(email = '') {
+  return Boolean(email) && !String(email).endsWith('@login.webcond.local')
+}
+
+function formatDueDate(value) {
+  return value ? new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR') : '-'
+}
+
+function getChargeUnit(charge) {
+  return charge.unidade_numero || charge.profiles?.apartamento || '-'
+}
+
+function buildChargeMessage(charge, condominiumSettings, { resend = false } = {}) {
   const residentName = String(charge.profiles?.nome || 'morador').trim()
   const pixKey = String(condominiumSettings.pixKey || charge.pix_copy_paste_code || '').trim() || 'Chave Pix nao informada'
   const boletoLink = String(charge.boleto_download_url || charge.boleto_url || '').trim()
+  const intro = resend
+    ? `Olá, ${residentName}. A cobrança da unidade ${getChargeUnit(charge)} referente a ${formatReferenceLabel(charge.mes_referencia)} foi atualizada.`
+    : `Olá, ${residentName}. Ainda não foi identificado o pagamento da unidade ${getChargeUnit(charge)} (${formatReferenceLabel(charge.mes_referencia)}). Caso já tenha pago, encaminhe o comprovante para atualização no sistema.`
 
   return [
-    `Olá, ${residentName}. ainda não foi identificado o pagamento das taxas condominiais. Caso já tenha realizado o pagamento, encaminhe o comprovante para atualização no sistema.`,
+    intro,
     '',
-    `Vencimento : ${dueDate}`,
-    `Valor Total : ${formatCurrency(charge.valor)}`,
+    `Vencimento: ${formatDueDate(charge.vencimento)}`,
+    `Valor total: ${formatCurrency(charge.valor)}`,
     '',
-    'Para sua comodidade, você pode pagar via PIX utilizando as chaves abaixo:',
+    `Chave Pix do condomínio: ${pixKey}`,
+    boletoLink ? `Boleto (PDF): ${boletoLink}` : null,
     '',
-    `chave pix do condomínio: ${pixKey}`,
-    boletoLink ? `PDF do Boleto - Taxas Condominiais: ${boletoLink}` : null,
-    '',
-    '`Esta é uma mensagem automatica`',
+    'Esta é uma mensagem automática.',
   ].filter((line) => line !== null).join('\n')
 }
 
-async function generateChargePdfBytes({
-  condominiumSettings,
-  morador,
-  form,
-  total,
-  pixQrCode,
-  pixCopyPasteCode,
-  paymentLink,
-  breakdown,
-}) {
+async function generateChargePdfBytes({ condominiumSettings, recipient, form, total, pixQrCode, pixCopyPasteCode, paymentLink, breakdown }) {
   const payload = {
-    nomeMorador: morador.nome,
-    apartamento: morador.apartamento || '-',
-    numero: morador.whatsapp || condominiumSettings.whatsappLabel,
+    nomeMorador: recipient.nome,
+    apartamento: recipient.unidade_numero || '-',
+    numero: recipient.whatsapp || condominiumSettings.whatsappLabel,
     observacoes: String(form.observacao || '').trim() || 'N/A',
     valorTotal: total,
     mesReferencia: form.mes_referencia,
     dataVencimento: form.vencimento,
-    itens: breakdown.map((item) => ({
-      nome: item.leftTitle,
-      descricao: item.middleTitle,
-      valor: item.value,
-    })),
+    itens: breakdown.map((item) => ({ nome: item.leftTitle, descricao: item.middleTitle, valor: item.value })),
     qrcode_pix: pixQrCode,
     pixCopiaCola: pixCopyPasteCode,
     linkPagamento: paymentLink,
@@ -184,57 +171,70 @@ async function generateChargePdfBytes({
   try {
     return await renderBillingPdf(payload)
   } catch (error) {
-    if (!shouldUseLegacyPdfFallback(error)) {
-      throw error
-    }
+    if (!shouldUseLegacyPdfFallback(error)) throw error
 
     const { generateChargesPdf } = await import('../../lib/billingPdf')
     return generateChargesPdf({
       condominium: condominiumSettings,
-      charges: [
-        {
-          nome: morador.nome,
-          apartamento: morador.apartamento || '-',
-          whatsapp: morador.whatsapp || condominiumSettings.whatsappLabel,
-          observacao: String(form.observacao || '').trim() || 'N/A',
-          reference: form.mes_referencia,
-          vencimento: form.vencimento,
-          total,
-          qrCodeDataUrl: pixQrCode.startsWith('data:image/') ? pixQrCode : '',
-          breakdown,
-        },
-      ],
+      charges: [{
+        nome: recipient.nome,
+        apartamento: recipient.unidade_numero || '-',
+        whatsapp: recipient.whatsapp || condominiumSettings.whatsappLabel,
+        observacao: String(form.observacao || '').trim() || 'N/A',
+        reference: form.mes_referencia,
+        vencimento: form.vencimento,
+        total,
+        qrCodeDataUrl: pixQrCode.startsWith('data:image/') ? pixQrCode : '',
+        breakdown,
+      }],
     })
   }
 }
 
-function buildNotificationRows(moradores, profileId, referenceLabel, condominiumId) {
-  const uniqueByApartment = new Map()
-  for (const morador of moradores) {
-    const apto = String(morador.apartamento || '').trim()
-    if (!apto || uniqueByApartment.has(apto)) continue
-    uniqueByApartment.set(apto, morador)
-  }
-
-  return Array.from(uniqueByApartment.values()).map((morador) => ({
-    titulo: 'Nova cobranca disponivel',
-    conteudo: `Uma nova cobranca foi lancada para o seu apartamento (${referenceLabel}). Abra "Minhas cobrancas" para acessar o boleto e os dados de pagamento configurados pelo sindico.`,
+function buildNotificationRows(recipients, profileId, referenceLabel, condominiumId, { resend = false } = {}) {
+  return recipients.map((recipient) => ({
+    titulo: resend ? 'Cobranca atualizada' : 'Nova cobranca disponivel',
+    conteudo: resend
+      ? `A cobranca da unidade ${recipient.unidade_numero} (${referenceLabel}) foi atualizada. Abra "Minhas cobrancas" para ver o novo boleto.`
+      : `Uma nova cobranca foi lancada para a unidade ${recipient.unidade_numero} (${referenceLabel}). Abra "Minhas cobrancas" para acessar o boleto e os dados de pagamento.`,
     tipo: 'informativo',
     destinatario: 'apartamento',
-    apartamento_destino: morador.apartamento || '',
+    apartamento_destino: recipient.unidade_numero,
     created_by: profileId,
     condominium_id: condominiumId || null,
     condominio_id: condominiumId || null,
   }))
 }
 
+// Quem recebe a cobranca de cada unidade: o responsavel financeiro definido na unidade.
+function buildRecipients(units, links) {
+  const people = new Map()
+  for (const link of links) {
+    if (!link.profiles || link.profiles.ativo === false) continue
+    if (!people.has(link.unidade_id)) people.set(link.unidade_id, {})
+    people.get(link.unidade_id)[link.vinculo] = link.profiles
+  }
+
+  return units
+    .map((unit) => {
+      const entry = people.get(unit.id) || {}
+      const responsible = unit.responsavel_financeiro === 'inquilino' && entry.inquilino ? entry.inquilino : entry.proprietario || entry.inquilino
+      return responsible
+        ? { ...responsible, unidade_id: unit.id, unidade_numero: unit.numero, papel: responsible === entry.inquilino ? 'Inquilino' : 'Proprietario' }
+        : null
+    })
+    .filter(Boolean)
+    .sort((a, b) => compareUnitNumbers(a.unidade_numero, b.unidade_numero))
+}
+
 export default function Cobrancas() {
   const [cobrancas, setCobrancas] = useState([])
-  const [moradores, setMoradores] = useState([])
+  const [units, setUnits] = useState([])
+  const [links, setLinks] = useState([])
   const [loading, setLoading] = useState(true)
+  const [openReference, setOpenReference] = useState(null)
   const [search, setSearch] = useState('')
-  const [filterTipo, setFilterTipo] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
+  const [viewCharge, setViewCharge] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [paymentFile, setPaymentFile] = useState(null)
@@ -248,35 +248,19 @@ export default function Cobrancas() {
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [cobRes, morRes, requestsRes] = await Promise.all([
+    const [cobRes, unitsRes, linksRes, requestsRes] = await Promise.all([
       applyTenantFilter(
-        supabase
-        .from('cobrancas')
-        .select('*, profiles:morador_id(nome, apartamento, whatsapp)')
-        .order('created_at', { ascending: false }),
+        supabase.from('cobrancas').select('*, profiles:morador_id(nome, apartamento, whatsapp, email)').order('created_at', { ascending: false }),
         condominiumId,
       ),
-      applyTenantFilter(
-        supabase
-        .from('profiles')
-        .select('id, nome, apartamento, whatsapp')
-        .in('role', ['morador', 'RESIDENT'])
-        .eq('ativo', true)
-        .order('apartamento'),
-        condominiumId,
-      ),
-      applyTenantFilter(
-        supabase
-          .from('ocorrencias_predio')
-          .select('*')
-          .order('created_at', { ascending: false }),
-        condominiumId,
-      ),
+      supabase.from('unidades').select('id, numero, situacao, responsavel_financeiro').eq('condominium_id', condominiumId),
+      supabase.from('unidade_vinculos').select('unidade_id, vinculo, profiles(id, nome, whatsapp, email, ativo)'),
+      applyTenantFilter(supabase.from('ocorrencias_predio').select('*').order('created_at', { ascending: false }), condominiumId),
     ])
 
-    const enrichedCharges = await enrichChargesWithPaymentUrls(cobRes.data || [])
-    setCobrancas(enrichedCharges)
-    setMoradores(morRes.data || [])
+    setCobrancas(await enrichChargesWithPaymentUrls(cobRes.data || []))
+    setUnits(unitsRes.data || [])
+    setLinks(linksRes.data || [])
     setResidentRequests(requestsRes.data || [])
     setLoading(false)
   }, [condominiumId])
@@ -285,38 +269,119 @@ export default function Cobrancas() {
     void fetchAll()
   }, [fetchAll])
 
+  const recipients = useMemo(() => buildRecipients(units, links), [units, links])
+
+  const pendingPaymentByChargeId = useMemo(() => new Map(
+    residentRequests
+      .filter((item) => isResidentPaymentConfirmation(item) && isResidentRequestPending(item))
+      .map((item) => [parseResidentRequest(item).chargeId, item]),
+  ), [residentRequests])
+
+  const references = useMemo(() => {
+    const groups = new Map()
+    for (const charge of cobrancas) {
+      const key = charge.mes_referencia || 'sem-referencia'
+      if (!groups.has(key)) groups.set(key, { key, charges: [], total: 0, received: 0, open: 0, overdue: 0 })
+      const group = groups.get(key)
+      group.charges.push(charge)
+      group.total += Number(charge.valor || 0)
+      const status = getChargePaymentStatus(charge)
+      if (status === 'PAID') group.received += Number(charge.valor || 0)
+      else if (status === 'OVERDUE') group.overdue += 1
+      else if (status !== 'CANCELLED') group.open += 1
+    }
+    return Array.from(groups.values()).sort((a, b) => b.key.localeCompare(a.key))
+  }, [cobrancas])
+
+  const activeReference = references.find((group) => group.key === openReference) || null
+  const referenceCharges = useMemo(() => {
+    if (!activeReference) return []
+    const query = search.trim().toLowerCase()
+    return activeReference.charges
+      .filter((charge) => !query || getChargeUnit(charge).toLowerCase().includes(query) || String(charge.profiles?.nome || '').toLowerCase().includes(query))
+      .sort((a, b) => compareUnitNumbers(getChargeUnit(a), getChargeUnit(b)))
+  }, [activeReference, search])
+
+  const totalPendente = cobrancas.filter((item) => !isChargePaid(item)).reduce((sum, item) => sum + Number(item.valor || 0), 0)
+  const totalPago = cobrancas.filter((item) => isChargePaid(item)).reduce((sum, item) => sum + Number(item.valor || 0), 0)
+
+  const resetForm = () => {
+    setShowModal(false)
+    setForm(emptyForm)
+    setPaymentFile(null)
+    setPixQrImageData('')
+    setPixQrImageName('')
+  }
+
+  const openNewCharge = () => {
+    setForm({ ...emptyForm, mes_referencia: openReference && openReference !== 'sem-referencia' ? openReference : emptyForm.mes_referencia })
+    setShowModal(true)
+  }
+
+  // Relancar = editar a cobranca e envia-la de novo ao responsavel financeiro atual da unidade.
+  const openRelaunch = (charge) => {
+    const stored = parseStoredObservation(charge.observacao)
+    setForm({
+      ...emptyForm,
+      chargeId: charge.id,
+      destinatario: 'single',
+      unidade_id: charge.unidade_id || recipients.find((item) => item.unidade_numero === getChargeUnit(charge))?.unidade_id || '',
+      tipo: CREATE_TYPES.some((item) => item.value === charge.tipo) ? charge.tipo : 'outro',
+      descricao: charge.descricao || '',
+      valor: charge.tipo === 'condominio' ? '' : String(charge.valor || '').replace('.', ','),
+      valor_condominio: stored.valor_condominio,
+      valor_agua: stored.valor_agua,
+      valor_energia: stored.valor_energia,
+      mes_referencia: charge.mes_referencia || emptyForm.mes_referencia,
+      vencimento: charge.vencimento || '',
+      observacao: stored.observacao,
+      pagamento_link: charge.pagamento_link || '',
+      pix_copy_paste_code: '',
+      previousBoletoPath: charge.boleto_path || '',
+    })
+    setShowModal(true)
+  }
+
+  const sendWhatsApp = (charge, options) => {
+    const whatsapp = normalizeWhatsappForUrl(charge.profiles?.whatsapp)
+    if (!whatsapp) {
+      toast('O responsavel financeiro desta unidade nao tem WhatsApp cadastrado.', 'error')
+      return
+    }
+    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(buildChargeMessage(charge, condominiumSettings, options))}`, '_blank', 'noopener,noreferrer')
+  }
+
+  const sendEmail = (charge, options) => {
+    const email = charge.profiles?.email
+    if (!isRealEmail(email)) {
+      toast('O responsavel financeiro desta unidade nao tem e-mail cadastrado.', 'error')
+      return
+    }
+    const subject = `${condominiumSettings.name || 'Condominio'} - Cobranca unidade ${getChargeUnit(charge)} (${formatReferenceLabel(charge.mes_referencia)})`
+    window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildChargeMessage(charge, condominiumSettings, options))}`
+  }
+
   const handleSave = async () => {
-    const isCondominio = form.tipo === 'condominio'
+    const isRelaunch = Boolean(form.chargeId)
     const breakdown = buildBreakdown(form)
     const total = breakdown.reduce((sum, item) => sum + Number(item.value || 0), 0)
 
-    if (form.destinatario === 'single' && !form.morador_id) {
-      toast('Selecione o morador ou escolha enviar para todos.', 'error')
+    if (form.destinatario === 'single' && !form.unidade_id) {
+      toast('Selecione a unidade ou escolha enviar para todas.', 'error')
       return
     }
-
     if (!form.vencimento) {
       toast('Informe a data de vencimento.', 'error')
       return
     }
-
-    if (isCondominio) {
-      const filledValues = breakdown.filter((item) => item.value > 0)
-      if (filledValues.length === 0) {
-        toast('Informe ao menos um valor para as taxas de condominio.', 'error')
-        return
-      }
-    } else if (parseCurrencyInput(form.valor) <= 0) {
-      toast('Informe um valor valido para a cobranca.', 'error')
+    if (form.tipo === 'condominio' ? !breakdown.some((item) => item.value > 0) : parseCurrencyInput(form.valor) <= 0) {
+      toast(form.tipo === 'condominio' ? 'Informe ao menos um valor para as taxas de condominio.' : 'Informe um valor valido para a cobranca.', 'error')
       return
     }
 
-    const selectedMoradores = form.destinatario === 'all'
-      ? moradores
-      : moradores.filter((morador) => morador.id === form.morador_id)
-
-    if (selectedMoradores.length === 0) {
-      toast('Nenhum morador disponivel para esta cobranca.', 'error')
+    const selected = form.destinatario === 'all' ? recipients : recipients.filter((item) => item.unidade_id === form.unidade_id)
+    if (selected.length === 0) {
+      toast('Nenhuma unidade com responsavel financeiro cadastrado para receber a cobranca.', 'error')
       return
     }
 
@@ -330,58 +395,35 @@ export default function Cobrancas() {
       const uploadedQrCode = String(pixQrImageData || '').trim()
       const externalQrCode = String(form.qrcode_externo || '').trim()
       const manualPixCopyPasteCode = String(form.pix_copy_paste_code || '').trim()
-      const customPaymentLink = String(form.pagamento_link || '').trim()
+      const paymentLink = String(form.pagamento_link || '').trim()
       const pixKey = condominiumSettings.pixKey
 
       let pagamentoAnexoPath = ''
       if (paymentFile) {
-        pagamentoAnexoPath = buildChargeStorageFileName(paymentFile.name, 'pagamentos')
-        const { error: paymentUploadError } = await supabase
-          .storage
-          .from('cobrancas')
-          .upload(pagamentoAnexoPath, paymentFile)
-
+        pagamentoAnexoPath = buildChargeStorageFileName(paymentFile.name, 'pagamentos', condominiumId)
+        const { error: paymentUploadError } = await supabase.storage.from('cobrancas').upload(pagamentoAnexoPath, paymentFile)
         if (paymentUploadError) throw paymentUploadError
         uploadedPaths.push(pagamentoAnexoPath)
       }
 
-      const insertRows = []
-
-      for (const morador of selectedMoradores) {
-        const { pixString } = buildPixPayload(total, `${morador.apartamento}-${form.mes_referencia}`, pixKey)
-        const pixCopyPasteCode = manualPixCopyPasteCode || pixString
-
+      const rows = []
+      for (const recipient of selected) {
+        const pixCopyPasteCode = manualPixCopyPasteCode || buildPixPayload(total, `${recipient.unidade_numero}-${form.mes_referencia}`, pixKey)
         let pixQrCode = uploadedQrCode || externalQrCode
         if (!pixQrCode && (pixCopyPasteCode || pixKey)) {
-          pixQrCode = await QRCode.toDataURL(pixCopyPasteCode || pixString)
+          pixQrCode = await QRCode.toDataURL(pixCopyPasteCode)
         }
 
-        const paymentLink = customPaymentLink
-
-        const pdfBytes = await generateChargePdfBytes({
-          condominiumSettings,
-          morador,
-          form,
-          total,
-          pixQrCode,
-          pixCopyPasteCode,
-          paymentLink,
-          breakdown,
-        })
-
-        const boletoPath = buildChargeStorageFileName(`boleto-${morador.apartamento || 'morador'}-${form.mes_referencia}.pdf`, 'boletos')
-        const boletoBlob = new Blob([pdfBytes], { type: 'application/pdf' })
-
-        const { error: boletoUploadError } = await supabase
-          .storage
-          .from('cobrancas')
-          .upload(boletoPath, boletoBlob, { contentType: 'application/pdf' })
-
+        const pdfBytes = await generateChargePdfBytes({ condominiumSettings, recipient, form, total, pixQrCode, pixCopyPasteCode, paymentLink, breakdown })
+        const boletoPath = buildChargeStorageFileName(`boleto-${recipient.unidade_numero || 'unidade'}-${form.mes_referencia}.pdf`, 'boletos', condominiumId)
+        const { error: boletoUploadError } = await supabase.storage.from('cobrancas').upload(boletoPath, new Blob([pdfBytes], { type: 'application/pdf' }), { contentType: 'application/pdf' })
         if (boletoUploadError) throw boletoUploadError
         uploadedPaths.push(boletoPath)
 
-        insertRows.push(withTenantFields({
-          morador_id: morador.id,
+        const row = {
+          morador_id: recipient.id,
+          unidade_id: recipient.unidade_id,
+          unidade_numero: recipient.unidade_numero,
           descricao,
           valor: total,
           tipo: form.tipo,
@@ -393,44 +435,41 @@ export default function Cobrancas() {
           pix_copy_paste_code: pixCopyPasteCode,
           pix_link: '',
           pagamento_link: paymentLink,
-          pagamento_anexo_path: pagamentoAnexoPath,
           boleto_path: boletoPath,
           payment_status: 'PENDING',
+          pago: false,
+          data_pagamento: null,
           paid_at: null,
           confirmed_by: null,
           receipt_url: '',
-          created_by: profile.id,
-        }, condominiumId))
-      }
-
-      const { error } = await supabase.from('cobrancas').insert(insertRows)
-      if (error) throw error
-
-      const notificationRows = buildNotificationRows(selectedMoradores, profile.id, referenceLabel, condominiumId)
-      if (notificationRows.length > 0) {
-        const { error: avisoError } = await supabase.from('avisos').insert(notificationRows)
-        if (avisoError) {
-          toast('Cobranca lancada, mas houve falha ao criar aviso automatico.', 'info')
         }
+        if (pagamentoAnexoPath || !isRelaunch) row.pagamento_anexo_path = pagamentoAnexoPath
+        rows.push(isRelaunch ? row : withTenantFields({ ...row, created_by: profile.id }, condominiumId))
       }
+
+      if (isRelaunch) {
+        const { error } = await supabase.from('cobrancas').update(rows[0]).eq('id', form.chargeId)
+        if (error) throw error
+        if (form.previousBoletoPath) await supabase.storage.from('cobrancas').remove([form.previousBoletoPath])
+      } else {
+        const { error } = await supabase.from('cobrancas').insert(rows)
+        if (error) throw error
+      }
+
+      const { error: avisoError } = await supabase.from('avisos').insert(buildNotificationRows(selected, profile.id, referenceLabel, condominiumId, { resend: isRelaunch }))
+      if (avisoError) toast('Cobranca salva, mas houve falha ao criar o aviso automatico.', 'info')
 
       toast(
-        form.destinatario === 'all'
-          ? `Cobrancas lancadas para ${selectedMoradores.length} moradores com boleto e formas de pagamento.`
-          : 'Cobranca lancada com sucesso com boleto e pagamento anexado.',
+        isRelaunch
+          ? `Cobranca da unidade ${selected[0].unidade_numero} relancada. Envie a mensagem ao responsavel pelos botoes WhatsApp ou E-mail.`
+          : `Cobranca lancada para ${selected.length} unidade(s).`,
         'success',
       )
-
-      setShowModal(false)
-      setForm(emptyForm)
-      setPaymentFile(null)
-      setPixQrImageData('')
-      setPixQrImageName('')
+      setOpenReference(form.mes_referencia)
+      resetForm()
       void fetchAll()
     } catch (error) {
-      if (uploadedPaths.length > 0) {
-        await supabase.storage.from('cobrancas').remove(uploadedPaths)
-      }
+      if (uploadedPaths.length > 0) await supabase.storage.from('cobrancas').remove(uploadedPaths)
       toast(error.message || 'Erro ao lancar cobranca.', 'error')
     } finally {
       setSaving(false)
@@ -438,26 +477,16 @@ export default function Cobrancas() {
   }
 
   const marcarPago = async (charge) => {
-    const pendingRequest = residentRequests.find((item) => {
-      if (!isResidentPaymentConfirmation(item) || !isResidentRequestPending(item)) return false
-      return parseResidentRequest(item).chargeId === charge.id
-    })
+    const pendingRequest = pendingPaymentByChargeId.get(charge.id)
+    if (pendingRequest && !window.confirm('O morador informou que ja realizou o pagamento. Verifique o comprovante e/ou o extrato do banco antes da baixa definitiva. Deseja confirmar o pagamento agora?')) return
 
-    if (pendingRequest) {
-      const confirmed = window.confirm('O morador informou que ja realizou o pagamento. Verifique o comprovante e/ou o extrato do banco antes da baixa definitiva. Deseja confirmar o pagamento agora?')
-      if (!confirmed) return
-    }
-
-    const { error } = await supabase
-      .from('cobrancas')
-      .update({
-        pago: true,
-        data_pagamento: new Date().toISOString().slice(0, 10),
-        payment_status: 'PAID',
-        paid_at: new Date().toISOString(),
-        confirmed_by: profile.id,
-      })
-      .eq('id', charge.id)
+    const { error } = await supabase.from('cobrancas').update({
+      pago: true,
+      data_pagamento: new Date().toISOString().slice(0, 10),
+      payment_status: 'PAID',
+      paid_at: new Date().toISOString(),
+      confirmed_by: profile.id,
+    }).eq('id', charge.id)
 
     if (error) {
       toast('Erro ao atualizar cobranca.', 'error')
@@ -465,10 +494,7 @@ export default function Cobrancas() {
     }
 
     if (pendingRequest) {
-      await supabase
-        .from('ocorrencias_predio')
-        .update({ status: 'resolvido', updated_at: new Date().toISOString() })
-        .eq('id', pendingRequest.id)
+      await supabase.from('ocorrencias_predio').update({ status: 'resolvido', updated_at: new Date().toISOString() }).eq('id', pendingRequest.id)
     }
 
     toast('Pagamento confirmado!', 'success')
@@ -476,69 +502,25 @@ export default function Cobrancas() {
   }
 
   const excluirCobranca = async (charge) => {
-    const confirmed = window.confirm(`Deseja excluir a cobranca "${charge.descricao || charge.tipo}" de ${formatReferenceLabel(charge.mes_referencia)}?`)
-    if (!confirmed) return
+    if (!window.confirm(`Excluir a cobranca da unidade ${getChargeUnit(charge)} (${formatReferenceLabel(charge.mes_referencia)})?`)) return
 
     const filesToRemove = [charge.pagamento_anexo_path, charge.boleto_path].filter(Boolean)
+    if (filesToRemove.length > 0) await supabase.storage.from('cobrancas').remove(filesToRemove)
 
-    if (filesToRemove.length > 0) {
-      await supabase.storage.from('cobrancas').remove(filesToRemove)
-    }
-
-    const { error } = await supabase
-      .from('cobrancas')
-      .delete()
-      .eq('id', charge.id)
-
+    const { error } = await supabase.from('cobrancas').delete().eq('id', charge.id)
     if (error) {
       toast('Nao foi possivel excluir a cobranca.', 'error')
       return
     }
 
-    toast('Cobranca excluida com sucesso.', 'success')
+    toast('Cobranca excluida.', 'success')
+    setViewCharge(null)
     void fetchAll()
   }
 
-  const enviarLembrete = (charge) => {
-    const whatsapp = normalizeWhatsappForUrl(charge.profiles?.whatsapp)
-    if (!whatsapp) {
-      toast('Este morador nao possui WhatsApp cadastrado.', 'error')
-      return
-    }
-
-    const message = buildReminderMessage(charge, condominiumSettings)
-    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
-
-    const boletoUrl = charge.boleto_download_url || charge.boleto_url
-    if (boletoUrl) {
-      window.open(boletoUrl, '_blank', 'noopener,noreferrer')
-    } else {
-      toast('Cobranca sem PDF de boleto disponivel. O WhatsApp sera aberto apenas com a mensagem.', 'info')
-    }
-  }
-
-  const filtered = useMemo(() => cobrancas.filter((cobranca) => {
-    const nome = cobranca.profiles?.nome?.toLowerCase() || ''
-    const apto = cobranca.profiles?.apartamento || ''
-    const matchSearch = nome.includes(search.toLowerCase()) || apto.includes(search)
-    const matchTipo = !filterTipo || cobranca.tipo === filterTipo
-    const chargePaid = isChargePaid(cobranca)
-    const matchStatus = !filterStatus || (filterStatus === 'pago' ? chargePaid : !chargePaid)
-    return matchSearch && matchTipo && matchStatus
-  }), [cobrancas, filterStatus, filterTipo, search])
-
-  const totalPendente = filtered.filter((item) => !isChargePaid(item)).reduce((sum, item) => sum + Number(item.valor || 0), 0)
-  const totalPago = filtered.filter((item) => isChargePaid(item)).reduce((sum, item) => sum + Number(item.valor || 0), 0)
   const isCondominio = form.tipo === 'condominio'
   const previewTotal = buildBreakdown(form).reduce((sum, item) => sum + Number(item.value || 0), 0)
-  const pendingPaymentRequests = residentRequests.filter((item) => isResidentPaymentConfirmation(item) && isResidentRequestPending(item))
-  const pendingPaymentByChargeId = new Map(pendingPaymentRequests.map((item) => [parseResidentRequest(item).chargeId, item]))
-  const groupedCharges = filtered.reduce((acc, charge) => {
-    const key = charge.mes_referencia || 'sem-referencia'
-    if (!acc.has(key)) acc.set(key, [])
-    acc.get(key).push(charge)
-    return acc
-  }, new Map())
+  const unitsWithoutResponsible = units.length - recipients.length
 
   return (
     <div className="fade-in">
@@ -546,9 +528,9 @@ export default function Cobrancas() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <div className="page-title">Cobrancas</div>
-            <div className="page-subtitle">Lance cobrancas com boleto por morador, link/QR de pagamento e notificacao automatica.</div>
+            <div className="page-subtitle">Por competencia. Cada cobranca vai para o responsavel financeiro da unidade.</div>
           </div>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <button className="btn btn-primary" onClick={openNewCharge}>
             <Plus size={15} /> Nova cobranca
           </button>
         </div>
@@ -564,156 +546,192 @@ export default function Cobrancas() {
           <div className="value" style={{ color: '#3fb950', fontSize: 20 }}>{formatCurrency(totalPago)}</div>
         </div>
         <div className="stat-card">
-          <div className="label">Total de lancamentos</div>
-          <div className="value" style={{ color: '#58a6ff', fontSize: 20 }}>{filtered.length}</div>
+          <div className="label">Competencias</div>
+          <div className="value" style={{ color: '#58a6ff', fontSize: 20 }}>{references.length}</div>
         </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-          <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#8b949e' }} />
-          <input className="input" style={{ paddingLeft: 34 }} placeholder="Buscar morador ou apto..." value={search} onChange={(event) => setSearch(event.target.value)} />
-        </div>
-        <select className="input" style={{ width: 160 }} value={filterTipo} onChange={(event) => setFilterTipo(event.target.value)}>
-          <option value="">Todos os tipos</option>
-          {FILTER_TYPES.map((tipo) => <option key={tipo.value} value={tipo.value}>{tipo.label}</option>)}
-        </select>
-        <select className="input" style={{ width: 140 }} value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
-          <option value="">Todos</option>
-          <option value="pendente">Pendentes</option>
-          <option value="pago">Pagos</option>
-        </select>
       </div>
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner" /></div>
-      ) : filtered.length === 0 ? (
-        <div className="empty-state"><DollarSign size={40} /><p>Nenhuma cobranca encontrada.</p></div>
+      ) : references.length === 0 ? (
+        <div className="empty-state"><DollarSign size={40} /><p>Nenhuma cobranca lancada ainda.</p></div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {Array.from(groupedCharges.entries()).sort((a, b) => b[0].localeCompare(a[0])).map(([reference, charges]) => (
-            <div key={reference} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <div>
-                  <div style={{ fontSize: 12, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '.06em' }}>Competencia</div>
-                  <div style={{ fontSize: 18, fontWeight: 700 }}>{formatReferenceLabel(reference)}</div>
-                </div>
-                <div style={{ fontSize: 12, color: '#8b949e' }}>{charges.length} cobranca(s)</div>
+        <div className="reference-grid">
+          {references.map((group) => (
+            <button key={group.key} type="button" className="reference-card" onClick={() => { setSearch(''); setOpenReference(group.key) }}>
+              <div className="reference-card-head">
+                <CalendarDays size={16} />
+                <span className="reference-card-title">{group.key === 'sem-referencia' ? 'Sem competencia' : formatReferenceLabel(group.key)}</span>
               </div>
-
-              <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Morador / Apto</th>
-                      <th>Descricao</th>
-                      <th>Tipo</th>
-                      <th>Vencimento</th>
-                      <th>Valor</th>
-                      <th>Status</th>
-                      <th>Pagamento enviado</th>
-                      <th>Acao</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {charges.map((cobranca) => {
-                      const paymentRequest = pendingPaymentByChargeId.get(cobranca.id)
-                      const statusMeta = paymentRequest && !isChargePaid(cobranca)
-                        ? { label: 'Pagamento confirmado', badgeClass: 'badge-blue' }
-                        : getChargePaymentStatusMeta(cobranca)
-
-                      return (
-                        <tr key={cobranca.id}>
-                          <td>
-                            <div style={{ fontWeight: 600 }}>{cobranca.profiles?.nome || '-'}</div>
-                            <div style={{ fontSize: 12, color: '#8b949e' }}>Apt. {cobranca.profiles?.apartamento || '-'}</div>
-                          </td>
-                          <td>
-                            <div>{cobranca.descricao || '-'}</div>
-                            {paymentRequest && (
-                              <div style={{ fontSize: 11, color: '#8b949e', marginTop: 4 }}>
-                                {buildResidentRequestSummary(paymentRequest).detail}
-                              </div>
-                            )}
-                          </td>
-                          <td><span className={`badge badge-${getBadgeColor(cobranca.tipo)}`}>{FILTER_TYPES.find((item) => item.value === cobranca.tipo)?.label || cobranca.tipo}</span></td>
-                          <td style={{ color: '#8b949e' }}>{cobranca.vencimento ? new Date(`${cobranca.vencimento}T12:00:00`).toLocaleDateString('pt-BR') : '-'}</td>
-                          <td className="mono" style={{ fontWeight: 600 }}>{formatCurrency(cobranca.valor)}</td>
-                          <td><span className={`badge ${statusMeta.badgeClass}`}>{statusMeta.label}</span></td>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              {(cobranca.pix_qr_code || cobranca.pix_qrcode_url) && <span className="badge badge-blue"><QrCode size={10} /> QR</span>}
-                              {cobranca.pix_copy_paste_code && <span className="badge badge-orange"><Copy size={10} /> Pix</span>}
-                              {(cobranca.pagamento_link || cobranca.pix_link) && <span className="badge badge-green"><Link2 size={10} /> Link</span>}
-                              {(cobranca.pagamento_anexo_path || cobranca.pagamento_anexo_url) && <span className="badge badge-purple"><Paperclip size={10} /> Anexo</span>}
-                              {!(cobranca.pix_qr_code || cobranca.pix_qrcode_url || cobranca.pix_copy_paste_code || cobranca.pagamento_link || cobranca.pix_link || cobranca.pagamento_anexo_path || cobranca.pagamento_anexo_url) && <span style={{ color: '#8b949e' }}>-</span>}
-                            </div>
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                              {!isChargePaid(cobranca) && (
-                                <>
-                                  <button className="btn btn-ghost btn-sm" onClick={() => enviarLembrete(cobranca)} title="Enviar lembrete pelo WhatsApp">
-                                    <MessageCircle size={13} /> Lembrete
-                                  </button>
-                                  <button className="btn btn-ghost btn-sm" onClick={() => marcarPago(cobranca)} title="Marcar como pago">
-                                    <CheckCircle size={13} /> {paymentRequest ? 'Confirmar 2x' : 'Pago'}
-                                  </button>
-                                </>
-                              )}
-                              <button className="btn btn-danger btn-sm" onClick={() => excluirCobranca(cobranca)}>
-                                <Trash2 size={13} /> Excluir
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+              <div className="reference-card-total">{formatCurrency(group.total)}</div>
+              <div className="reference-card-meta">{group.charges.length} unidade(s) cobrada(s)</div>
+              <div className="reference-card-badges">
+                <span className="badge badge-green">Recebido {formatCurrency(group.received)}</span>
+                {group.open > 0 && <span className="badge badge-orange">{group.open} em aberto</span>}
+                {group.overdue > 0 && <span className="badge badge-red">{group.overdue} atrasada(s)</span>}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
 
-      {showModal && (
-        <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && setShowModal(false)}>
-          <div className="modal" style={{ maxWidth: 820 }}>
+      {activeReference && (
+        <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && setOpenReference(null)}>
+          <div className="modal" style={{ maxWidth: 1100 }} role="dialog" aria-modal="true">
             <div className="modal-header">
-              <div className="modal-title">Nova cobranca</div>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}><X size={16} /></button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                <label className="form-label">Enviar para</label>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className={`btn btn-sm ${form.destinatario === 'single' ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => setForm((current) => ({ ...current, destinatario: 'single' }))}
-                  >
-                    Selecionar morador
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn btn-sm ${form.destinatario === 'all' ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => setForm((current) => ({ ...current, destinatario: 'all', morador_id: '' }))}
-                  >
-                    <Users size={13} /> Enviar para todos
-                  </button>
+              <div>
+                <div className="modal-title">Competencia {activeReference.key === 'sem-referencia' ? '-' : formatReferenceLabel(activeReference.key)}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                  {activeReference.charges.length} unidade(s) · Total {formatCurrency(activeReference.total)} · Recebido {formatCurrency(activeReference.received)}
                 </div>
               </div>
+              <button className="btn btn-ghost btn-icon" onClick={() => setOpenReference(null)} aria-label="Fechar"><X size={16} /></button>
+            </div>
 
-              {form.destinatario === 'single' && (
+            <div style={{ position: 'relative', marginBottom: 14 }}>
+              <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#8b949e' }} />
+              <input className="input" style={{ paddingLeft: 34 }} placeholder="Buscar unidade ou responsavel..." value={search} onChange={(event) => setSearch(event.target.value)} />
+            </div>
+
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Unidade</th>
+                    <th>Responsavel financeiro</th>
+                    <th>Descricao</th>
+                    <th>Vencimento</th>
+                    <th>Valor</th>
+                    <th>Status</th>
+                    <th>Acoes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {referenceCharges.map((charge) => {
+                    const paymentRequest = pendingPaymentByChargeId.get(charge.id)
+                    const paid = isChargePaid(charge)
+                    const statusMeta = paymentRequest && !paid ? { label: 'Pagamento informado', badgeClass: 'badge-blue' } : getChargePaymentStatusMeta(charge)
+
+                    return (
+                      <tr key={charge.id}>
+                        <td className="mono" style={{ fontWeight: 700 }}>{getChargeUnit(charge)}</td>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{charge.profiles?.nome || '-'}</div>
+                          {paymentRequest && <div style={{ fontSize: 11, color: '#8b949e', marginTop: 4 }}>{buildResidentRequestSummary(paymentRequest).detail}</div>}
+                        </td>
+                        <td>
+                          <div>{charge.descricao || '-'}</div>
+                          <span className={`badge badge-${getTypeMeta(charge.tipo).color}`}>{getTypeMeta(charge.tipo).label}</span>
+                        </td>
+                        <td style={{ color: '#8b949e' }}>{formatDueDate(charge.vencimento)}</td>
+                        <td className="mono" style={{ fontWeight: 600 }}>{formatCurrency(charge.valor)}</td>
+                        <td><span className={`badge ${statusMeta.badgeClass}`}>{statusMeta.label}</span></td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setViewCharge(charge)} title="Visualizar cobranca"><Eye size={13} /></button>
+                            {!paid && (
+                              <>
+                                <button className="btn btn-ghost btn-sm" onClick={() => openRelaunch(charge)} title="Relancar (editar e enviar novamente)"><RefreshCcw size={13} /></button>
+                                <button className="btn btn-ghost btn-sm" onClick={() => sendWhatsApp(charge)} title="Enviar pelo WhatsApp"><WhatsAppIcon size={14} /></button>
+                                <button className="btn btn-ghost btn-sm" onClick={() => sendEmail(charge)} title="Enviar por e-mail"><Mail size={13} /></button>
+                                <button className="btn btn-ghost btn-sm" onClick={() => marcarPago(charge)} title="Confirmar pagamento"><CheckCircle size={13} /></button>
+                              </>
+                            )}
+                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => excluirCobranca(charge)} title="Excluir cobranca"><Trash2 size={13} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewCharge && (
+        <div className="modal-overlay" style={{ zIndex: 110 }} onClick={(event) => event.target === event.currentTarget && setViewCharge(null)}>
+          <div className="modal" role="dialog" aria-modal="true">
+            <div className="modal-header">
+              <div className="modal-title">Unidade {getChargeUnit(viewCharge)} · {formatReferenceLabel(viewCharge.mes_referencia)}</div>
+              <button className="btn btn-ghost btn-icon" onClick={() => setViewCharge(null)} aria-label="Fechar"><X size={16} /></button>
+            </div>
+            <div className="charge-detail-grid">
+              <div><div className="form-label">Responsavel financeiro</div><div className="charge-detail-value">{viewCharge.profiles?.nome || '-'}</div></div>
+              <div><div className="form-label">Status</div><span className={`badge ${getChargePaymentStatusMeta(viewCharge).badgeClass}`}>{getChargePaymentStatusMeta(viewCharge).label}</span></div>
+              <div><div className="form-label">Descricao</div><div className="charge-detail-value">{viewCharge.descricao || '-'}</div></div>
+              <div><div className="form-label">Valor</div><div className="charge-detail-value">{formatCurrency(viewCharge.valor)}</div></div>
+              <div><div className="form-label">Vencimento</div><div className="charge-detail-value">{formatDueDate(viewCharge.vencimento)}</div></div>
+              <div><div className="form-label">Pago em</div><div className="charge-detail-value">{viewCharge.data_pagamento ? formatDueDate(viewCharge.data_pagamento) : '-'}</div></div>
+            </div>
+            {viewCharge.observacao && <div className="charge-detail-note" style={{ marginTop: 14, fontSize: 13 }}>{viewCharge.observacao}</div>}
+            <div className="charge-actions">
+              {(viewCharge.boleto_download_url || viewCharge.boleto_url) && (
+                <a className="btn btn-ghost btn-sm" href={viewCharge.boleto_download_url || viewCharge.boleto_url} target="_blank" rel="noopener noreferrer"><FileText size={13} /> Abrir boleto</a>
+              )}
+              {(viewCharge.pagamento_anexo_download_url || viewCharge.pagamento_anexo_url) && (
+                <a className="btn btn-ghost btn-sm" href={viewCharge.pagamento_anexo_download_url || viewCharge.pagamento_anexo_url} target="_blank" rel="noopener noreferrer"><Paperclip size={13} /> Anexo</a>
+              )}
+              {viewCharge.pagamento_link && (
+                <a className="btn btn-ghost btn-sm" href={viewCharge.pagamento_link} target="_blank" rel="noopener noreferrer"><Link2 size={13} /> Link de pagamento</a>
+              )}
+              {!isChargePaid(viewCharge) && (
+                <button className="btn btn-primary btn-sm" onClick={() => { const charge = viewCharge; setViewCharge(null); openRelaunch(charge) }}>
+                  <RefreshCcw size={13} /> Relancar
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showModal && (
+        <div className="modal-overlay" style={{ zIndex: 120 }} onClick={(event) => event.target === event.currentTarget && !saving && resetForm()}>
+          <div className="modal" style={{ maxWidth: 820 }} role="dialog" aria-modal="true">
+            <div className="modal-header">
+              <div className="modal-title">{form.chargeId ? 'Relancar cobranca' : 'Nova cobranca'}</div>
+              <button className="btn btn-ghost btn-icon" onClick={resetForm} disabled={saving} aria-label="Fechar"><X size={16} /></button>
+            </div>
+
+            <div className="condo-form-grid">
+              {form.chargeId ? (
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                  <label className="form-label">Morador *</label>
-                  <select className="input" value={form.morador_id} onChange={(event) => setForm((current) => ({ ...current, morador_id: event.target.value }))}>
-                    <option value="">Selecione o morador</option>
-                    {moradores.map((morador) => <option key={morador.id} value={morador.id}>Apt. {morador.apartamento} - {morador.nome}</option>)}
-                  </select>
+                  <label className="form-label">Unidade</label>
+                  <div className="condo-readonly">
+                    {recipients.find((item) => item.unidade_id === form.unidade_id)
+                      ? (() => { const item = recipients.find((entry) => entry.unidade_id === form.unidade_id); return `Unidade ${item.unidade_numero} · ${item.papel}: ${item.nome}` })()
+                      : 'Unidade sem responsavel financeiro cadastrado'}
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>O boleto e regerado para o responsavel financeiro atual da unidade e a cobranca volta a ficar pendente.</div>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                    <label className="form-label">Enviar para</label>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <button type="button" className={`btn btn-sm ${form.destinatario === 'all' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setForm((current) => ({ ...current, destinatario: 'all', unidade_id: '' }))}>
+                        Todas as unidades ({recipients.length})
+                      </button>
+                      <button type="button" className={`btn btn-sm ${form.destinatario === 'single' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setForm((current) => ({ ...current, destinatario: 'single' }))}>
+                        Uma unidade
+                      </button>
+                    </div>
+                    {unitsWithoutResponsible > 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--orange)', marginTop: 6 }}>{unitsWithoutResponsible} unidade(s) sem responsavel financeiro nao recebem cobranca.</div>
+                    )}
+                  </div>
+
+                  {form.destinatario === 'single' && (
+                    <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                      <label className="form-label">Unidade *</label>
+                      <select className="input" value={form.unidade_id} onChange={(event) => setForm((current) => ({ ...current, unidade_id: event.target.value }))}>
+                        <option value="">Selecione a unidade</option>
+                        {recipients.map((item) => <option key={item.unidade_id} value={item.unidade_id}>Unidade {item.unidade_numero} · {item.papel}: {item.nome}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </>
               )}
 
               <div className="form-group">
@@ -722,20 +740,17 @@ export default function Cobrancas() {
                   {CREATE_TYPES.map((tipo) => <option key={tipo.value} value={tipo.value}>{tipo.label}</option>)}
                 </select>
               </div>
-
               <div className="form-group">
-                <label className="form-label">Mes de referencia *</label>
+                <label className="form-label">Competencia *</label>
                 <input className="input" type="month" value={form.mes_referencia} onChange={(event) => setForm((current) => ({ ...current, mes_referencia: event.target.value }))} />
               </div>
-
               <div className="form-group">
                 <label className="form-label">Vencimento *</label>
                 <input className="input" type="date" value={form.vencimento} onChange={(event) => setForm((current) => ({ ...current, vencimento: event.target.value }))} />
               </div>
-
               <div className="form-group">
                 <label className="form-label">Descricao</label>
-                <input className="input" value={form.descricao} onChange={(event) => setForm((current) => ({ ...current, descricao: event.target.value }))} placeholder="Ex.: Taxas de abril/2026" />
+                <input className="input" value={form.descricao} onChange={(event) => setForm((current) => ({ ...current, descricao: event.target.value }))} placeholder="Ex.: Taxas de setembro/2026" />
               </div>
 
               {isCondominio ? (
@@ -764,124 +779,64 @@ export default function Cobrancas() {
                 <label className="form-label">Link de pagamento (opcional)</label>
                 <input className="input" value={form.pagamento_link} onChange={(event) => setForm((current) => ({ ...current, pagamento_link: event.target.value }))} placeholder="https://... ou link Pix" />
               </div>
-
               <div className="form-group" style={{ gridColumn: '1/-1' }}>
                 <label className="form-label">Pix copia e cola (opcional)</label>
-                <textarea
-                  className="input"
-                  rows={2}
-                  value={form.pix_copy_paste_code}
-                  onChange={(event) => setForm((current) => ({ ...current, pix_copy_paste_code: event.target.value }))}
-                  placeholder="Cole aqui o codigo Pix copia e cola. Se ficar vazio, o sistema usa a chave Pix do condominio para montar um codigo simples."
-                />
+                <textarea className="input" rows={2} value={form.pix_copy_paste_code} onChange={(event) => setForm((current) => ({ ...current, pix_copy_paste_code: event.target.value }))} placeholder="Se ficar vazio, o sistema usa a chave Pix do condominio." />
               </div>
-
               <div className="form-group" style={{ gridColumn: '1/-1' }}>
                 <label className="form-label">QRCode externo (opcional)</label>
                 <input className="input" value={form.qrcode_externo} onChange={(event) => setForm((current) => ({ ...current, qrcode_externo: event.target.value }))} placeholder="URL da imagem do QRCode (se vazio, sera gerado automaticamente)." />
               </div>
 
-              <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                <label className="form-label">Enviar imagem do QRCode (opcional)</label>
-                <div
-                  style={{
-                    border: '2px dashed var(--border)',
-                    borderRadius: 'var(--r)',
-                    padding: '16px',
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    background: pixQrImageData ? 'var(--blue-dim)' : 'var(--bg-3)',
-                  }}
-                  onClick={() => document.getElementById('pixQrImageInput').click()}
-                >
-                  <QrCode size={18} style={{ margin: '0 auto 8px', color: pixQrImageData ? 'var(--blue)' : 'var(--text-muted)' }} />
-                  <div style={{ fontSize: 13, color: pixQrImageData ? 'var(--blue)' : 'var(--text-muted)' }}>
-                    {pixQrImageName || 'Clique para selecionar a imagem do QRCode'}
-                  </div>
+              <div className="form-group">
+                <label className="form-label">Imagem do QRCode (opcional)</label>
+                <label className="btn btn-ghost" style={{ justifyContent: 'center' }}>
+                  <QrCode size={14} /> {pixQrImageName || 'Selecionar imagem'}
                   <input
-                    id="pixQrImageInput"
                     type="file"
                     accept="image/*"
-                    style={{ display: 'none' }}
+                    className="sr-only"
                     onChange={async (event) => {
                       const file = event.target.files?.[0]
-                      if (!file) {
-                        setPixQrImageData('')
-                        setPixQrImageName('')
-                        return
-                      }
-
+                      if (!file) return
                       try {
-                        const nextDataUrl = await readFileAsDataUrl(file)
-                        setPixQrImageData(nextDataUrl)
+                        setPixQrImageData(await readFileAsDataUrl(file))
                         setPixQrImageName(file.name)
                       } catch (error) {
-                        setPixQrImageData('')
-                        setPixQrImageName('')
                         toast(error.message || 'Nao foi possivel processar a imagem do QRCode.', 'error')
                       }
                     }}
                   />
-                </div>
+                </label>
               </div>
-
-              <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                <label className="form-label">Anexar pagamento (qrcode, comprovante, link em PDF, etc.)</label>
-                <div
-                  style={{
-                    border: '2px dashed var(--border)',
-                    borderRadius: 'var(--r)',
-                    padding: '16px',
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    background: paymentFile ? 'var(--blue-dim)' : 'var(--bg-3)',
-                  }}
-                  onClick={() => document.getElementById('paymentAttachmentInput').click()}
-                >
-                  <Upload size={18} style={{ margin: '0 auto 8px', color: paymentFile ? 'var(--blue)' : 'var(--text-muted)' }} />
-                  <div style={{ fontSize: 13, color: paymentFile ? 'var(--blue)' : 'var(--text-muted)' }}>
-                    {paymentFile ? paymentFile.name : 'Clique para selecionar arquivo (imagem, PDF, etc.)'}
-                  </div>
-                  <input
-                    id="paymentAttachmentInput"
-                    type="file"
-                    style={{ display: 'none' }}
-                    onChange={(event) => setPaymentFile(event.target.files?.[0] || null)}
-                  />
-                </div>
+              <div className="form-group">
+                <label className="form-label">Anexo de pagamento (opcional)</label>
+                <label className="btn btn-ghost" style={{ justifyContent: 'center' }}>
+                  <Upload size={14} /> {paymentFile ? paymentFile.name : 'Selecionar arquivo'}
+                  <input type="file" className="sr-only" onChange={(event) => setPaymentFile(event.target.files?.[0] || null)} />
+                </label>
               </div>
 
               <div className="form-group" style={{ gridColumn: '1/-1' }}>
                 <label className="form-label">Observacao</label>
-                <textarea className="input" rows={3} value={form.observacao} onChange={(event) => setForm((current) => ({ ...current, observacao: event.target.value }))} placeholder="Observacoes adicionais..." />
+                <textarea className="input" rows={2} value={form.observacao} onChange={(event) => setForm((current) => ({ ...current, observacao: event.target.value }))} placeholder="Observacoes adicionais..." />
               </div>
             </div>
 
-            <div style={{ marginTop: 18, padding: 16, borderRadius: 10, background: '#1c2333', border: '1px solid #30363d' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-                <div>
-                  <div style={{ fontSize: 12, color: '#8b949e' }}>Resumo da emissao</div>
-                  <div style={{ fontWeight: 700, fontSize: 16 }}>
-                    {isCondominio ? 'Taxas condominiais' : CREATE_TYPES.find((item) => item.value === form.tipo)?.label || form.tipo}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#8b949e', marginTop: 4 }}>
-                    O morador recebera notificacao, boleto e os meios de pagamento configurados para confirmacao manual.
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 12, color: '#8b949e' }}>Total da cobranca</div>
-                  <div style={{ fontWeight: 700, fontSize: 24, color: '#58a6ff' }}>{formatCurrency(previewTotal)}</div>
-                  <div style={{ fontSize: 11, color: '#8b949e' }}>
-                    Boleto sera gerado automaticamente por morador.
-                  </div>
-                </div>
+            <div style={{ marginTop: 18, padding: 16, borderRadius: 10, background: 'var(--bg-3)', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 420 }}>
+                Um boleto por unidade, enviado ao responsavel financeiro. A unidade recebe aviso no sistema; WhatsApp e e-mail pelos botoes da competencia.
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Total por unidade</div>
+                <div style={{ fontWeight: 700, fontSize: 24, color: 'var(--blue)' }}>{formatCurrency(previewTotal)}</div>
               </div>
             </div>
 
             <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancelar</button>
+              <button className="btn btn-ghost" onClick={resetForm} disabled={saving}>Cancelar</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? <><Loader2 size={14} style={{ animation: 'spin .6s linear infinite' }} /> Processando...</> : 'Lancar cobranca'}
+                {saving ? <><Loader2 size={14} className="spin-icon" /> Processando...</> : form.chargeId ? 'Relancar cobranca' : 'Lancar cobranca'}
               </button>
             </div>
           </div>

@@ -36,7 +36,7 @@ function buildPlatformError(status, message) {
   return message || `Erro da plataforma (${status}).`
 }
 
-async function callPlatformApi(path, payload, { method = 'POST' } = {}) {
+async function callPlatformApi(path, payload, { method = 'POST', timeoutMs } = {}) {
   const token = await getAccessToken()
 
   let response
@@ -48,7 +48,7 @@ async function callPlatformApi(path, payload, { method = 'POST' } = {}) {
         Authorization: `Bearer ${token}`,
       },
       body: method === 'GET' ? undefined : JSON.stringify(payload || {}),
-    })
+    }, timeoutMs)
   } catch (error) {
     if (error.name === 'AbortError') {
       throw new Error('O backend demorou para responder. Tente novamente em alguns segundos.')
@@ -67,6 +67,10 @@ async function callPlatformApi(path, payload, { method = 'POST' } = {}) {
 
 export function listPlatformCondominiums() {
   return callPlatformApi('/api/platform/condominiums/list', undefined, { method: 'GET' })
+}
+
+export function getPlatformStatus() {
+  return callPlatformApi('/api/platform/status', undefined, { method: 'GET', timeoutMs: 20000 })
 }
 
 export function updatePlatformCondominium(payload) {
@@ -102,4 +106,12 @@ export async function registerCondominium(payload) {
   }
 
   return result
+}
+
+export function exportPlatformCondominium(condominiumId) {
+  return callPlatformApi(`/api/platform/condominiums/export?id=${encodeURIComponent(condominiumId)}`, undefined, { method: 'GET' })
+}
+
+export function importPlatformResidents(payload) {
+  return callPlatformApi('/api/platform/condominiums/import', payload, { timeoutMs: 60000 })
 }

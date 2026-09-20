@@ -12,10 +12,6 @@ export function getCpfCnpjType(value = '') {
   return ''
 }
 
-export function isCpfCnpj(value = '') {
-  return Boolean(getCpfCnpjType(value))
-}
-
 export function formatCpfCnpj(value = '') {
   const digits = normalizeCpfCnpj(value)
   if (digits.length <= 11) return formatCpf(digits)

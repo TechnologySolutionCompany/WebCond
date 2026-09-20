@@ -41,10 +41,6 @@ export function isResidentPaymentConfirmation(item) {
   return parseResidentRequest(item).kind === 'payment_confirmation'
 }
 
-export function isResidentProfileChangeRequest(item) {
-  return parseResidentRequest(item).kind === 'profile_change'
-}
-
 export function isResidentRequestPending(item) {
   return String(item?.status || '').toLowerCase() !== 'resolvido'
 }

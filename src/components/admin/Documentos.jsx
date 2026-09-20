@@ -26,6 +26,8 @@ export default function Documentos() {
   const [saving, setSaving] = useState(false)
   const { profile, condominiumId } = useAuth()
   const { toast } = useToast()
+  const documentLimit = profile?.condominium_document_limit || 10
+  const limitReached = !loading && docs.length >= documentLimit
 
   const fetchDocs = useCallback(async () => {
     setLoading(true)
@@ -47,6 +49,11 @@ export default function Documentos() {
   useEffect(() => { void fetchDocs() }, [fetchDocs])
 
   const handleSave = async () => {
+    if (docs.length >= documentLimit) {
+      toast(`Limite de ${documentLimit} documentos do plano atingido. Exclua um documento para enviar outro.`, 'error')
+      return
+    }
+
     if (!form.titulo || !file) {
       toast('Preencha o título e selecione um arquivo.', 'error')
       return
@@ -54,7 +61,7 @@ export default function Documentos() {
 
     setSaving(true)
     try {
-      const fileName = buildStorageFileName(file.name)
+      const fileName = buildStorageFileName(file.name, condominiumId)
       const { error: uploadError } = await supabase.storage.from('documentos').upload(fileName, file)
       if (uploadError) throw uploadError
 
@@ -95,9 +102,9 @@ export default function Documentos() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <div className="page-title">Documentos</div>
-            <div className="page-subtitle">Atas, regimentos, contratos, comprovantes e arquivos importantes</div>
+            <div className="page-subtitle">Atas, regimentos, contratos, comprovantes e arquivos importantes · {docs.length} de {documentLimit} documentos do plano</div>
           </div>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <button className="btn btn-primary" onClick={() => setShowModal(true)} disabled={limitReached} title={limitReached ? 'Limite de documentos do plano atingido' : undefined}>
             <Plus size={15} /> Adicionar documento
           </button>
         </div>

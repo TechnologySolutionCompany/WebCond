@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../shared/Toast'
+import { isNoticeCurrent, noticeDaysLeft, NOTICE_RETENTION_DAYS } from '../../lib/avisos'
 import { useAuth } from '../../hooks/useAuth'
 import { applyTenantFilter, withTenantFields } from '../../lib/tenant'
 import { Plus, Bell, X, Loader2, AlertTriangle, Info, Wrench, Megaphone, Trash2 } from 'lucide-react'
-import { APARTMENT_OPTIONS } from '../../lib/apartments'
+import { compareUnitNumbers } from '../../lib/units'
 
 const TIPOS = [
   { value: 'informativo', label: 'Informativo', icon: Info, color: 'blue' },
@@ -21,6 +22,7 @@ export default function Avisos() {
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
+  const [unitNumbers, setUnitNumbers] = useState([])
   const { profile, condominiumId } = useAuth()
   const { toast } = useToast()
 
@@ -28,11 +30,20 @@ export default function Avisos() {
     setLoading(true)
     const query = supabase.from('avisos').select('*').order('created_at', { ascending: false })
     const { data } = await applyTenantFilter(query, condominiumId)
-    setAvisos(data || [])
+    setAvisos((data || []).filter((aviso) => isNoticeCurrent(aviso)))
     setLoading(false)
   }, [condominiumId])
 
   useEffect(() => { void fetchAvisos() }, [fetchAvisos])
+
+  // Unidades reais do condominio para o aviso direcionado.
+  useEffect(() => {
+    if (!condominiumId) return
+    void (async () => {
+      const { data } = await supabase.from('unidades').select('numero').eq('condominium_id', condominiumId)
+      setUnitNumbers((data || []).map((unit) => unit.numero).sort(compareUnitNumbers))
+    })()
+  }, [condominiumId])
 
   const handleSave = async () => {
     if (!form.titulo || !form.conteudo) {
@@ -70,7 +81,7 @@ export default function Avisos() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <div className="page-title">Avisos e comunicados</div>
-            <div className="page-subtitle">Publique comunicados para os moradores</div>
+            <div className="page-subtitle">Publique comunicados para os moradores. Cada aviso e apagado automaticamente {NOTICE_RETENTION_DAYS} dias apos o envio.</div>
           </div>
           <button className="btn btn-primary" onClick={() => setShowModal(true)}>
             <Plus size={15} /> Novo aviso
@@ -100,14 +111,15 @@ export default function Avisos() {
                         <span className={`badge badge-${tipo.color}`}>{tipo.label}</span>
                         {aviso.destinatario !== 'todos' && (
                           <span className="badge badge-purple">
-                            {aviso.destinatario === 'apartamento' ? `Apt. ${aviso.apartamento_destino}` : 'Individual'}
+                            {aviso.destinatario === 'apartamento' ? `Unidade ${aviso.apartamento_destino}` : 'Individual'}
                           </span>
                         )}
                         {!aviso.ativo && <span className="badge badge-red">Inativo</span>}
                       </div>
-                      <p style={{ color: '#8b949e', fontSize: 13, lineHeight: 1.6 }}>{aviso.conteudo}</p>
-                      <div style={{ fontSize: 11, color: '#484f58', marginTop: 8 }}>
+                      <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>{aviso.conteudo}</p>
+                      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 8 }}>
                         {new Date(aviso.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        {' · '}apagado automaticamente em {noticeDaysLeft(aviso)} {noticeDaysLeft(aviso) === 1 ? 'dia' : 'dias'}
                       </div>
                     </div>
                   </div>
@@ -152,9 +164,9 @@ export default function Avisos() {
                 <div className="form-group">
                   <label className="form-label">Apartamento</label>
                   <select className="input" value={form.apartamento_destino} onChange={(event) => setForm((current) => ({ ...current, apartamento_destino: event.target.value }))}>
-                    <option value="">Selecione o apartamento</option>
-                    {APARTMENT_OPTIONS.map((apto) => (
-                      <option key={apto} value={apto}>Apt. {apto}</option>
+                    <option value="">Selecione a unidade</option>
+                    {unitNumbers.map((numero) => (
+                      <option key={numero} value={numero}>Unidade {numero}</option>
                     ))}
                   </select>
                 </div>

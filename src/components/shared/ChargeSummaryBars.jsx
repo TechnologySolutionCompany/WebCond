@@ -15,6 +15,8 @@ export default function ChargeSummaryBars({
   pago = 0,
   inadimplente = 0,
   totalApartamentos = 0,
+  helper = '',
+  children = null,
 }) {
   const total = Math.max(1, emAberto + pago + inadimplente)
 
@@ -33,14 +35,15 @@ export default function ChargeSummaryBars({
             label={item.label}
             value={item.value}
             color={item.color}
-            helper={totalApartamentos > 0 ? `${totalApartamentos} apartamentos registrados` : undefined}
+            helper={helper || (totalApartamentos > 0 ? `${totalApartamentos} unidades registradas` : undefined)}
           />
         ))}
       </div>
 
+      {children || (
       <div style={{ display: 'grid', gap: 10 }}>
         {items.map((item) => {
-          const width = `${Math.max(6, (item.value / total) * 100)}%`
+          const width = item.value > 0 ? `${Math.max(4, (item.value / total) * 100)}%` : '0%'
 
           return (
             <div key={`bar-${item.key}`}>
@@ -55,6 +58,7 @@ export default function ChargeSummaryBars({
           )
         })}
       </div>
+      )}
     </div>
   )
 }
