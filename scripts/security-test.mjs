@@ -2,6 +2,7 @@
 // Cria 3 condominios de teste (sindico, proprietario, inquilino, contador), usa os tres ao mesmo tempo,
 // tenta todo tipo de acesso indevido entre eles e apaga tudo no final.
 // Requer no .env: PLATFORM_ADMIN_DOCUMENT e PLATFORM_ADMIN_PASSWORD (login do admin da plataforma).
+// Por padrao chama os modulos da API direto. Com SECURITY_TEST_URL=https://... testa o site publicado.
 process.loadEnvFile('.env')
 const { createClient } = await import('@supabase/supabase-js')
 const { supabaseAdmin } = await import('../api/_lib/supabaseAdmin.js')
@@ -26,14 +27,31 @@ function cnpj() {
   for (const w of [[5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]]) { const r = d.reduce((s, n, i) => s + n * w[i], 0) % 11; d.push(r < 2 ? 0 : 11 - r) }
   return d.join('')
 }
+const BASE_URL = String(process.env.SECURITY_TEST_URL || '').replace(/\/+$/, '')
+
+// Endereco publico da rota: uma funcao por area, um segmento depois da area.
+const HTTP_ROUTES = { 'platform/condominiums/update-syndic-password': 'platform/condominiums-syndic-password' }
+function httpRoute(path) {
+  if (HTTP_ROUTES[path]) return HTTP_ROUTES[path]
+  if (path === 'health' || path.startsWith('admin/billing/')) return path
+  const [area, ...rest] = path.split('/')
+  return `${area}/${rest.join('-')}`
+}
+
 async function call(path, { token, body, method = 'POST' } = {}) {
-  // Cada area tem uma funcao unica na Vercel; os modulos ficam em api/_<area>/.
-  const modulePath = path === 'health' || path.startsWith('admin/billing/') ? path : path.replace(/^([a-z]+)\//, '_$1/')
-  const mod = await import(`../api/${modulePath}.js`)
-  const res = await mod[method](new Request(`http://localhost/api/${path}`, {
-    method, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    body: method === 'GET' ? undefined : JSON.stringify(body || {}),
-  }))
+  const headers = { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }
+  const payload = method === 'GET' ? undefined : JSON.stringify(body || {})
+
+  let res
+  if (BASE_URL) {
+    res = await fetch(`${BASE_URL}/api/${httpRoute(path)}`, { method, headers, body: payload })
+  } else {
+    // Cada area tem uma funcao unica na Vercel; os modulos ficam em api/_<area>/.
+    const modulePath = path === 'health' || path.startsWith('admin/billing/') ? path : path.replace(/^([a-z]+)\//, '_$1/')
+    const mod = await import(`../api/${modulePath}.js`)
+    res = await mod[method](new Request(`http://localhost/api/${path}`, { method, headers, body: payload }))
+  }
+
   let data = null
   try { data = await res.json() } catch { data = null }
   return { status: res.status, data }
