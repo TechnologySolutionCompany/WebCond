@@ -5,6 +5,7 @@ import { ThemeProvider } from './hooks/useTheme'
 import { ToastProvider } from './components/shared/Toast'
 import { ProtectedRoute } from './components/shared/ProtectedRoute'
 import Landing from './pages/Landing'
+import Politicas from './pages/Politicas'
 import './styles/global.css'
 
 // Cada painel vira um chunk separado: o usuario so baixa o codigo do perfil em que entrou.
@@ -23,6 +24,7 @@ export default function App() {
             <Suspense fallback={routeFallback}>
               <Routes>
                 <Route path="/" element={<Landing/>}/>
+                <Route path="/politicas/:slug" element={<Politicas/>}/>
                 <Route path="/admin/*" element={
                   <ProtectedRoute requiredRole={['admin', 'contador']}><AdminLayout/></ProtectedRoute>
                 }/>

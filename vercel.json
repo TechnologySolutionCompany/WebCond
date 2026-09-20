@@ -15,6 +15,10 @@
     {
       "source": "/morador/:path*",
       "destination": "/"
+    },
+    {
+      "source": "/politicas/:path*",
+      "destination": "/"
     }
   ],
   "functions": {

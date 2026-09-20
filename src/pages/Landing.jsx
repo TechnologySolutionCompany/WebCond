@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Building,
   CheckCircle,
@@ -18,6 +18,7 @@ import { formatCpf, normalizeCpf } from '../lib/cpf'
 import { formatCpfCnpj, getCpfCnpjType, normalizeCpfCnpj } from '../lib/document'
 import { registerCondominium } from '../lib/platformApi'
 import AddressFields from '../components/shared/AddressFields'
+import SiteFooter from '../components/shared/SiteFooter'
 import { composeAddress, emptyAddress, sanitizeAddress } from '../lib/address'
 
 const emptyCondominiumForm = {
@@ -37,7 +38,8 @@ const emptyCondominiumForm = {
 }
 
 export default function Landing() {
-  const [tab, setTab] = useState('login')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [tab, setTab] = useState(searchParams.get('cadastro') === 'condominio' ? 'condominio' : 'login')
   const [cpf, setCpf] = useState('')
   const [pass, setPass] = useState('')
   const [showPass, setShowPass] = useState(false)
@@ -142,6 +144,7 @@ export default function Landing() {
   const closeCondominiumModal = () => {
     setTab('login')
     setError('')
+    if (searchParams.get('cadastro')) setSearchParams({}, { replace: true })
   }
 
   if (successMode) {
@@ -486,11 +489,9 @@ export default function Landing() {
           </div>
         )}
 
-        <div style={S.footer}>
-          <div>© 2026 WebCond</div>
-          <div>Desenvolvido por TSCBr Technology Solution Company BR</div>
-        </div>
       </div>
+
+      <SiteFooter />
     </div>
   )
 }
@@ -793,13 +794,6 @@ const S = {
     color: '#9CA3AF',
     margin: '12px 0',
     lineHeight: 1.7,
-  },
-  footer: {
-    marginTop: 24,
-    textAlign: 'center',
-    color: '#9CA3AF',
-    fontSize: 12,
-    lineHeight: 1.8,
   },
   successCard: {
     background: '#111821',

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
-import { formatCpf } from '../../lib/cpf'
+import SensitiveValue from '../shared/SensitiveValue'
 import { useToast } from '../shared/Toast'
 import { User, Home, Phone, CreditCard, Send, FilePenLine, X, KeyRound, Mail, Wallet } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -154,9 +154,9 @@ export default function MoradorPerfil() {
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 18 }}>{access.label}: meus dados</div>
           <div className="profile-fields">
             <ProfileField icon={User} label="Nome completo" value={profile.nome} />
-            <ProfileField icon={CreditCard} label="CPF" value={profile.cpf ? formatCpf(profile.cpf) : '-'} />
-            <ProfileField icon={Phone} label="WhatsApp" value={profile.whatsapp || '-'} />
-            <ProfileField icon={Mail} label="E-mail" value={profile.email && !profile.email.endsWith('@login.webcond.local') ? profile.email : '-'} />
+            <ProfileField icon={CreditCard} label="CPF" value={<SensitiveValue value={profile.cpf} type="cpf" />} />
+            <ProfileField icon={Phone} label="WhatsApp" value={<SensitiveValue value={profile.whatsapp} type="phone" />} />
+            <ProfileField icon={Mail} label="E-mail" value={profile.email && !profile.email.endsWith('@login.webcond.local') ? <SensitiveValue value={profile.email} type="email" /> : '-'} />
           </div>
         </div>
 
@@ -177,7 +177,7 @@ export default function MoradorPerfil() {
                 {unit.pessoa_vinculo === 'inquilino' && (
                   <>
                     <ProfileField icon={User} label="Inquilino" value={unit.pessoa_nome || '-'} />
-                    <ProfileField icon={Phone} label="WhatsApp do inquilino" value={unit.pessoa_whatsapp || '-'} />
+                    <ProfileField icon={Phone} label="WhatsApp do inquilino" value={<SensitiveValue value={unit.pessoa_whatsapp} type="phone" />} />
                   </>
                 )}
               </div>

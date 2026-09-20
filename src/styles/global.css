@@ -522,3 +522,73 @@ tr:hover td { background: var(--bg-3); }
 .status-bars span { flex: 1; min-width: 4px; border-radius: 3px 3px 0 0; opacity: .85; }
 .status-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .status-metric { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--bg-3); }
+
+/* ---------------------------------------------------------------
+   Paginas publicas: rodape padrao e politicas (Privacidade, Seguranca, Cookies)
+   Mesmo formato do site da TSCBr, nas cores do WebCond (verde).
+--------------------------------------------------------------- */
+.site-footer { background: #0d1520; border-top: 1px solid rgba(255,255,255,.08); color: #9CA3AF; padding: 48px 24px 24px; }
+.site-footer-grid { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 40px; }
+.site-footer-brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
+.site-footer-brand img { width: 30px; height: 30px; object-fit: contain; }
+.site-footer-brand-web { color: #F2F4F7; }
+.site-footer-brand-cond { color: #43A047; }
+.site-footer-tagline { margin: 14px 0 18px; font-size: 13px; line-height: 1.7; max-width: 280px; }
+.site-footer-socials { display: flex; gap: 10px; }
+.site-footer-socials a { width: 36px; height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,.12); display: inline-flex; align-items: center; justify-content: center; color: #9CA3AF; transition: all .18s ease; }
+.site-footer-socials a:hover { color: #F2F4F7; border-color: rgba(67,160,71,.55); background: rgba(67,160,71,.12); }
+.site-footer-title { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: #6B7280; margin-bottom: 16px; }
+.site-footer-links { display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+.site-footer-links a { color: #9CA3AF; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.site-footer-links a:hover { color: #43A047; }
+.site-footer-whatsapp { margin-top: 18px; display: inline-flex; align-items: center; gap: 8px; background: #43A047; color: #0b1117; font-weight: 700; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; padding: 11px 18px; border-radius: 10px; text-decoration: none; }
+.site-footer-whatsapp:hover { background: #2e7d32; color: #fff; }
+.site-footer-bottom { max-width: 1100px; margin: 36px auto 0; padding-top: 20px; border-top: 1px solid rgba(255,255,255,.08); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 12px; }
+.site-footer-policies { display: flex; gap: 22px; }
+.site-footer-policies a { color: #9CA3AF; text-decoration: none; }
+.site-footer-policies a:hover { color: #43A047; }
+@media (max-width: 860px) {
+  .site-footer-grid { grid-template-columns: 1fr; gap: 28px; }
+  .site-footer-bottom { flex-direction: column; }
+}
+
+.policy-page { min-height: 100vh; background: #0B1117; color: #C9D1D9; }
+.policy-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,.08); position: sticky; top: 0; background: rgba(11,17,23,.92); backdrop-filter: blur(8px); z-index: 10; }
+.policy-brand { display: inline-flex; align-items: center; gap: 8px; color: #9CA3AF; text-decoration: none; font-weight: 800; font-size: 17px; }
+.policy-brand img { width: 26px; height: 26px; object-fit: contain; }
+.policy-brand-web { color: #F2F4F7; }
+.policy-brand-cond { color: #43A047; }
+.policy-topbar-nav { display: flex; gap: 20px; font-size: 13px; }
+.policy-topbar-nav a { color: #9CA3AF; text-decoration: none; }
+.policy-topbar-nav a:hover, .policy-topbar-nav a.active { color: #43A047; }
+.policy-hero { max-width: 900px; margin: 0 auto; padding: 56px 24px 32px; text-align: center; }
+.policy-eyebrow { display: inline-block; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: #43A047; border: 1px solid rgba(67,160,71,.35); background: rgba(67,160,71,.1); border-radius: 999px; padding: 6px 14px; }
+.policy-hero h1 { font-size: clamp(28px, 5vw, 42px); color: #F2F4F7; margin: 18px 0 14px; letter-spacing: -.02em; }
+.policy-hero p { font-size: 15px; line-height: 1.8; color: #9CA3AF; max-width: 640px; margin: 0 auto; }
+.policy-meta { margin-top: 18px; font-size: 12px; color: #6B7280; }
+.policy-meta strong { color: #C9D1D9; }
+.policy-layout { max-width: 1100px; margin: 0 auto; padding: 24px 24px 64px; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 28px; align-items: start; }
+.policy-sidebar { position: sticky; top: 84px; display: grid; gap: 14px; }
+.policy-card { border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 16px; background: #111820; }
+.policy-card-title { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #6B7280; margin-bottom: 12px; }
+.policy-card-text { font-size: 12.5px; line-height: 1.7; color: #9CA3AF; }
+.policy-toc-link { display: block; font-size: 12.5px; color: #9CA3AF; text-decoration: none; padding: 5px 0; }
+.policy-toc-link:hover { color: #43A047; }
+.policy-nav-link { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #9CA3AF; text-decoration: none; padding: 5px 0; }
+.policy-nav-link:hover, .policy-nav-link.current { color: #43A047; }
+.policy-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.policy-content { border: 1px solid rgba(255,255,255,.08); border-radius: 16px; background: #0F161E; padding: 28px; }
+.policy-notice { display: flex; gap: 12px; align-items: flex-start; border: 1px solid rgba(67,160,71,.35); background: rgba(67,160,71,.08); color: #C9D1D9; border-radius: 12px; padding: 14px 16px; font-size: 13.5px; line-height: 1.7; margin-bottom: 28px; }
+.policy-notice svg { color: #43A047; flex-shrink: 0; margin-top: 2px; }
+.policy-section { padding: 22px 0; border-top: 1px solid rgba(255,255,255,.06); }
+.policy-section:first-of-type { border-top: none; padding-top: 0; }
+.policy-section h2 { font-size: 18px; color: #F2F4F7; display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.policy-section-num { font-size: 12px; font-weight: 700; color: #43A047; background: rgba(67,160,71,.12); border: 1px solid rgba(67,160,71,.3); border-radius: 8px; padding: 3px 8px; }
+.policy-section p { font-size: 14px; line-height: 1.85; color: #9CA3AF; margin-bottom: 12px; }
+.policy-section ul { margin: 0 0 12px 18px; display: grid; gap: 8px; }
+.policy-section li { font-size: 14px; line-height: 1.7; color: #9CA3AF; }
+@media (max-width: 860px) {
+  .policy-layout { grid-template-columns: 1fr; }
+  .policy-sidebar { position: static; }
+  .policy-content { padding: 20px; }
+}

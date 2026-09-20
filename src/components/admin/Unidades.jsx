@@ -4,6 +4,7 @@ import WhatsAppIcon from '../shared/WhatsAppIcon'
 import { supabase } from '../../lib/supabase'
 import { deleteUnit, saveUnit } from '../../lib/adminApi'
 import { formatCpf, normalizeCpf } from '../../lib/cpf'
+import { maskCpf } from '../../lib/privacy'
 import { useToast } from '../shared/Toast'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
@@ -33,6 +34,8 @@ function openWhatsApp(number, text) {
 function PersonFields({ title, value, onChange, required, isExisting }) {
   const update = (patch) => onChange({ ...value, ...patch })
   const mark = required ? ' *' : ''
+  // Cadastro existente: o CPF fica mascarado ate o sindico pedir para alterar.
+  const [editCpf, setEditCpf] = useState(!isExisting)
 
   return (
     <>
@@ -43,7 +46,14 @@ function PersonFields({ title, value, onChange, required, isExisting }) {
       </div>
       <div className="form-group">
         <label className="form-label">CPF{mark}</label>
-        <input className="input" inputMode="numeric" value={formatCpf(value.cpf)} onChange={(event) => update({ cpf: normalizeCpf(event.target.value) })} placeholder="000.000.000-00" />
+        {isExisting && !editCpf ? (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input className="input" value={maskCpf(value.cpf)} readOnly style={{ flex: 1 }} />
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditCpf(true)}>Alterar</button>
+          </div>
+        ) : (
+          <input className="input" inputMode="numeric" value={formatCpf(value.cpf)} onChange={(event) => update({ cpf: normalizeCpf(event.target.value) })} placeholder="000.000.000-00" />
+        )}
       </div>
       <div className="form-group">
         <label className="form-label">Numero de contato (WhatsApp)</label>

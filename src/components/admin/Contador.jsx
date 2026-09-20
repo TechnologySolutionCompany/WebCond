@@ -9,6 +9,7 @@ import { buildChargeStatusChartData, getChargePaymentStatus, getChargePaymentSta
 import { formatReferenceLabel } from '../../lib/billingShared'
 import { compareUnitNumbers, getUnitStatusMeta } from '../../lib/units'
 import { formatCpf, normalizeCpf } from '../../lib/cpf'
+import SensitiveValue from '../shared/SensitiveValue'
 import { createResident, deleteResident } from '../../lib/adminApi'
 import { normalizeRole } from '../../lib/auth'
 import ChargeTrendLine from '../shared/ChargeTrendLine'
@@ -312,7 +313,9 @@ export default function Contador() {
             <div key={accountant.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: '1px solid var(--border-subtle)' }}>
               <div>
                 <div style={{ fontWeight: 600 }}>{accountant.nome}{accountant.ativo === false && <span className="badge badge-red" style={{ marginLeft: 8 }}>Inativo</span>}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>CPF {formatCpf(accountant.cpf)} · {accountant.whatsapp || 'sem WhatsApp'}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  CPF <SensitiveValue value={accountant.cpf} type="cpf" /> · <SensitiveValue value={accountant.whatsapp} type="phone" />
+                </div>
               </div>
               <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => handleRemoveAccountant(accountant)} aria-label={`Remover ${accountant.nome}`}>
                 <Trash2 size={13} />
