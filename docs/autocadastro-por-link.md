@@ -25,7 +25,7 @@ Complementos:
   própria consulta do link;
 - a rota pública responde a mesma mensagem genérica para token inexistente, desativado e de
   condomínio bloqueado, para não virar uma forma de descobrir tokens;
-- limite de 5 envios por hora e 30 consultas por 10 minutos, por IP;
+- limite de 20 envios por hora e 30 consultas por 10 minutos, por IP;
 - o link do painel é montado pelo navegador com a própria origem, então o cabeçalho `Host` da
   requisição nunca decide para onde o link aponta.
 

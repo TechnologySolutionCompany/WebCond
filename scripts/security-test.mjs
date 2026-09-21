@@ -497,7 +497,7 @@ try {
     A.inviteToken = rotated.token
   } catch (error) {
     if (!(error instanceof Limited)) throw error
-    skip(G, 'restante dos fluxos de cadastro', 'limite de 5 envios por hora por IP no site publicado')
+    skip(G, 'restante dos fluxos de cadastro', 'limite de envios por hora por IP no site publicado')
   }
 
   // ---------------- Pessoa removida da unidade perde o acesso na hora ----------------

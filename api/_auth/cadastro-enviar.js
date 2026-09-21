@@ -118,7 +118,7 @@ export async function POST(req) {
   if (originError) return originError
 
   const clientIp = getClientIp(req)
-  const rateLimitError = checkRateLimit(`cadastro-enviar:${clientIp}`, { limit: 5, windowMs: 60 * 60 * 1000 })
+  const rateLimitError = checkRateLimit(`cadastro-enviar:${clientIp}`, { limit: 20, windowMs: 60 * 60 * 1000 })
   if (rateLimitError) return rateLimitError
 
   const serviceRoleError = ensureServiceRoleConfig()
