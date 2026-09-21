@@ -10,7 +10,7 @@ import { formatCurrency, formatReferenceLabel, parseCurrencyInput } from '../../
 import { buildChargeStorageFileName, enrichChargesWithPaymentUrls } from '../../lib/charges'
 import { applyTenantFilter, withTenantFields } from '../../lib/tenant'
 import { getChargePaymentStatus, getChargePaymentStatusMeta, isChargePaid } from '../../lib/chargeStatus'
-import { buildResidentRequestSummary, isResidentPaymentConfirmation, isResidentRequestPending, parseResidentRequest } from '../../lib/residentRequests'
+import { buildPaymentConfirmationTitle, buildResidentRequestSummary, isResidentPaymentConfirmation, isResidentRequestPending, parseResidentRequest } from '../../lib/residentRequests'
 import { renderBillingPdf } from '../../lib/adminApi'
 import { compareUnitNumbers } from '../../lib/units'
 
@@ -259,7 +259,7 @@ export default function Cobrancas() {
     ])
 
     setCobrancas(await enrichChargesWithPaymentUrls(cobRes.data || []))
-    setUnits(unitsRes.data || [])
+    setUnits((unitsRes.data || []).sort((a, b) => compareUnitNumbers(a.numero, b.numero)))
     setLinks(linksRes.data || [])
     setResidentRequests(requestsRes.data || [])
     setLoading(false)
@@ -512,6 +512,10 @@ export default function Cobrancas() {
       toast('Nao foi possivel excluir a cobranca.', 'error')
       return
     }
+
+    // Sem a cobranca, a confirmacao de pagamento do morador perde o sentido: se ficar,
+    // vira uma notificacao presa no painel apontando para algo que nao existe mais.
+    await supabase.from('ocorrencias_predio').delete().eq('titulo', buildPaymentConfirmationTitle(charge.id))
 
     toast('Cobranca excluida.', 'success')
     setViewCharge(null)

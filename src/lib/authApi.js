@@ -68,7 +68,3 @@ export async function signInWithDocument(documentNumber, password) {
   return result
 }
 
-export function signInWithCpf(cpf, password) {
-  return signInWithDocument(cpf, password)
-}
-

@@ -6,6 +6,9 @@ import { ToastProvider } from './components/shared/Toast'
 import { ProtectedRoute } from './components/shared/ProtectedRoute'
 import Landing from './pages/Landing'
 import Politicas from './pages/Politicas'
+import AutoCadastro from './pages/AutoCadastro'
+import ConsentGate from './components/shared/ConsentGate'
+import CookieBar from './components/shared/CookieBar'
 import './styles/global.css'
 
 // Cada painel vira um chunk separado: o usuario so baixa o codigo do perfil em que entrou.
@@ -25,6 +28,7 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Landing/>}/>
                 <Route path="/politicas/:slug" element={<Politicas/>}/>
+                <Route path="/cadastro/:token" element={<AutoCadastro/>}/>
                 <Route path="/admin/*" element={
                   <ProtectedRoute requiredRole={['admin', 'contador']}><AdminLayout/></ProtectedRoute>
                 }/>
@@ -37,6 +41,8 @@ export default function App() {
                 <Route path="*" element={<Navigate to="/" replace/>}/>
               </Routes>
             </Suspense>
+            <ConsentGate/>
+            <CookieBar/>
           </ToastProvider>
         </AuthProvider>
       </BrowserRouter>

@@ -15,7 +15,7 @@ function isSameMonth(value, reference = new Date()) {
   const date = new Date(String(value).length === 10 ? `${value}T12:00:00` : value)
   return !Number.isNaN(date.getTime()) && date.getMonth() === reference.getMonth() && date.getFullYear() === reference.getFullYear()
 }
-import { buildResidentRequestSummary, isResidentRequestPending } from '../../lib/residentRequests'
+import { buildResidentRequestSummary, filterSyndicNotifications } from '../../lib/residentRequests'
 
 export default function AdminDashboard({ isActive = true }) {
   const { profile, condominiumId } = useAuth()
@@ -77,7 +77,11 @@ export default function AdminDashboard({ isActive = true }) {
       .reduce((sum, item) => sum + Number(item.valor || 0), 0)
   ), [cobrancas])
 
-  const pendentes = useMemo(() => ocorrencias.filter((item) => isResidentRequestPending(item)), [ocorrencias])
+  // Caixa do sindico: so o que os moradores mandaram para ele, e so sobre cobrancas que existem.
+  const pendentes = useMemo(() => filterSyndicNotifications(ocorrencias, {
+    chargeIds: new Set(cobrancas.map((item) => item.id)),
+    viewerId: profile?.id,
+  }), [ocorrencias, cobrancas, profile?.id])
   const notificacoes = pendentes.slice(0, 6)
   const unitLimit = Number(condominiumSettings.unitCount || 0)
 

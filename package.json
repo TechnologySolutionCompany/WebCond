@@ -1,7 +1,7 @@
 {
   "name": "webcond",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.21.0",
   "type": "module",
   "engines": {
     "node": "24.x"
@@ -10,11 +10,14 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "gerar-modelo-unidades": "node scripts/generate-unit-import-template.mjs",
     "preview": "vite preview",
     "validate-deploy": "node scripts/validate-deployment.mjs",
     "supabase:create-platform-admin": "node scripts/create-platform-admin.mjs",
     "smoke-test": "node scripts/smoke-test.mjs",
-    "security-test": "node scripts/security-test.mjs"
+    "security-test": "node scripts/security-test.mjs",
+    "e2e-importacao": "node scripts/e2e-importacao.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^153.0.0",

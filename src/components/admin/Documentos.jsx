@@ -115,28 +115,37 @@ export default function Documentos() {
       ) : docs.length === 0 ? (
         <div className="empty-state"><FileText size={40} /><p>Nenhum documento publicado ainda.</p></div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12 }}>
           {docs.map((doc) => {
             const cat = getCat(doc.categoria)
             return (
-              <div key={doc.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div key={doc.id} className="card doc-card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span className={`badge badge-${cat.color}`}>{cat.label}</span>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {!doc.publico && <span className="badge badge-orange">Restrito</span>}
-                    <button className="btn btn-ghost btn-sm btn-icon" onClick={() => handleDelete(doc)} style={{ color: '#f85149' }}>
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                  {!doc.publico && <span className="badge badge-orange">Restrito</span>}
+                  <button
+                    className="btn btn-ghost btn-sm btn-icon"
+                    onClick={() => handleDelete(doc)}
+                    style={{ color: 'var(--red)', marginLeft: 'auto' }}
+                    aria-label={`Excluir ${doc.titulo}`}
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{doc.titulo}</div>
-                  {doc.descricao && <div style={{ fontSize: 12, color: '#8b949e', lineHeight: 1.5 }}>{doc.descricao}</div>}
+                <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.4 }}>{doc.titulo}</div>
+                {doc.descricao && <div className="doc-card-desc">{doc.descricao}</div>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{new Date(doc.created_at).toLocaleDateString('pt-BR')}</span>
+                  <a
+                    href={doc.download_url || doc.arquivo_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-ghost btn-sm"
+                    style={{ marginLeft: 'auto' }}
+                  >
+                    <Download size={13} /> Baixar
+                  </a>
                 </div>
-                <div style={{ fontSize: 11, color: '#484f58' }}>{new Date(doc.created_at).toLocaleDateString('pt-BR')}</div>
-                <a href={doc.download_url || doc.arquivo_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" style={{ justifyContent: 'center' }}>
-                  <Download size={13} /> Baixar
-                </a>
               </div>
             )
           })}

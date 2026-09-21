@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Building,
@@ -8,10 +8,13 @@ import {
   IdCard,
   Loader2,
   LockKeyhole,
+  Moon,
   ShieldCheck,
+  Sun,
   X,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import { useTheme } from '../hooks/useTheme'
 import { getHomePathForRole } from '../lib/auth'
 import { signInWithDocument } from '../lib/authApi'
 import { formatCpf, normalizeCpf } from '../lib/cpf'
@@ -19,10 +22,13 @@ import { formatCpfCnpj, getCpfCnpjType, normalizeCpfCnpj } from '../lib/document
 import { registerCondominium } from '../lib/platformApi'
 import AddressFields from '../components/shared/AddressFields'
 import SiteFooter from '../components/shared/SiteFooter'
+import PlanosVitrine from '../components/shared/PlanosVitrine'
 import { composeAddress, emptyAddress, sanitizeAddress } from '../lib/address'
 
 const emptyCondominiumForm = {
   name: '',
+  // Intencao de plano: nada e cobrado no cadastro, todo condominio comeca no periodo de teste.
+  plan: '',
   cnpj: '',
   addressDetails: emptyAddress,
   whatsapp: '',
@@ -38,6 +44,8 @@ const emptyCondominiumForm = {
 }
 
 export default function Landing() {
+  const { themeMode, setTheme } = useTheme()
+  const S = useMemo(() => buildStyles(PALETTES[themeMode] || PALETTES.dark), [themeMode])
   const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState(searchParams.get('cadastro') === 'condominio' ? 'condominio' : 'login')
   const [cpf, setCpf] = useState('')
@@ -56,6 +64,12 @@ export default function Landing() {
       navigate(getHomePathForRole(resolvedRole), { replace: true })
     }
   }, [authLoading, user, resolvedRole, navigate])
+
+  // O link "Cadastrar condominio" do rodape aponta para /?cadastro=condominio. Como a tela ja
+  // esta montada, e este efeito que abre o cadastro quando o endereco muda.
+  useEffect(() => {
+    if (searchParams.get('cadastro') === 'condominio') setTab('condominio')
+  }, [searchParams])
 
   useEffect(() => {
     if (hasBlockedSession) {
@@ -100,6 +114,7 @@ export default function Landing() {
       subSyndicName: condominiumForm.subSyndicName,
       subSyndicWhatsapp: condominiumForm.subSyndicWhatsapp,
       password: condominiumForm.password,
+      plan: condominiumForm.plan,
     }
     const address = payload.addressDetails
 
@@ -154,11 +169,20 @@ export default function Landing() {
         <div style={S.grid} />
         <div style={S.glowLeft} />
         <div style={S.glowRight} />
+        <button
+          type="button"
+          style={S.themeToggle}
+          onClick={() => setTheme(themeMode === 'light' ? 'dark' : 'light')}
+          title={themeMode === 'light' ? 'Usar tema escuro' : 'Usar tema claro'}
+          aria-label={themeMode === 'light' ? 'Usar tema escuro' : 'Usar tema claro'}
+        >
+          {themeMode === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+        </button>
         <div style={S.center}>
           <style>{RESPONSIVE_STYLES}</style>
           <div style={S.successCard}>
             <img src="/logo.png" alt="WebCond" style={S.successLogo} />
-            <CheckCircle size={48} color="#43A047" style={{ margin: '0 auto 18px' }} />
+            <CheckCircle size={48} color={S.brandGreen.color} style={{ margin: '0 auto 18px' }} />
             <div style={S.successTitle}>Condominio cadastrado!</div>
             <div style={S.successText}>
               O cadastro inicial foi recebido. O acesso do sindico fica em analise ate a aprovacao do condominio pela plataforma.
@@ -186,6 +210,15 @@ export default function Landing() {
       <div style={S.grid} />
       <div style={S.glowLeft} />
       <div style={S.glowRight} />
+      <button
+        type="button"
+        style={S.themeToggle}
+        onClick={() => setTheme(themeMode === 'light' ? 'dark' : 'light')}
+        title={themeMode === 'light' ? 'Usar tema escuro' : 'Usar tema claro'}
+        aria-label={themeMode === 'light' ? 'Usar tema escuro' : 'Usar tema claro'}
+      >
+        {themeMode === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+      </button>
 
       <div style={S.center}>
         <style>{RESPONSIVE_STYLES}</style>
@@ -193,17 +226,14 @@ export default function Landing() {
         <div style={S.brandArea}>
           <img src="/logo.png" alt="WebCond" style={S.logoImage} />
           <div style={S.brandName}>
-            <span style={{ color: '#0D47A1' }}>Web</span>
-            <span style={{ color: '#43A047' }}>Cond</span>
+            <span style={S.brandBlue}>Web</span>
+            <span style={S.brandGreen}>Cond</span>
           </div>
           <div style={S.brandSubtitle}>Gestao condominial simples e completa</div>
         </div>
 
         <div style={S.heroText}>
           <h1 style={S.headline}>Acesse sua area do condominio</h1>
-          <p style={S.sub}>
-            Entre com seu CPF ou CNPJ e senha para visualizar cobrancas, comunicados e informacoes da sua unidade.
-          </p>
         </div>
 
         <div style={S.card} className="landing-card">
@@ -212,10 +242,10 @@ export default function Landing() {
 
           {hasBlockedSession && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ color: '#F2F4F7', fontSize: 14, lineHeight: 1.7 }}>
+              <div style={{ color: S.pageText.color, fontSize: 14, lineHeight: 1.7 }}>
                 Seu acesso foi autenticado, mas a plataforma ainda nao liberou o ambiente para continuar.
               </div>
-              <div style={{ color: '#9CA3AF', fontSize: 13, lineHeight: 1.7 }}>
+              <div style={{ color: S.pageMuted.color, fontSize: 13, lineHeight: 1.7 }}>
                 Use o aviso acima como referencia e, se necessario, entre em contato com a administracao ou com a plataforma para regularizar o acesso.
               </div>
               <button
@@ -237,7 +267,7 @@ export default function Landing() {
               <div className="form-group">
                 <label className="form-label" style={S.label}>CPF ou CNPJ</label>
                 <div style={S.inputShell} className="landing-input-shell">
-                  <IdCard size={17} color="#9CA3AF" />
+                  <IdCard size={17} color={S.pageMuted.color} />
                   <input
                     className="landing-input"
                     style={S.input}
@@ -254,7 +284,7 @@ export default function Landing() {
               <div className="form-group" style={{ marginTop: 14 }}>
                 <label className="form-label" style={S.label}>Senha</label>
                 <div style={S.inputShell} className="landing-input-shell">
-                  <LockKeyhole size={17} color="#9CA3AF" />
+                  <LockKeyhole size={17} color={S.pageMuted.color} />
                   <input
                     className="landing-input"
                     style={{ ...S.input, paddingRight: 44 }}
@@ -391,8 +421,8 @@ export default function Landing() {
                 </div>
 
                 <div style={S.sectionTag}>
-                  <ShieldCheck size={15} color="#43A047" />
-                  <div style={{ fontSize: 12, color: '#9CA3AF' }}>Responsavel inicial pelo acesso administrativo</div>
+                  <ShieldCheck size={15} color={S.brandGreen.color} />
+                  <div style={{ fontSize: 12, color: S.pageMuted.color }}>Responsavel inicial pelo acesso administrativo</div>
                 </div>
 
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
@@ -466,6 +496,11 @@ export default function Landing() {
                     required
                   />
                 </div>
+
+                <PlanosVitrine
+                  value={condominiumForm.plan}
+                  onChange={(plan) => setCondominiumForm((current) => ({ ...current, plan }))}
+                />
               </div>
 
               <p style={S.note}>
@@ -491,7 +526,11 @@ export default function Landing() {
 
       </div>
 
-      <SiteFooter />
+      {tab !== 'condominio' && (
+        <div style={S.footerArea}>
+          <SiteFooter />
+        </div>
+      )}
     </div>
   )
 }
@@ -530,26 +569,74 @@ const RESPONSIVE_STYLES = `
   }
 `
 
-const S = {
+const PALETTES = {
+  dark: {
+    bg: '#0B1117',
+    text: '#F2F4F7',
+    muted: '#9CA3AF',
+    surface: '#111821',
+    accent: '#43A047',
+    brandBlue: '#0D47A1',
+    border: 'rgba(255,255,255,0.08)',
+    borderStrong: 'rgba(255,255,255,0.12)',
+    overlay: 'rgba(3, 7, 12, 0.72)',
+    errorBg: 'rgba(127,29,29,0.38)',
+    errorBorder: 'rgba(248,81,73,0.55)',
+    errorText: '#FCA5A5',
+    glowTop: 'rgba(13,71,161,0.16)',
+    glowBlue: 'rgba(13,71,161,0.12)',
+    glowGreen: 'rgba(67,160,71,0.12)',
+    grid: 'rgba(255,255,255,0.03)',
+    shadow: '0 28px 70px rgba(0,0,0,0.34)',
+    shadowStrong: '0 24px 60px rgba(0,0,0,0.45)',
+    logoShadow: 'drop-shadow(0 16px 30px rgba(0,0,0,0.35))',
+    accentShadow: '0 18px 34px rgba(67,160,71,0.22)',
+  },
+  light: {
+    bg: '#f4f7fb',
+    text: '#0f172a',
+    muted: '#475569',
+    surface: '#ffffff',
+    accent: '#15803d',
+    brandBlue: '#1d4ed8',
+    border: 'rgba(15,23,42,0.10)',
+    borderStrong: 'rgba(15,23,42,0.16)',
+    overlay: 'rgba(15,23,42,0.45)',
+    errorBg: '#fee2e2',
+    errorBorder: 'rgba(185,28,28,0.45)',
+    errorText: '#b91c1c',
+    glowTop: 'rgba(37,99,235,0.10)',
+    glowBlue: 'rgba(37,99,235,0.10)',
+    glowGreen: 'rgba(21,128,61,0.10)',
+    grid: 'rgba(15,23,42,0.04)',
+    shadow: '0 24px 50px rgba(15,23,42,0.10)',
+    shadowStrong: '0 24px 60px rgba(15,23,42,0.18)',
+    logoShadow: 'drop-shadow(0 14px 26px rgba(15,23,42,0.15))',
+    accentShadow: '0 16px 30px rgba(21,128,61,0.18)',
+  },
+}
+
+// A tela de entrada acompanha o tema claro/escuro escolhido no canto superior direito.
+function buildStyles(p) {
+  return {
   root: {
     minHeight: '100vh',
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: '#0B1117',
+    flexDirection: 'column',
+    background: p.bg,
     position: 'relative',
     overflow: 'hidden',
   },
   bg: {
     position: 'absolute',
     inset: 0,
-    background: 'radial-gradient(circle at top, rgba(13,71,161,0.16), transparent 42%)',
+    background: `radial-gradient(circle at top, ${p.glowTop}, transparent 42%)`,
     pointerEvents: 'none',
   },
   grid: {
     position: 'absolute',
     inset: 0,
-    backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px)',
+    backgroundImage: `linear-gradient(${p.grid} 1px,transparent 1px),linear-gradient(90deg,${p.grid} 1px,transparent 1px)`,
     backgroundSize: '42px 42px',
     pointerEvents: 'none',
     maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.88), rgba(0,0,0,0.2))',
@@ -559,7 +646,7 @@ const S = {
     width: 420,
     height: 420,
     borderRadius: '50%',
-    background: 'rgba(13,71,161,0.12)',
+    background: p.glowBlue,
     filter: 'blur(80px)',
     top: -120,
     left: -120,
@@ -570,7 +657,7 @@ const S = {
     width: 320,
     height: 320,
     borderRadius: '50%',
-    background: 'rgba(67,160,71,0.12)',
+    background: p.glowGreen,
     filter: 'blur(80px)',
     bottom: -80,
     right: -80,
@@ -581,10 +668,38 @@ const S = {
     zIndex: 1,
     width: '100%',
     maxWidth: 860,
-    padding: '40px 20px 32px',
+    margin: '0 auto',
+    padding: '40px 20px 48px',
+    flex: 1,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footerArea: {
+    position: 'relative',
+    zIndex: 1,
+    marginTop: 'auto',
+  },
+  brandBlue: { color: p.brandBlue },
+  brandGreen: { color: p.accent },
+  pageText: { color: p.text },
+  pageMuted: { color: p.muted },
+  themeToggle: {
+    position: 'absolute',
+    top: 18,
+    right: 18,
+    zIndex: 2,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    border: `1px solid ${p.border}`,
+    background: p.surface,
+    color: p.muted,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
   },
   brandArea: {
     display: 'flex',
@@ -598,7 +713,7 @@ const S = {
     height: 88,
     objectFit: 'contain',
     marginBottom: 14,
-    filter: 'drop-shadow(0 16px 30px rgba(0,0,0,0.35))',
+    filter: p.logoShadow,
   },
   brandName: {
     display: 'flex',
@@ -610,7 +725,7 @@ const S = {
   },
   brandSubtitle: {
     marginTop: 10,
-    color: '#9CA3AF',
+    color: p.muted,
     fontSize: 14,
     lineHeight: 1.6,
   },
@@ -623,37 +738,31 @@ const S = {
     fontSize: 34,
     lineHeight: 1.1,
     fontWeight: 800,
-    color: '#F2F4F7',
+    color: p.text,
     margin: 0,
     letterSpacing: '-0.04em',
   },
-  sub: {
-    fontSize: 15,
-    color: '#9CA3AF',
-    margin: '12px 0 0',
-    lineHeight: 1.75,
-  },
   card: {
-    background: '#111821',
+    background: p.surface,
     border: '1px solid rgba(67,160,71,0.22)',
     borderRadius: 16,
     padding: 30,
     width: '100%',
     maxWidth: 720,
-    boxShadow: '0 28px 70px rgba(0,0,0,0.34)',
+    boxShadow: p.shadow,
     backdropFilter: 'blur(10px)',
   },
   err: {
-    background: 'rgba(127,29,29,0.38)',
+    background: p.errorBg,
     border: '1px solid rgba(248,81,73,0.55)',
-    color: '#FCA5A5',
+    color: p.errorText,
     borderRadius: 12,
     padding: '12px 14px',
     fontSize: 13,
     marginBottom: 18,
   },
   label: {
-    color: '#F2F4F7',
+    color: p.text,
     fontSize: 12,
     marginBottom: 8,
     display: 'block',
@@ -674,7 +783,7 @@ const S = {
     background: 'transparent',
     border: 'none',
     outline: 'none',
-    color: '#F2F4F7',
+    color: p.text,
     fontSize: 14,
     minHeight: 50,
   },
@@ -682,7 +791,7 @@ const S = {
     minHeight: 48,
     background: 'rgba(255,255,255,0.03)',
     border: '1px solid rgba(255,255,255,0.08)',
-    color: '#F2F4F7',
+    color: p.text,
     borderRadius: 12,
   },
   btnBase: {
@@ -699,19 +808,19 @@ const S = {
     transition: 'all .18s ease',
   },
   primaryBtn: {
-    background: '#43A047',
-    borderColor: '#43A047',
-    color: '#F2F4F7',
+    background: p.accent,
+    borderColor: p.accent,
+    color: p.text,
   },
   secondaryBtn: {
-    background: '#0D47A1',
-    borderColor: '#0D47A1',
-    color: '#F2F4F7',
+    background: p.brandBlue,
+    borderColor: p.brandBlue,
+    color: p.text,
   },
   eye: {
     background: 'none',
     border: 'none',
-    color: '#9CA3AF',
+    color: p.muted,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
@@ -722,7 +831,7 @@ const S = {
     position: 'fixed',
     inset: 0,
     zIndex: 50,
-    background: 'rgba(3, 7, 12, 0.72)',
+    background: p.overlay,
     display: 'flex',
     alignItems: 'flex-start',
     justifyContent: 'center',
@@ -731,11 +840,11 @@ const S = {
   },
   modalCard: {
     width: 'min(92vw, 760px)',
-    background: '#111820',
+    background: p.surface,
     border: '1px solid rgba(255,255,255,0.08)',
     borderRadius: 20,
     padding: 28,
-    boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+    boxShadow: p.shadowStrong,
   },
   modalHeader: {
     display: 'flex',
@@ -745,12 +854,12 @@ const S = {
     marginBottom: 18,
   },
   modalTitle: {
-    color: '#F2F4F7',
+    color: p.text,
     fontSize: 20,
     fontWeight: 700,
   },
   modalSub: {
-    color: '#9CA3AF',
+    color: p.muted,
     fontSize: 13,
     lineHeight: 1.6,
     marginTop: 4,
@@ -759,7 +868,7 @@ const S = {
     background: 'transparent',
     border: '1px solid rgba(255,255,255,0.12)',
     borderRadius: 10,
-    color: '#9CA3AF',
+    color: p.muted,
     width: 36,
     height: 36,
     display: 'flex',
@@ -772,7 +881,7 @@ const S = {
     marginTop: 14,
     background: 'transparent',
     border: 'none',
-    color: '#9CA3AF',
+    color: p.muted,
     fontSize: 13,
     cursor: 'pointer',
     alignSelf: 'center',
@@ -791,19 +900,19 @@ const S = {
   },
   note: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: p.muted,
     margin: '12px 0',
     lineHeight: 1.7,
   },
   successCard: {
-    background: '#111821',
+    background: p.surface,
     border: '1px solid rgba(67,160,71,0.22)',
     borderRadius: 16,
     padding: 40,
     maxWidth: 460,
     width: '100%',
     textAlign: 'center',
-    boxShadow: '0 28px 70px rgba(0,0,0,0.34)',
+    boxShadow: p.shadow,
   },
   successLogo: {
     width: 72,
@@ -814,13 +923,15 @@ const S = {
   successTitle: {
     fontSize: 22,
     fontWeight: 800,
-    color: '#F2F4F7',
+    color: p.text,
     marginBottom: 10,
   },
   successText: {
     fontSize: 14,
-    color: '#9CA3AF',
+    color: p.muted,
     lineHeight: 1.75,
     marginBottom: 24,
   },
+}
+
 }

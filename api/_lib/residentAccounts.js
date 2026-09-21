@@ -1,8 +1,13 @@
+import { randomUUID } from 'node:crypto'
 import { supabaseAdmin } from './supabaseAdmin.js'
 
 const RESIDENT_ROLES = new Set(['morador', 'resident'])
 
+// Identificador interno de acesso. Com CPF ele e estavel (a mesma pessoa reencontra a conta);
+// sem CPF, ganha um sufixo unico para duas pessoas do mesmo condominio nao colidirem.
+// Quem fica sem CPF ainda nao consegue entrar: o login do morador e por CPF.
 export function buildInternalResidentEmail(cpf, condominiumId) {
+  if (!cpf) return `morador-sem-cpf-${randomUUID().slice(0, 8)}-${condominiumId}@login.webcond.local`
   return `morador-${cpf}-${condominiumId}@login.webcond.local`
 }
 
@@ -109,23 +114,44 @@ async function updateAccount(profileId, person, vinculo, profileFields) {
 
 // Define quem ocupa o papel (proprietario/inquilino) na unidade. `current` e quem ja esta vinculado.
 // Retorna { profileId } ou { error, status }.
-export async function saveUnitPerson({ condominiumId, unitId, unitNumber, vinculo, person, current }) {
-  if (!person.nome || person.cpf.length !== 11) {
+// `allowWithoutCpf` e so da importacao por planilha: la o CPF e opcional e quem entra sem CPF
+// fica cadastrado na unidade, mas ainda sem conseguir entrar (o login e por CPF).
+export async function saveUnitPerson({ condominiumId, unitId, unitNumber, vinculo, person, current, allowWithoutCpf = false }) {
+  const cpfOk = person.cpf.length === 11 || (allowWithoutCpf && person.cpf.length === 0)
+  if (!person.nome || !cpfOk) {
     return { error: `Informe nome e CPF (11 digitos) do ${vinculo}.`, status: 400 }
   }
 
   const baseFields = { nome: person.nome, whatsapp: person.whatsapp, updated_at: new Date().toISOString() }
 
   // Mesma pessoa ja vinculada: so atualiza os dados.
-  if (current && String(current.cpf || '').replace(/\D/g, '') === person.cpf) {
+  if (person.cpf && current && String(current.cpf || '').replace(/\D/g, '') === person.cpf) {
     return updateAccount(current.id, person, vinculo, { ...baseFields })
   }
 
-  let matches
-  try {
-    matches = await findProfileByCpf(person.cpf)
-  } catch (error) {
-    return { error: error.message, status: 500 }
+  // Sem CPF, a unica forma de reconhecer alguem que ja existe e o e-mail, resolvido na validacao.
+  // So vincula, sem mexer em senha nem dados, e so se a conta for mesmo deste condominio.
+  if (!person.cpf && person.existingProfileId) {
+    const { data: known, error: knownError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, role, condominium_id, condominio_id')
+      .eq('id', person.existingProfileId)
+      .maybeSingle()
+    if (knownError) return { error: 'Nao foi possivel validar a pessoa ja cadastrada.', status: 500 }
+    if (!known || !belongsTo(known, condominiumId) || !RESIDENT_ROLES.has(String(known.role || '').toLowerCase())) {
+      return { error: `A pessoa informada como ${vinculo} pertence a outro acesso.`, status: 409 }
+    }
+    const linkError = await linkPersonToUnit({ unitId, profileId: known.id, vinculo })
+    return linkError ? { error: linkError, status: 500 } : { profileId: known.id }
+  }
+
+  let matches = []
+  if (person.cpf) {
+    try {
+      matches = await findProfileByCpf(person.cpf)
+    } catch (error) {
+      return { error: error.message, status: 500 }
+    }
   }
 
   const existing = matches[0]

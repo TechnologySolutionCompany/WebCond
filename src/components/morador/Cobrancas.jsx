@@ -26,6 +26,9 @@ function getPrimaryPaymentLink(cobranca) {
   return String(cobranca?.pagamento_link || '').trim()
 }
 
+// O morador avisou que pagou, o sindico ainda nao validou. Laranja, porque nada esta resolvido ainda.
+const AGUARDANDO_SINDICO = { label: 'Avaliacao pendente de confirmacao', badgeClass: 'badge-orange' }
+
 export default function MoradorCobrancas() {
   const { profile, condominiumId } = useAuth()
   const { toast } = useToast()
@@ -102,7 +105,7 @@ export default function MoradorCobrancas() {
   const sendPaymentConfirmation = async (charge) => {
     if (!charge?.id || !profile?.id) return
     if (pendingChargeRequestIds.has(charge.id)) {
-      toast('O pagamento desta cobranca ja foi sinalizado ao sindico.', 'info')
+      toast('Este pagamento ja esta aguardando a confirmacao do sindico.', 'info')
       return
     }
 
@@ -124,7 +127,7 @@ export default function MoradorCobrancas() {
       return
     }
 
-    toast('Pagamento confirmado no sistema. O sindico foi avisado para validar.', 'success')
+    toast('Avaliacao pendente: o sindico foi avisado e vai confirmar o pagamento.', 'info')
     await fetchCobrancas()
   }
 
@@ -187,7 +190,7 @@ export default function MoradorCobrancas() {
                   const hasBoleto = Boolean(cobranca.boleto_download_url)
                   const residentConfirmed = pendingChargeRequestIds.has(cobranca.id) && !isChargePaid(cobranca)
                   const statusMeta = residentConfirmed
-                    ? { label: 'Pagamento confirmado', badgeClass: 'badge-blue' }
+                    ? AGUARDANDO_SINDICO
                     : getChargePaymentStatusMeta(cobranca)
                   return (
                     <tr key={cobranca.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(cobranca)}>
@@ -216,7 +219,7 @@ export default function MoradorCobrancas() {
             {filtered.map((cobranca) => {
               const residentConfirmed = pendingChargeRequestIds.has(cobranca.id) && !isChargePaid(cobranca)
               const statusMeta = residentConfirmed
-                ? { label: 'Pagamento confirmado', badgeClass: 'badge-blue' }
+                ? AGUARDANDO_SINDICO
                 : getChargePaymentStatusMeta(cobranca)
 
               return (
@@ -285,7 +288,7 @@ export default function MoradorCobrancas() {
                   {(() => {
                     const residentConfirmed = pendingChargeRequestIds.has(selected.id) && !isChargePaid(selected)
                     const statusMeta = residentConfirmed
-                      ? { label: 'Pagamento confirmado', badgeClass: 'badge-blue' }
+                      ? AGUARDANDO_SINDICO
                       : getChargePaymentStatusMeta(selected)
                     return <span className={`badge ${statusMeta.badgeClass}`}>{statusMeta.label}</span>
                   })()}
@@ -303,7 +306,7 @@ export default function MoradorCobrancas() {
             <div className="charge-actions">
               {!isChargePaid(selected) && (
                 <button className="btn btn-primary" type="button" onClick={() => sendPaymentConfirmation(selected)} disabled={sendingConfirmation || pendingChargeRequestIds.has(selected.id)}>
-                  <Send size={14} /> {pendingChargeRequestIds.has(selected.id) ? 'Pagamento ja confirmado' : sendingConfirmation ? 'Enviando...' : 'Confirmar pagamento'}
+                  <Send size={14} /> {pendingChargeRequestIds.has(selected.id) ? 'Aguardando o sindico' : sendingConfirmation ? 'Enviando...' : 'Confirmar pagamento'}
                 </button>
               )}
               {selected.pix_copy_paste_code && (

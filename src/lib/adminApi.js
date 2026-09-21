@@ -45,19 +45,19 @@ async function fetchWithTimeout(path, options, timeoutMs = 12000) {
   }
 }
 
-async function callAdminApi(path, payload) {
+async function callAdminApi(path, payload, { timeoutMs, method = 'POST' } = {}) {
   const token = await getAccessToken()
 
   let response
   try {
     response = await fetchWithTimeout(path, {
-      method: 'POST',
+      method,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(payload),
-    })
+      body: method === 'GET' ? undefined : JSON.stringify(payload),
+    }, timeoutMs)
   } catch (error) {
     if (error.name === 'AbortError') {
       throw new Error('O backend demorou para responder. Tente novamente em alguns segundos.')
@@ -136,6 +136,28 @@ export function saveUnit(payload) {
   return callAdminApi('/api/admin/units-save', payload)
 }
 
+// Importacao por planilha: analisar nao grava nada; confirmar envia o mesmo arquivo de novo.
+export function analyzeUnitImport(payload) {
+  return callAdminApi('/api/admin/units-import-analyze', payload, { timeoutMs: 60000 })
+}
+
+export function confirmUnitImport(payload) {
+  return callAdminApi('/api/admin/units-import-confirm', payload, { timeoutMs: 120000 })
+}
+
 export function deleteUnit(payload) {
   return callAdminApi('/api/admin/units-delete', payload)
+}
+
+// Auto-cadastro por link: o sindico gera o link e depois aprova ou recusa cada cadastro.
+export function fetchSignupLink() {
+  return callAdminApi('/api/admin/signup-link', null, { method: 'GET' })
+}
+
+export function saveSignupLink(payload) {
+  return callAdminApi('/api/admin/signup-link', payload)
+}
+
+export function reviewSignupRequest(payload) {
+  return callAdminApi('/api/admin/signup-review', payload)
 }

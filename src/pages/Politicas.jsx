@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ShieldCheck } from 'lucide-react'
-import SiteFooter from '../components/shared/SiteFooter'
 import { LAST_UPDATE, POLICIES, POLICY_LIST, POLICY_VERSION } from '../lib/politicas'
 
 // Paginas legais publicas (mesma estrutura do site oficial, nas cores do WebCond).
@@ -91,7 +90,6 @@ export default function Politicas() {
         </main>
       </div>
 
-      <SiteFooter />
     </div>
   )
 }

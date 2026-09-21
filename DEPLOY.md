@@ -40,6 +40,8 @@ No **SQL Editor**, execute:
   2. `2026-09-20_vinculos_e_cobranca_por_unidade.sql`
   3. `2026-09-21_plano_vencido_somente_leitura.sql`
   4. `2026-09-22_seguranca_parceria_avisos.sql`
+  5. `2026-09-23_importacao_de_unidades.sql`
+  6. `2026-09-24_autocadastro_por_link.sql`
 
 Em **Authentication > Sign In / Providers**, desative **Allow new users to sign up**. Todas as contas são
 criadas pelo backend (service role); o cadastro público do Supabase Auth não é usado pelo sistema.
@@ -140,6 +142,21 @@ por carregar o Chromium.
 Na Vercel o roteador só captura **um** nível de caminho, então os endereços têm um segmento só depois da
 área: `/api/admin/units-save`, `/api/platform/condominiums-list`. Ao criar uma rota nova: coloque o
 módulo em `api/_<area>/`, registre no roteador da área e em `apiModules` no `vite.config.js`.
+
+---
+
+### 3.2 Importação de unidades por planilha
+
+O fluxo completo (modelo .xlsx, tela, validações, gravação e testes) está em
+[docs/importacao-unidades.md](docs/importacao-unidades.md). A tela fica pronta no codigo, mas o botao
+esta fora do menu por decisao de produto.
+
+---
+
+### 3.3 Auto-cadastro do morador por link
+
+O sindico gera um link, o morador preenche os proprios dados e escolhe a senha, e o sindico aprova.
+Detalhes em [docs/autocadastro-por-link.md](docs/autocadastro-por-link.md).
 
 ---
 

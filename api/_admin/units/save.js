@@ -141,8 +141,9 @@ export async function POST(req) {
       }
     }
 
-    // Deixou de ser alugada: o inquilino sai desta unidade (perde o acesso se nao tiver outra).
-    if (situacao !== 'alugada' && links.inquilino) {
+    // Unidade sem ninguem morando: o morador sai desta unidade (perde o acesso se nao tiver outra).
+    // Ocupada mantem o morador que nao e o proprietario, como na importacao por planilha.
+    if ((situacao === 'desocupada' || situacao === 'interditada') && links.inquilino) {
       await supabaseAdmin.from('unidade_vinculos').delete().eq('unidade_id', savedUnit.id).eq('vinculo', 'inquilino')
       const releaseError = await releasePerson(links.inquilino.id)
       if (releaseError) failures.push({ error: releaseError, status: 500 })

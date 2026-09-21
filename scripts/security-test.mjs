@@ -38,16 +38,23 @@ function httpRoute(path) {
   return `${area}/${rest.join('-')}`
 }
 
-async function call(path, { token, body, method = 'POST' } = {}) {
-  const headers = { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }
+// IP de mentira por chamada: o limite por IP das rotas publicas nao deve mascarar o que se testa.
+// No site publicado a Vercel sobrescreve o cabecalho, entao ali o limite real continua valendo.
+let fakeIpCounter = 0
+const fakeIp = () => `10.77.${Math.floor(fakeIpCounter / 250) % 250}.${(fakeIpCounter++ % 250) + 1}`
+const skip = (group, name, why) => console.log(`SKIP [${group}] ${name} :: ${why}`)
+
+async function call(path, { token, body, method = 'POST', headers: extraHeaders = {}, ip = false } = {}) {
+  const headers = { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...(ip ? { 'x-forwarded-for': fakeIp() } : {}), ...extraHeaders }
   const payload = method === 'GET' ? undefined : JSON.stringify(body || {})
+  const [purePath, query] = path.split('?')
 
   let res
   if (BASE_URL) {
-    res = await fetch(`${BASE_URL}/api/${httpRoute(path)}`, { method, headers, body: payload })
+    res = await fetch(`${BASE_URL}/api/${httpRoute(purePath)}${query ? `?${query}` : ''}`, { method, headers, body: payload })
   } else {
     // Cada area tem uma funcao unica na Vercel; os modulos ficam em api/_<area>/.
-    const modulePath = path === 'health' || path.startsWith('admin/billing/') ? path : path.replace(/^([a-z]+)\//, '_$1/')
+    const modulePath = purePath === 'health' || purePath.startsWith('admin/billing/') ? purePath : purePath.replace(/^([a-z]+)\//, '_$1/')
     const mod = await import(`../api/${modulePath}.js`)
     res = await mod[method](new Request(`http://localhost/api/${path}`, { method, headers, body: payload }))
   }
@@ -321,6 +328,178 @@ try {
     check('Auth', 'cadastro publico do Supabase desativado (recomendado)', false, 'desative em Authentication > Sign In / Providers')
   }
 
+  // ---------------- Auto-cadastro por link (SQL 09-24) ----------------
+  const G = 'Auto-cadastro'
+  class Limited extends Error {}
+  const limited = (response) => Boolean(BASE_URL) && response.status === 429
+  const person = (document, extra = {}) => ({ nome: 'Novo Morador Teste', cpf: document, whatsapp: '(11) 91111-2222', email: '', password: PASS_RESIDENT, ...extra })
+  const signupBody = (token, over = {}) => ({ token, situacao: 'ocupada', apartamento: '202', aceite: true, proprietario: person(cpf()), inquilino: null, ...over })
+  const send = async (body, options = {}) => {
+    const response = await call('auth/cadastro-enviar', { ip: true, body, ...options })
+    if (limited(response)) throw new Limited()
+    return response
+  }
+  const info = (token) => call(`auth/cadastro-info?token=${encodeURIComponent(token)}`, { method: 'GET', ip: true })
+  const review = (token, body) => call('admin/signup/review', { token, body })
+  const loginCpf = (document) => call('auth/login-cpf', { ip: true, body: { cpf: document, password: PASS_RESIDENT } })
+  const anonClient = client(null)
+
+  const linkA = (await call('admin/signup/link', { token: A.S, body: { action: 'gerar' } })).data?.convite
+  const linkB = (await call('admin/signup/link', { token: B.S, body: { action: 'gerar' } })).data?.convite
+  check(G, 'cada sindico gera o link do proprio condominio', Boolean(linkA?.token) && Boolean(linkB?.token) && linkA.token !== linkB.token)
+  check(G, 'o link nao carrega id de condominio nem de quem o criou', !JSON.stringify(linkA).includes(A.id) && !JSON.stringify(linkA).includes(A.syndicId))
+  check(G, 'cada sindico so le o proprio link', (await call('admin/signup/link', { token: A.S, method: 'GET' })).data?.convite?.token === linkA.token && (await call('admin/signup/link', { token: B.S, method: 'GET' })).data?.convite?.token === linkB.token)
+  for (const [name, token, expected] of [['proprietario', A.O, 403], ['inquilino', A.T, 403], ['contador', A.C, 403], ['sem login', undefined, 401]]) {
+    check(G, `${name} nao gera link de cadastro`, (await call('admin/signup/link', { token, body: { action: 'gerar' } })).status === expected)
+  }
+  check(G, 'proprietario nao le o link', (await call('admin/signup/link', { token: A.O, method: 'GET' })).status === 403)
+  check(G, 'sem login nao le o link', (await call('admin/signup/link', { method: 'GET' })).status === 401)
+
+  // Direto no banco: o token nunca sai pelo PostgREST e ninguem forja convite ou solicitacao.
+  check(G, 'sem login nao le convites pelo banco', !rowsOf((await anonClient.from('condominio_convites').select('*')).data).length)
+  check(G, 'nem o sindico le o token pelo banco (so pela API)', !rowsOf((await sA.from('condominio_convites').select('*')).data).length)
+  res = await sA.from('condominio_convites').insert({ condominium_id: A.id, token: `forjado-${Date.now()}` }).select()
+  check(G, 'sindico nao forja token direto no banco', Boolean(res.error) || !res.data?.length)
+  res = await anonClient.from('solicitacoes_cadastro').insert({ condominium_id: B.id, condominio_id: B.id, nome: 'Spam', email: 'spam@example.com', cpf: cpf() }).select()
+  check(G, 'sem login ninguem insere solicitacao em condominio algum (brecha antiga fechada)', Boolean(res.error) || !res.data?.length, res.error?.message)
+  res = await oA.from('solicitacoes_cadastro').insert({ condominium_id: A.id, condominio_id: A.id, nome: 'Spam', email: 'spam@example.com', cpf: cpf() }).select()
+  check(G, 'morador logado tambem nao insere solicitacao direto no banco', Boolean(res.error) || !res.data?.length)
+  res = await oA.from('profiles').update({ aceite_versao: '1.0', aceite_em: new Date().toISOString() }).eq('id', A.ownerId).select('aceite_versao')
+  check(G, 'morador registra o proprio aceite dos termos', res.data?.[0]?.aceite_versao === '1.0', res.error?.message)
+  res = await oA.from('profiles').update({ aceite_versao: 'forjado' }).eq('id', B.ownerId).select()
+  check(G, 'morador nao registra aceite em nome de outra pessoa', !res.data?.length)
+
+  // Pagina publica: mostra so o nome do condominio do token.
+  const infoA = await info(linkA.token)
+  const infoB = await info(linkB.token)
+  check(G, 'cada link abre o formulario do proprio condominio', infoA.status === 200 && infoA.data?.condominio === 'E2E Seguranca A' && infoB.data?.condominio === 'E2E Seguranca B', `${infoA.data?.condominio} / ${infoB.data?.condominio}`)
+  check(G, 'a resposta publica nao traz id nem dado de morador', !JSON.stringify(infoA.data).includes(A.id) && Object.keys(infoA.data || {}).sort().join() === 'condominio,politicaVersao')
+  const bogus = await info('inventado-123')
+  check(G, 'token inventado: recusa generica', bogus.status === 404 && !JSON.stringify(bogus.data).includes('E2E'))
+  check(G, 'origem de outro site e recusada', (await call('auth/cadastro-enviar', { ip: true, headers: { origin: 'https://site-falso.example' }, body: signupBody('inventado-123') })).status === 403)
+
+  try {
+    const inventedCpf = cpf()
+    const bogusSend = await send(signupBody('inventado-123', { proprietario: person(inventedCpf) }))
+    check(G, 'token inventado nao cria cadastro', bogusSend.status === 404 && !rowsOf((await supabaseAdmin.from('profiles').select('id').eq('cpf', inventedCpf)).data).length)
+
+    // Fluxo 1: morando. O corpo tenta apontar para o condominio B; so o token conta.
+    const r1 = { cpf: cpf(), email: `e2e-signup-r1-${Date.now()}@webcond-teste.com` }
+    const r1Res = await send(signupBody(linkA.token, { condominium_id: B.id, condominiumId: B.id, condominio_id: B.id, proprietario: person(r1.cpf, { email: r1.email }) }))
+    check(G, 'cadastro pelo link entra', r1Res.status === 200, JSON.stringify(r1Res.data))
+    const { data: r1Profile } = await supabaseAdmin.from('profiles').select('*').eq('cpf', r1.cpf).maybeSingle()
+    check(G, 'a conta nasce no condominio do link (A), e nao no B enviado no corpo', r1Profile?.condominium_id === A.id && r1Profile?.condominio_id === A.id && r1Profile?.role === 'morador')
+    check(G, 'a conta nasce inativa, aguardando o sindico', r1Profile?.ativo === false)
+    const { data: r1Request } = await supabaseAdmin.from('solicitacoes_cadastro').select('*').eq('profile_id', r1Profile?.id).maybeSingle()
+    check(G, 'solicitacao pendente no A, com o aceite registrado', r1Request?.condominium_id === A.id && r1Request?.status === 'pendente' && Boolean(r1Request?.aceite_versao) && Boolean(r1Request?.aceite_em) && r1Request?.situacao === 'ocupada')
+    check(G, 'nenhuma tabela guarda a senha escolhida', !JSON.stringify([r1Profile, r1Request]).includes(PASS_RESIDENT))
+    check(G, 'antes da aprovacao o login por CPF e recusado', (await loginCpf(r1.cpf)).status >= 400)
+    const direct = await anonClient.auth.signInWithPassword({ email: r1.email, password: PASS_RESIDENT })
+    check(G, 'antes da aprovacao nem o login direto no Auth funciona (conta bloqueada)', Boolean(direct.error) && !direct.data?.session, direct.error?.message)
+
+    const dup = await send(signupBody(linkA.token, { proprietario: person(r1.cpf) }))
+    check(G, 'mesmo CPF ja pendente: nao duplica', dup.status === 409 && dup.data?.code === 'JA_ENVIADO', `status ${dup.status}`)
+    const inUse = await send(signupBody(linkA.token, { proprietario: person(B.owner.cpf) }))
+    check(G, 'CPF ja usado em outro condominio: recusa sem dizer onde nem de quem', inUse.status === 409 && inUse.data?.code === 'CPF_EM_USO' && !JSON.stringify(inUse.data).includes('Seguranca') && !JSON.stringify(inUse.data).includes('Dono Completo'), JSON.stringify(inUse.data))
+    for (const [name, body] of [
+      ['sem aceitar os termos, nao envia', signupBody(linkA.token, { aceite: false })],
+      ['CPF invalido, nao envia', signupBody(linkA.token, { proprietario: person('11111111111') })],
+      ['senha curta, nao envia', signupBody(linkA.token, { proprietario: person(cpf(), { password: '123' }) })],
+      ['situacao invalida, nao envia', signupBody(linkA.token, { situacao: 'qualquer' })],
+      ['inquilino com o CPF do proprietario, nao envia', (() => { const same = cpf(); return signupBody(linkA.token, { situacao: 'alugada', proprietario: person(same), inquilino: { ...person(same), acesso: true } }) })()],
+    ]) {
+      const response = await send(body)
+      check(G, name, response.status === 400, `status ${response.status}`)
+    }
+
+    // Isolamento do aprovador
+    check(G, 'sindico B nao aprova cadastro do A', (await review(B.S, { requestId: r1Request.id, action: 'aprovar', numero: '202' })).status === 404)
+    check(G, 'sindico B nao recusa cadastro do A', (await review(B.S, { requestId: r1Request.id, action: 'recusar' })).status === 404)
+    check(G, 'a conta do A segue intacta depois da tentativa do B', rowsOf((await supabaseAdmin.from('profiles').select('id').eq('id', r1Profile.id)).data).length === 1)
+    check(G, 'proprietario nao aprova', (await review(A.O, { requestId: r1Request.id, action: 'aprovar', numero: '202' })).status === 403)
+    check(G, 'contador nao aprova', (await review(A.C, { requestId: r1Request.id, action: 'aprovar', numero: '202' })).status === 403)
+    check(G, 'sindico A ve a solicitacao pendente', rowsOf((await sA.from('solicitacoes_cadastro').select('id')).data).some((row) => row.id === r1Request.id))
+    check(G, 'sindico B nao ve a solicitacao do A', !rowsOf((await client(B.S).from('solicitacoes_cadastro').select('id')).data).some((row) => row.id === r1Request.id))
+    check(G, 'morador nao le solicitacoes de cadastro', !rowsOf((await oA.from('solicitacoes_cadastro').select('id')).data).length)
+    res = await client(B.S).from('solicitacoes_cadastro').update({ status: 'aprovado' }).eq('id', r1Request.id).select()
+    check(G, 'sindico B nao altera solicitacao do A pelo banco', !res.data?.length)
+
+    // Aprovacao
+    const approved = await review(A.S, { requestId: r1Request.id, action: 'aprovar', numero: '202' })
+    check(G, 'sindico A aprova', approved.status === 200 && approved.data?.numero === '202', JSON.stringify(approved.data))
+    const login1 = await loginCpf(r1.cpf)
+    check(G, 'aprovado: entra com o CPF e a senha que ele mesmo escolheu', login1.status === 200 && Boolean(login1.data?.session?.access_token), `status ${login1.status}`)
+    const { data: link1 } = await supabaseAdmin.from('unidade_vinculos').select('vinculo, unidades(numero, condominium_id, situacao)').eq('profile_id', r1Profile.id)
+    check(G, 'vinculo de proprietario na unidade 202 do A, ocupada', link1?.length === 1 && link1[0].vinculo === 'proprietario' && link1[0].unidades?.condominium_id === A.id && link1[0].unidades?.numero === '202' && link1[0].unidades?.situacao === 'ocupada')
+    const newcomer = client(login1.data?.session?.access_token)
+    const [newcomerUnits, newcomerNotices] = await Promise.all([newcomer.from('unidades').select('condominium_id'), newcomer.from('avisos').select('condominium_id')])
+    check(G, 'o morador aprovado so enxerga o proprio condominio', !leaksFrom(newcomerUnits.data, [B.id, C.id]) && !leaksFrom(newcomerNotices.data, [B.id, C.id]))
+    check(G, 'solicitacao aprovada nao pode ser aprovada de novo', (await review(A.S, { requestId: r1Request.id, action: 'aprovar', numero: '202' })).status === 409)
+
+    // Fluxo 2: alugado, inquilino COM acesso
+    const r2 = { owner: cpf(), tenant: cpf() }
+    const r2Res = await send(signupBody(linkA.token, { situacao: 'alugada', apartamento: '203', proprietario: person(r2.owner), inquilino: { ...person(r2.tenant, { nome: 'Inquilino Com Acesso Teste' }), acesso: true } }))
+    check(G, 'alugado com acesso: cadastro entra', r2Res.status === 200, JSON.stringify(r2Res.data))
+    const { data: r2People } = await supabaseAdmin.from('profiles').select('id, cpf, ativo, condominium_id').in('cpf', [r2.owner, r2.tenant])
+    check(G, 'proprietario e inquilino nascem no A, os dois inativos', r2People?.length === 2 && r2People.every((row) => row.condominium_id === A.id && row.ativo === false))
+    const { data: r2Request } = await supabaseAdmin.from('solicitacoes_cadastro').select('id').eq('cpf', r2.owner).eq('status', 'pendente').single()
+    const r2Approved = await review(A.S, { requestId: r2Request?.id, action: 'aprovar', numero: '203' })
+    check(G, 'sindico aprova o alugado', r2Approved.status === 200, JSON.stringify(r2Approved.data))
+    const [r2OwnerLogin, r2TenantLogin] = await Promise.all([loginCpf(r2.owner), loginCpf(r2.tenant)])
+    check(G, 'apos aprovar, proprietario e inquilino entram com a senha de cada um', r2OwnerLogin.status === 200 && r2TenantLogin.status === 200)
+    const { data: r2Links } = await supabaseAdmin.from('unidade_vinculos').select('vinculo, profiles(cpf), unidades(numero, situacao)').in('profile_id', (r2People || []).map((row) => row.id))
+    const roleOf = (document) => r2Links?.find((row) => row.profiles?.cpf === document)?.vinculo
+    check(G, 'vinculos corretos e unidade 203 alugada', roleOf(r2.owner) === 'proprietario' && roleOf(r2.tenant) === 'inquilino' && r2Links?.every((row) => row.unidades?.numero === '203' && row.unidades?.situacao === 'alugada'))
+
+    // Fluxo 3: alugado, inquilino SEM acesso
+    const r3 = { owner: cpf(), tenant: cpf() }
+    const r3Res = await send(signupBody(linkA.token, { situacao: 'alugada', apartamento: '204', proprietario: person(r3.owner), inquilino: { ...person(r3.tenant, { nome: 'Inquilino Sem Acesso Teste', password: '' }), acesso: false } }))
+    check(G, 'alugado sem acesso: cadastro entra sem senha do inquilino', r3Res.status === 200, JSON.stringify(r3Res.data))
+    check(G, 'inquilino sem acesso: nenhuma conta criada para ele', !rowsOf((await supabaseAdmin.from('profiles').select('id').eq('cpf', r3.tenant)).data).length)
+    const { data: r3Request } = await supabaseAdmin.from('solicitacoes_cadastro').select('id').eq('cpf', r3.owner).eq('status', 'pendente').single()
+    check(G, 'sindico aprova o alugado sem acesso', (await review(A.S, { requestId: r3Request?.id, action: 'aprovar', numero: '204' })).status === 200)
+    const { data: unit204 } = await supabaseAdmin.from('unidades').select('situacao, observacao').eq('condominium_id', A.id).eq('numero', '204').single()
+    check(G, 'o inquilino sem acesso fica anotado na unidade, sem conta', unit204?.situacao === 'alugada' && String(unit204?.observacao).includes('Inquilino Sem Acesso Teste') && !rowsOf((await supabaseAdmin.from('profiles').select('id').eq('cpf', r3.tenant)).data).length)
+
+    // Fluxo 4: recusar apaga tudo o que o envio criou
+    const r4 = { cpf: cpf(), email: `e2e-signup-r4-${Date.now()}@webcond-teste.com` }
+    const r4Res = await send(signupBody(linkA.token, { situacao: 'desocupada', apartamento: '205', proprietario: person(r4.cpf, { email: r4.email }) }))
+    const { data: r4Profile } = await supabaseAdmin.from('profiles').select('id').eq('cpf', r4.cpf).maybeSingle()
+    const { data: r4Request } = await supabaseAdmin.from('solicitacoes_cadastro').select('id').eq('profile_id', r4Profile?.id).maybeSingle()
+    const refused = await review(A.S, { requestId: r4Request?.id, action: 'recusar', motivo: 'teste automatizado' })
+    const { data: r4After } = await supabaseAdmin.from('solicitacoes_cadastro').select('status, profile_id').eq('id', r4Request?.id).single()
+    const r4Gone = await supabaseAdmin.auth.admin.getUserById(r4Profile?.id)
+    check(G, 'recusar apaga a conta criada no envio (perfil e Auth) e marca rejeitado', r4Res.status === 200 && refused.status === 200 && r4After?.status === 'rejeitado' && !r4After?.profile_id && !rowsOf((await supabaseAdmin.from('profiles').select('id').eq('id', r4Profile?.id)).data).length && !r4Gone.data?.user)
+    check(G, 'quem foi recusado nao entra', (await loginCpf(r4.cpf)).status >= 400)
+    check(G, 'a unidade da solicitacao recusada nao foi criada', !rowsOf((await supabaseAdmin.from('unidades').select('id').eq('condominium_id', A.id).eq('numero', '205')).data).length)
+
+    // Mesmo formulario, links diferentes: cada cadastro cai so no condominio do seu link.
+    const r5Cpf = cpf()
+    const r5Res = await send(signupBody(linkB.token, { apartamento: '301', condominium_id: A.id, condominiumId: A.id, condominio_id: A.id, proprietario: person(r5Cpf) }))
+    const { data: r5Profile } = await supabaseAdmin.from('profiles').select('condominium_id, ativo').eq('cpf', r5Cpf).maybeSingle()
+    const { data: r5Request } = await supabaseAdmin.from('solicitacoes_cadastro').select('condominium_id').eq('cpf', r5Cpf).maybeSingle()
+    check(G, 'cadastro pelo link do B cai so no B (id do A no corpo e ignorado)', r5Res.status === 200 && r5Profile?.condominium_id === B.id && r5Request?.condominium_id === B.id && r5Profile?.ativo === false)
+    check(G, 'sindico A nao ve o cadastro pendente do B', !rowsOf((await sA.from('solicitacoes_cadastro').select('id, cpf')).data).some((row) => row.cpf === r5Cpf))
+
+    // Ciclo de vida do link
+    const rotated = (await call('admin/signup/link', { token: A.S, body: { action: 'gerar' } })).data?.convite
+    check(G, 'gerar link novo invalida o anterior', Boolean(rotated?.token) && rotated.token !== linkA.token && (await info(linkA.token)).status === 404 && (await info(rotated.token)).status === 200)
+    const lateSend = await send(signupBody(linkA.token))
+    check(G, 'o link antigo nao aceita mais cadastro', lateSend.status === 404)
+    await supabaseAdmin.from('condominio_convites').update({ expira_em: new Date(Date.now() - 86400000).toISOString() }).eq('condominium_id', A.id).eq('ativo', true)
+    const expired = await info(rotated.token)
+    check(G, 'link expirado e recusado', expired.status === 404 && expired.data?.code === 'LINK_EXPIRADO', JSON.stringify(expired.data))
+    await call('admin/signup/link', { token: B.S, body: { action: 'desativar' } })
+    const revoked = await info(linkB.token)
+    check(G, 'link desativado e recusado', revoked.status === 404 && revoked.data?.code === 'LINK_INVALIDO', JSON.stringify(revoked.data))
+    // Deixa o link do A ativo e valido para o teste de plano vencido, mais abaixo.
+    await supabaseAdmin.from('condominio_convites').update({ expira_em: new Date(Date.now() + 86400000).toISOString() }).eq('condominium_id', A.id).eq('ativo', true)
+    A.inviteToken = rotated.token
+  } catch (error) {
+    if (!(error instanceof Limited)) throw error
+    skip(G, 'restante dos fluxos de cadastro', 'limite de 5 envios por hora por IP no site publicado')
+  }
+
   // ---------------- Pessoa removida da unidade perde o acesso na hora ----------------
   const removed = await call('admin/units/delete', { token: C.S, body: { unitId: C.unitId } })
   const removedClient = client(C.T)
@@ -337,6 +516,12 @@ try {
   check('Plano (SQL 09-21)', 'plano vencido: banco bloqueia aviso do sindico', Boolean(res.error) || !res.data?.length)
   check('Plano', 'plano vencido: sindico continua lendo', rowsOf((await sA.from('cobrancas').select('id')).data).length >= 1)
   check('Plano', 'plano vencido: API recusa alteracao', (await call('admin/units/save', { token: A.S, body: { numero: '105', situacao: 'desocupada' } })).status === 402)
+  check('Plano', 'plano vencido: API recusa gerar link de cadastro', (await call('admin/signup/link', { token: A.S, body: { action: 'gerar' } })).status === 402)
+  check('Plano', 'plano vencido: API recusa aprovar cadastro', (await call('admin/signup/review', { token: A.S, body: { requestId: '00000000-0000-0000-0000-000000000000', action: 'aprovar', numero: '9' } })).status === 402)
+  if (A.inviteToken) {
+    const lockedInfo = await call(`auth/cadastro-info?token=${encodeURIComponent(A.inviteToken)}`, { method: 'GET', ip: true })
+    check('Plano', 'plano vencido: o link deixa de receber cadastros', lockedInfo.status === 403, `status ${lockedInfo.status}`)
+  }
   res = await client(B.S).from('avisos').insert({ condominium_id: B.id, condominio_id: B.id, titulo: 'ok', conteudo: 'ok', destinatario: 'todos', created_by: B.syndicId }).select()
   check('Plano', 'condominio B (em dia) nao e afetado pelo vencimento do A', !res.error, res.error?.message)
   await call('platform/condominiums/update', { token: P, body: { condominiumId: B.id, action: 'status', status: 'active', plan: 'PARCERIA' } })
@@ -352,7 +537,7 @@ try {
   for (const id of created.authUsers) { await supabaseAdmin.from('profiles').delete().eq('id', id); await supabaseAdmin.auth.admin.deleteUser(id) }
   for (const id of created.condos.filter(Boolean)) {
     const { data: people } = await supabaseAdmin.from('profiles').select('id').or(`condominium_id.eq.${id},condominio_id.eq.${id}`)
-    for (const table of ['cobrancas', 'avisos', 'documentos', 'ocorrencias_predio']) await supabaseAdmin.from(table).delete().or(`condominium_id.eq.${id},condominio_id.eq.${id}`)
+    for (const table of ['cobrancas', 'avisos', 'documentos', 'ocorrencias_predio', 'solicitacoes_cadastro']) await supabaseAdmin.from(table).delete().or(`condominium_id.eq.${id},condominio_id.eq.${id}`)
     await supabaseAdmin.from('unidades').delete().eq('condominium_id', id)
     for (const person of people || []) { await supabaseAdmin.from('profiles').delete().eq('id', person.id); await supabaseAdmin.auth.admin.deleteUser(person.id) }
     const { error } = await supabaseAdmin.from('condominiums').delete().eq('id', id)

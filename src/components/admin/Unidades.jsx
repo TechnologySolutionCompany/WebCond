@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bell, Home, Loader2, Plus, Search, Trash2, X } from 'lucide-react'
+import { Bell, Home, Link2, Loader2, Plus, Search, Trash2, X } from 'lucide-react'
+import SolicitacoesCadastro from './SolicitacoesCadastro'
 import WhatsAppIcon from '../shared/WhatsAppIcon'
 import { supabase } from '../../lib/supabase'
 import { deleteUnit, saveUnit } from '../../lib/adminApi'
@@ -9,7 +10,7 @@ import { useToast } from '../shared/Toast'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { applyTenantFilter } from '../../lib/tenant'
-import { buildResidentRequestSummary, isResidentRequestPending } from '../../lib/residentRequests'
+import { buildResidentRequestSummary, filterSyndicNotifications, isResidentRequestPending } from '../../lib/residentRequests'
 import { compareUnitNumbers, getUnitStatusMeta, normalizeUnitNumber, UNIT_STATUSES } from '../../lib/units'
 
 const emptyPerson = { id: null, nome: '', cpf: '', whatsapp: '', email: '', password: '' }
@@ -93,15 +94,20 @@ export default function Unidades({ isActive = true }) {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
   const [notificationsOf, setNotificationsOf] = useState(null)
+  // Importacao por planilha continua pronta em ImportarUnidades.jsx, fora do menu por ora.
+  const [signupOpen, setSignupOpen] = useState(false)
+  const [pendingSignups, setPendingSignups] = useState(0)
 
   const unitLimit = Number(condominiumSettings.unitCount || 0)
 
   const fetchUnits = useCallback(async () => {
     setLoading(true)
-    const [unitsRes, linksRes, requestsRes] = await Promise.all([
+    const [unitsRes, linksRes, requestsRes, signupRes, chargesRes] = await Promise.all([
       supabase.from('unidades').select('*').eq('condominium_id', condominiumId),
       supabase.from('unidade_vinculos').select('unidade_id, vinculo, profiles(id, nome, cpf, whatsapp, email, ativo)'),
       applyTenantFilter(supabase.from('ocorrencias_predio').select('*').order('created_at', { ascending: false }), condominiumId),
+      supabase.from('solicitacoes_cadastro').select('id', { count: 'exact', head: true }).eq('condominium_id', condominiumId).eq('status', 'pendente'),
+      supabase.from('cobrancas').select('id'),
     ])
 
     const missing = unitsRes.error?.code === 'PGRST205' || unitsRes.error?.code === '42P01'
@@ -109,7 +115,11 @@ export default function Unidades({ isActive = true }) {
     if (unitsRes.error && !missing) toast(unitsRes.error.message || 'Erro ao carregar unidades.', 'error')
     setUnits((unitsRes.data || []).sort((a, b) => compareUnitNumbers(a.numero, b.numero)))
     setLinks((linksRes.data || []).filter((link) => link.profiles && link.profiles.ativo !== false))
-    setRequests(requestsRes.data || [])
+    // Confirmacao de pagamento de cobranca excluida nao aparece mais no sino da unidade.
+    setRequests(filterSyndicNotifications(requestsRes.data || [], {
+      chargeIds: new Set((chargesRes.data || []).map((item) => item.id)),
+    }))
+    setPendingSignups(signupRes.count || 0)
     setLoading(false)
   }, [condominiumId, toast])
 
@@ -243,19 +253,34 @@ export default function Unidades({ isActive = true }) {
     }
   }
 
-  const tenantBeingReplaced = form?.situacao !== 'alugada' && form?.inquilino?.id
+  // Ocupada tambem pode ter morador que nao e o proprietario; so desocupada/interditada libera a unidade.
+  const showTenantFields = form?.situacao === 'alugada' || (form?.situacao === 'ocupada' && Boolean(form?.inquilino?.id))
+  const tenantBeingReplaced = form?.inquilino?.id && form?.situacao !== 'alugada' && form?.situacao !== 'ocupada'
 
   return (
     <div className="fade-in">
+      {signupOpen && (
+        <SolicitacoesCadastro
+          onClose={() => { setSignupOpen(false); void fetchUnits() }}
+          onApproved={fetchUnits}
+        />
+      )}
+
       <div className="page-header">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <div className="page-title">Unidades</div>
             <div className="page-subtitle">{units.length} de {unitLimit || '-'} unidades cadastradas</div>
           </div>
-          <button className="btn btn-primary" onClick={openCreate} disabled={limitReached || tableMissing} title={limitReached ? 'Limite de unidades atingido. Solicite a ampliacao a plataforma.' : undefined}>
-            <Plus size={15} /> Cadastrar unidade
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-ghost" onClick={() => setSignupOpen(true)} disabled={tableMissing}>
+              <Link2 size={15} /> Cadastro por link
+              {pendingSignups > 0 && <span className="badge badge-orange">{pendingSignups}</span>}
+            </button>
+            <button className="btn btn-primary" onClick={openCreate} disabled={limitReached || tableMissing} title={limitReached ? 'Limite de unidades atingido. Solicite a ampliacao a plataforma.' : undefined}>
+              <Plus size={15} /> Cadastrar unidade
+            </button>
+          </div>
         </div>
       </div>
 
@@ -379,13 +404,13 @@ export default function Unidades({ isActive = true }) {
                 isExisting={Boolean(form.proprietario.id)}
               />
 
-              {form.situacao === 'alugada' && (
+              {showTenantFields && (
                 <>
                   <PersonFields
-                    title="Inquilino (obrigatorio)"
+                    title={form.situacao === 'alugada' ? 'Inquilino (obrigatorio)' : 'Morador (nao e o proprietario)'}
                     value={form.inquilino}
                     onChange={(inquilino) => setForm({ ...form, inquilino })}
-                    required
+                    required={form.situacao === 'alugada'}
                     isExisting={Boolean(form.inquilino.id)}
                   />
                   <div className="form-group" style={{ gridColumn: '1/-1' }}>
@@ -409,7 +434,7 @@ export default function Unidades({ isActive = true }) {
 
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.6 }}>
               Proprietario e inquilino entram com CPF + senha. Um CPF ja cadastrado pode ser vinculado a varias unidades (voce confirma antes). Trocar o CPF substitui a pessoa nesta unidade; quem ficar sem nenhuma unidade perde o acesso (o historico de cobrancas e mantido).
-              {tenantBeingReplaced && <div style={{ color: 'var(--orange)' }}>Ao salvar, o inquilino atual perde o acesso porque a unidade deixa de estar alugada.</div>}
+              {tenantBeingReplaced && <div style={{ color: 'var(--orange)' }}>Ao salvar, o morador atual perde o acesso porque a unidade deixa de ter alguem morando.</div>}
             </div>
 
             <div className="modal-footer">

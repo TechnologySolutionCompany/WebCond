@@ -297,11 +297,6 @@ tr:hover td { background: var(--bg-3); }
 .theme-morador .btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; }
 .theme-morador .btn-primary:hover { background: var(--accent-morador-2); border-color: var(--accent-morador-2); }
 .theme-morador .stat-card:hover { border-color: var(--blue); }
-.theme-platform .nav-item.active { background: var(--yellow-dim); color: var(--yellow); }
-.theme-platform .input:focus { border-color: var(--yellow); }
-.theme-platform .btn-primary { background: var(--yellow); border-color: var(--yellow); color: #111; }
-.theme-platform .btn-primary:hover { background: #c79516; border-color: #c79516; }
-.theme-platform .stat-card:hover { border-color: var(--yellow); }
 
 .theme-toggle {
   display: grid;
@@ -527,68 +522,176 @@ tr:hover td { background: var(--bg-3); }
    Paginas publicas: rodape padrao e politicas (Privacidade, Seguranca, Cookies)
    Mesmo formato do site da TSCBr, nas cores do WebCond (verde).
 --------------------------------------------------------------- */
-.site-footer { background: #0d1520; border-top: 1px solid rgba(255,255,255,.08); color: #9CA3AF; padding: 48px 24px 24px; }
-.site-footer-grid { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 40px; }
-.site-footer-brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
-.site-footer-brand img { width: 30px; height: 30px; object-fit: contain; }
-.site-footer-brand-web { color: #F2F4F7; }
-.site-footer-brand-cond { color: #43A047; }
-.site-footer-tagline { margin: 14px 0 18px; font-size: 13px; line-height: 1.7; max-width: 280px; }
-.site-footer-socials { display: flex; gap: 10px; }
-.site-footer-socials a { width: 36px; height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,.12); display: inline-flex; align-items: center; justify-content: center; color: #9CA3AF; transition: all .18s ease; }
-.site-footer-socials a:hover { color: #F2F4F7; border-color: rgba(67,160,71,.55); background: rgba(67,160,71,.12); }
-.site-footer-title { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: #6B7280; margin-bottom: 16px; }
-.site-footer-links { display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
-.site-footer-links a { color: #9CA3AF; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
-.site-footer-links a:hover { color: #43A047; }
-.site-footer-whatsapp { margin-top: 18px; display: inline-flex; align-items: center; gap: 8px; background: #43A047; color: #0b1117; font-weight: 700; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; padding: 11px 18px; border-radius: 10px; text-decoration: none; }
-.site-footer-whatsapp:hover { background: #2e7d32; color: #fff; }
-.site-footer-bottom { max-width: 1100px; margin: 36px auto 0; padding-top: 20px; border-top: 1px solid rgba(255,255,255,.08); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 12px; }
-.site-footer-policies { display: flex; gap: 22px; }
-.site-footer-policies a { color: #9CA3AF; text-decoration: none; }
-.site-footer-policies a:hover { color: #43A047; }
+.site-footer { background: var(--bg-2); border-top: 1px solid var(--border); color: var(--text-muted); padding: 28px 24px 16px; }
+.site-footer-grid { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 28px; }
+.site-footer-brand { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 800; letter-spacing: -.01em; }
+.site-footer-brand img { width: 22px; height: 22px; object-fit: contain; }
+.site-footer-brand-web { color: var(--text); }
+.site-footer-brand-cond { color: var(--green); }
+.site-footer-tagline { margin: 8px 0 12px; font-size: 12px; line-height: 1.6; max-width: 260px; }
+.site-footer-socials { display: flex; gap: 8px; }
+.site-footer-socials a { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all .18s ease; }
+.site-footer-socials a:hover { color: var(--text); border-color: var(--green); background: var(--green-dim); }
+.site-footer-title { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; }
+.site-footer-links { display: flex; flex-direction: column; gap: 7px; font-size: 12px; }
+.site-footer-links a { color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.site-footer-links a:hover { color: var(--green); }
+.site-footer-whatsapp { margin-top: 12px; display: inline-flex; align-items: center; gap: 7px; background: var(--green); color: #fff; font-weight: 700; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; padding: 8px 14px; border-radius: 8px; text-decoration: none; }
+.site-footer-whatsapp:hover { background: var(--accent-2); color: #fff; }
+.site-footer-bottom { max-width: 1000px; margin: 20px auto 0; padding-top: 14px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 11px; }
+.site-footer-policies { display: flex; gap: 18px; }
+.site-footer-policies a { color: var(--text-muted); text-decoration: none; }
+.site-footer-policies a:hover { color: var(--green); }
+/* No celular o rodape encolhe de verdade: a marca some, sobram os links e o WhatsApp. */
 @media (max-width: 860px) {
-  .site-footer-grid { grid-template-columns: 1fr; gap: 28px; }
-  .site-footer-bottom { flex-direction: column; }
+  .site-footer { padding: 18px 16px 12px; }
+  .site-footer-grid { grid-template-columns: 1fr 1fr; gap: 16px; }
+  .site-footer-grid > div:first-child { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .site-footer-tagline { display: none; }
+  .site-footer-socials { gap: 6px; }
+  .site-footer-socials a { width: 26px; height: 26px; }
+  .site-footer-title { margin-bottom: 7px; }
+  .site-footer-links { gap: 6px; font-size: 11.5px; }
+  .site-footer-whatsapp { margin-top: 8px; padding: 7px 12px; font-size: 10.5px; }
+  .site-footer-bottom { margin-top: 14px; padding-top: 10px; gap: 8px; font-size: 10.5px; }
+  .site-footer-policies { gap: 14px; }
 }
 
-.policy-page { min-height: 100vh; background: #0B1117; color: #C9D1D9; }
-.policy-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,.08); position: sticky; top: 0; background: rgba(11,17,23,.92); backdrop-filter: blur(8px); z-index: 10; }
-.policy-brand { display: inline-flex; align-items: center; gap: 8px; color: #9CA3AF; text-decoration: none; font-weight: 800; font-size: 17px; }
+.policy-page { min-height: 100vh; background: var(--bg); color: var(--text); }
+.policy-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 16px 24px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--topbar-bg); backdrop-filter: blur(8px); z-index: 10; }
+.policy-brand { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); text-decoration: none; font-weight: 800; font-size: 17px; }
 .policy-brand img { width: 26px; height: 26px; object-fit: contain; }
-.policy-brand-web { color: #F2F4F7; }
-.policy-brand-cond { color: #43A047; }
+.policy-brand-web { color: var(--text); }
+.policy-brand-cond { color: var(--green); }
 .policy-topbar-nav { display: flex; gap: 20px; font-size: 13px; }
-.policy-topbar-nav a { color: #9CA3AF; text-decoration: none; }
-.policy-topbar-nav a:hover, .policy-topbar-nav a.active { color: #43A047; }
+.policy-topbar-nav a { color: var(--text-muted); text-decoration: none; }
+.policy-topbar-nav a:hover, .policy-topbar-nav a.active { color: var(--green); }
 .policy-hero { max-width: 900px; margin: 0 auto; padding: 56px 24px 32px; text-align: center; }
-.policy-eyebrow { display: inline-block; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: #43A047; border: 1px solid rgba(67,160,71,.35); background: rgba(67,160,71,.1); border-radius: 999px; padding: 6px 14px; }
-.policy-hero h1 { font-size: clamp(28px, 5vw, 42px); color: #F2F4F7; margin: 18px 0 14px; letter-spacing: -.02em; }
-.policy-hero p { font-size: 15px; line-height: 1.8; color: #9CA3AF; max-width: 640px; margin: 0 auto; }
-.policy-meta { margin-top: 18px; font-size: 12px; color: #6B7280; }
-.policy-meta strong { color: #C9D1D9; }
+.policy-eyebrow { display: inline-block; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--green); border: 1px solid var(--green); background: var(--green-dim); border-radius: 999px; padding: 6px 14px; }
+.policy-hero h1 { font-size: clamp(28px, 5vw, 42px); color: var(--text); margin: 18px 0 14px; letter-spacing: -.02em; }
+.policy-hero p { font-size: 15px; line-height: 1.8; color: var(--text-muted); max-width: 640px; margin: 0 auto; }
+.policy-meta { margin-top: 18px; font-size: 12px; color: var(--text-dim); }
+.policy-meta strong { color: var(--text); }
 .policy-layout { max-width: 1100px; margin: 0 auto; padding: 24px 24px 64px; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 28px; align-items: start; }
 .policy-sidebar { position: sticky; top: 84px; display: grid; gap: 14px; }
-.policy-card { border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 16px; background: #111820; }
-.policy-card-title { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #6B7280; margin-bottom: 12px; }
-.policy-card-text { font-size: 12.5px; line-height: 1.7; color: #9CA3AF; }
-.policy-toc-link { display: block; font-size: 12.5px; color: #9CA3AF; text-decoration: none; padding: 5px 0; }
-.policy-toc-link:hover { color: #43A047; }
-.policy-nav-link { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #9CA3AF; text-decoration: none; padding: 5px 0; }
-.policy-nav-link:hover, .policy-nav-link.current { color: #43A047; }
+.policy-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--bg-2); }
+.policy-card-title { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 12px; }
+.policy-card-text { font-size: 12.5px; line-height: 1.7; color: var(--text-muted); }
+.policy-toc-link { display: block; font-size: 12.5px; color: var(--text-muted); text-decoration: none; padding: 5px 0; }
+.policy-toc-link:hover { color: var(--green); }
+.policy-nav-link { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); text-decoration: none; padding: 5px 0; }
+.policy-nav-link:hover, .policy-nav-link.current { color: var(--green); }
 .policy-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.policy-content { border: 1px solid rgba(255,255,255,.08); border-radius: 16px; background: #0F161E; padding: 28px; }
-.policy-notice { display: flex; gap: 12px; align-items: flex-start; border: 1px solid rgba(67,160,71,.35); background: rgba(67,160,71,.08); color: #C9D1D9; border-radius: 12px; padding: 14px 16px; font-size: 13.5px; line-height: 1.7; margin-bottom: 28px; }
-.policy-notice svg { color: #43A047; flex-shrink: 0; margin-top: 2px; }
-.policy-section { padding: 22px 0; border-top: 1px solid rgba(255,255,255,.06); }
+.policy-content { border: 1px solid var(--border); border-radius: 16px; background: var(--bg-card); padding: 28px; }
+.policy-notice { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--green); background: var(--green-dim); color: var(--text); border-radius: 12px; padding: 14px 16px; font-size: 13.5px; line-height: 1.7; margin-bottom: 28px; }
+.policy-notice svg { color: var(--green); flex-shrink: 0; margin-top: 2px; }
+.policy-section { padding: 22px 0; border-top: 1px solid var(--border-subtle); }
 .policy-section:first-of-type { border-top: none; padding-top: 0; }
-.policy-section h2 { font-size: 18px; color: #F2F4F7; display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.policy-section-num { font-size: 12px; font-weight: 700; color: #43A047; background: rgba(67,160,71,.12); border: 1px solid rgba(67,160,71,.3); border-radius: 8px; padding: 3px 8px; }
-.policy-section p { font-size: 14px; line-height: 1.85; color: #9CA3AF; margin-bottom: 12px; }
+.policy-section h2 { font-size: 18px; color: var(--text); display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.policy-section-num { font-size: 12px; font-weight: 700; color: var(--green); background: var(--green-dim); border: 1px solid var(--green); border-radius: 8px; padding: 3px 8px; }
+.policy-section p { font-size: 14px; line-height: 1.85; color: var(--text-muted); margin-bottom: 12px; }
 .policy-section ul { margin: 0 0 12px 18px; display: grid; gap: 8px; }
-.policy-section li { font-size: 14px; line-height: 1.7; color: #9CA3AF; }
+.policy-section li { font-size: 14px; line-height: 1.7; color: var(--text-muted); }
 @media (max-width: 860px) {
   .policy-layout { grid-template-columns: 1fr; }
   .policy-sidebar { position: static; }
   .policy-content { padding: 20px; }
+}
+
+/* Importacao de unidades por planilha */
+.import-dropzone { border: 1px dashed var(--border); border-radius: 14px; padding: 28px 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; cursor: pointer; background: var(--bg-3); transition: border-color .15s, background .15s; }
+.import-dropzone:hover, .import-dropzone.dragging { border-color: var(--green); background: var(--green-dim); }
+.import-dropzone:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+/* Documentos: cartao compacto */
+.doc-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; min-height: 132px; }
+.doc-card-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ---------------------------------------------------------------
+   Auto-cadastro do morador pelo link do sindico (pagina publica)
+--------------------------------------------------------------- */
+.signup-shell { max-width: 760px; margin: 0 auto; padding: 40px 24px 56px; flex: 1; }
+.signup-card { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 28px; display: flex; flex-direction: column; gap: 18px; }
+.signup-centered { align-items: center; text-align: center; gap: 14px; padding: 48px 28px; }
+.signup-title { font-size: 20px; font-weight: 700; margin: 0; }
+.signup-muted { font-size: 13px; color: var(--text-muted); line-height: 1.7; margin: 0; max-width: 460px; }
+.signup-icon-ok { color: var(--green); }
+.signup-icon-warn { color: var(--orange); }
+.signup-condo { display: flex; align-items: center; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--border); color: var(--green); }
+.signup-condo-label { display: block; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-dim); }
+.signup-condo strong { font-size: 17px; color: var(--text); }
+.signup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.signup-full { grid-column: 1 / -1; }
+.signup-password { display: flex; gap: 8px; align-items: center; }
+.signup-consent { display: flex; gap: 10px; align-items: flex-start; font-size: 12.5px; color: var(--text-muted); line-height: 1.6; }
+.signup-consent input { margin-top: 2px; accent-color: var(--green); width: 16px; height: 16px; flex-shrink: 0; }
+.signup-consent a { color: var(--green); }
+.signup-error { background: var(--red-dim); border: 1px solid var(--red); color: var(--red); border-radius: var(--r); padding: 10px 12px; font-size: 12.5px; }
+.signup-submit { justify-content: center; padding: 12px; }
+.signup-note { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 11.5px; color: var(--text-dim); margin: 0; }
+.signup-section { padding-top: 16px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 10px; }
+.signup-hint { font-size: 12px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+.signup-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.signup-option { text-align: left; background: var(--bg-3); border: 1px solid var(--border); border-radius: var(--r); padding: 11px 13px; display: flex; flex-direction: column; gap: 3px; color: var(--text); transition: border-color .15s; }
+.signup-option:hover { border-color: var(--green); }
+.signup-option strong { font-size: 13px; font-weight: 600; }
+.signup-option span { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.signup-option-on { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; }
+.signup-toggle { background: var(--bg-3); border: 1px solid var(--border); border-radius: var(--r); padding: 11px 13px; }
+.signup-toggle em { display: block; font-style: normal; color: var(--text-dim); font-size: 11.5px; margin-top: 2px; }
+@media (max-width: 620px) {
+  .signup-grid { grid-template-columns: 1fr; }
+  .signup-options { grid-template-columns: 1fr; }
+  .signup-shell { padding: 20px 16px 32px; }
+  .signup-card { padding: 18px; }
+}
+
+/* ---------------------------------------------------------------
+   Solicitacoes de cadastro e link do condominio (painel do sindico)
+--------------------------------------------------------------- */
+.signup-link-box { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.signup-link-value { flex: 1; min-width: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--bg-3); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; color: var(--text-muted); overflow-x: auto; white-space: nowrap; }
+.signup-request { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; padding: 14px 0; border-bottom: 1px solid var(--border-subtle); }
+.signup-request:last-child { border-bottom: none; }
+.signup-request-main { flex: 1; min-width: 200px; }
+.signup-request-name { font-size: 14px; font-weight: 600; }
+.signup-request-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; display: flex; gap: 10px; flex-wrap: wrap; }
+.signup-request-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.signup-request-unit { width: 92px; }
+.signup-request-tenant { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--border); line-height: 1.6; }
+
+/* ---------------------------------------------------------------
+   Aceite dos termos e aviso de cookies
+--------------------------------------------------------------- */
+.consent-text { font-size: 13px; color: var(--text-muted); line-height: 1.7; }
+.consent-text a { color: var(--green); }
+.consent-list { margin: 12px 0 0; padding-left: 18px; font-size: 13px; color: var(--text-muted); line-height: 1.8; }
+.cookie-bar { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 150; display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 12px 18px; box-shadow: 0 10px 30px rgba(0,0,0,.35); font-size: 12.5px; color: var(--text-muted); max-width: 780px; margin: 0 auto; }
+.cookie-bar a { color: var(--green); }
+
+/* ---------------------------------------------------------------
+   Vitrine de planos (fim do cadastro do condominio)
+--------------------------------------------------------------- */
+.planos-vitrine { grid-column: 1 / -1; margin-top: 8px; padding-top: 18px; border-top: 1px solid var(--border); }
+.planos-vitrine-title { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.planos-vitrine-sub { font-size: 12.5px; color: var(--text-muted); line-height: 1.7; margin-top: 8px; }
+.planos-vitrine-call { font-size: 13px; font-weight: 600; color: var(--text); margin: 14px 0 10px; }
+.planos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: stretch; }
+.plano-card { text-align: left; background: var(--bg-3); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px; display: flex; flex-direction: column; gap: 8px; color: var(--text); height: 100%; }
+.plano-card-click { transition: border-color .15s, transform .15s; }
+.plano-card-click:hover { border-color: var(--green); transform: translateY(-1px); }
+.plano-card-selected { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; }
+.plano-card-soon { opacity: .72; }
+.plano-card-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 22px; }
+.plano-card-name { font-size: 15px; font-weight: 700; letter-spacing: .02em; }
+.plano-card-price { font-size: 20px; font-weight: 700; line-height: 1; }
+.plano-card-period { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.plano-card-summary { font-size: 12px; color: var(--text-muted); line-height: 1.55; margin: 0; }
+.plano-card-features { list-style: none; display: flex; flex-direction: column; gap: 7px; margin: 4px 0 0; padding: 0; }
+.plano-card-features li { display: flex; gap: 7px; align-items: flex-start; font-size: 11.5px; line-height: 1.5; color: var(--text-muted); }
+.plano-card-features svg { flex-shrink: 0; margin-top: 2px; color: var(--green); }
+.plano-feature-soon svg { color: var(--blue); }
+.planos-vitrine-note { font-size: 11.5px; color: var(--text-dim); line-height: 1.6; margin-top: 12px; }
+@media (max-width: 720px) {
+  .planos-grid { grid-template-columns: 1fr; }
 }

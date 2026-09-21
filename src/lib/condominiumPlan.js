@@ -1,13 +1,75 @@
 // Planos da plataforma. ONE e Parceria disponiveis; PRO e MAX aparecem como "Em desenvolvimento".
 // Parceria: condominio parceiro, todas as funcionalidades, gratuito e sem vencimento.
+// `soon: true` em um item marca o que ainda esta por construir: a vitrine mostra "em breve"
+// em vez de prometer como pronto.
 export const PLANS = {
-  ONE: { id: 'ONE', label: 'ONE', priceCents: 5990, priceLabel: 'R$ 59,90', documentLimit: 10, available: true },
-  PRO: { id: 'PRO', label: 'PRO', priceCents: 7990, priceLabel: 'R$ 79,90', documentLimit: 20, available: false },
-  MAX: { id: 'MAX', label: 'MAX', priceCents: 9990, priceLabel: 'R$ 99,90', documentLimit: 50, available: false },
-  PARCERIA: { id: 'PARCERIA', label: 'Parceria', priceCents: 0, priceLabel: 'Gratuito', documentLimit: 50, available: true, partnership: true },
+  ONE: {
+    id: 'ONE',
+    label: 'ONE',
+    priceCents: 5990,
+    priceLabel: 'R$ 59,90',
+    documentLimit: 10,
+    available: true,
+    publicPlan: true,
+    summary: 'O essencial para tirar a administracao do papel e do grupo de WhatsApp.',
+    features: [
+      { text: 'Ate 10 documentos por mes: atas, comprovantes e arquivos importantes' },
+      { text: 'Arquivos guardados por 60 dias, com a opcao de fixar o que nao pode sumir', soon: true },
+      { text: 'Cobrancas lancadas no sistema, para todas as unidades ou uma a uma' },
+      { text: 'Boleto proprio do WebCond, sem vinculo com banco: espelha a chave Pix cadastrada e o QR Code enviado pelo sindico' },
+      { text: 'Painel do morador com cobrancas, avisos, documentos e ocorrencias' },
+    ],
+  },
+  PRO: {
+    id: 'PRO',
+    label: 'PRO',
+    priceCents: 7990,
+    priceLabel: 'R$ 79,90',
+    documentLimit: 20,
+    available: false,
+    publicPlan: true,
+    summary: 'Tudo do ONE, com aviso automatico para o morador e recebimento direto no banco.',
+    features: [
+      { text: 'Ate 20 documentos por mes, no mesmo modelo do ONE' },
+      { text: 'Cobranca enviada vira notificacao no aplicativo do morador, por unidade ou para todas', soon: true },
+      { text: 'Vinculo com o banco do condominio: o pagamento cai direto na conta, sem criar cobranca manual no banco', soon: true },
+      { text: 'Baixa automatica do que ja foi pago', soon: true },
+    ],
+  },
+  MAX: {
+    id: 'MAX',
+    label: 'MAX',
+    priceCents: 9990,
+    priceLabel: 'R$ 99,90',
+    documentLimit: 50,
+    available: false,
+    publicPlan: true,
+    summary: 'Tudo do PRO, com a cara do seu condominio.',
+    features: [
+      { text: 'Ate 50 documentos por mes, ou mais conforme a necessidade' },
+      { text: 'Pacote 100% personalizado com as informacoes do proprio condominio', soon: true },
+      { text: 'Boleto com o logo do condominio e informacoes detalhadas', soon: true },
+      { text: 'Atendimento prioritario na plataforma', soon: true },
+    ],
+  },
+  // Direcionado apenas pela administracao da plataforma: nunca aparece na vitrine publica.
+  PARCERIA: {
+    id: 'PARCERIA',
+    label: 'Parceria',
+    priceCents: 0,
+    priceLabel: 'Gratuito',
+    documentLimit: 50,
+    available: true,
+    publicPlan: false,
+    partnership: true,
+    summary: 'Condominio parceiro: todas as funcionalidades, sem custo e sem vencimento.',
+    features: [{ text: 'Todas as funcionalidades liberadas' }],
+  },
 }
 
 export const PLAN_LIST = Object.values(PLANS)
+// O que o sindico ve ao cadastrar o condominio. Parceria fica de fora por decisao de produto.
+export const PUBLIC_PLAN_LIST = PLAN_LIST.filter((plan) => plan.publicPlan)
 export const STANDARD_PLAN_NAME = 'ONE'
 export const STANDARD_PLAN_PRICE_CENTS = PLANS.ONE.priceCents
 export const TRIAL_PERIOD_DAYS = 30

@@ -1,5 +1,5 @@
 import { checkRateLimit, ensureServiceRoleConfig, getClientIp, json, parseJsonBody, quoteFilterValue, rejectForeignOrigin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
-import { STANDARD_PLAN_NAME, STANDARD_PLAN_PRICE_CENTS } from '../../../src/lib/condominiumPlan.js'
+import { PLANS, STANDARD_PLAN_NAME, STANDARD_PLAN_PRICE_CENTS } from '../../../src/lib/condominiumPlan.js'
 import { composeAddress, sanitizeAddress } from '../../../src/lib/address.js'
 
 function slugify(value = '') {
@@ -96,6 +96,11 @@ export async function POST(req) {
   const syndicCpf = String(body.syndic_cpf || body.syndicCpf || '').replace(/\D/g, '')
   const syndicEmail = String(body.syndic_email || body.syndicEmail || '').trim().toLowerCase()
   const password = String(body.password || '').trim()
+  // Intencao de plano marcada pelo sindico na vitrine. Nao contrata nem cobra nada:
+  // o condominio entra em teste e a plataforma ve essa escolha ao aprovar.
+  // Parceria fica de fora: so a plataforma direciona esse plano.
+  const requestedPlanKey = String(body.plan || body.requestedPlan || '').trim().toUpperCase()
+  const requestedPlan = PLANS[requestedPlanKey]?.publicPlan ? requestedPlanKey : ''
 
   if (!name || !cnpj || !address || !zipCode || !whatsapp || !syndicName || !syndicCpf || !syndicEmail || !password) {
     return json({ error: 'Preencha todos os dados do condominio e do sindico.' }, 400)
@@ -145,6 +150,7 @@ export async function POST(req) {
     plan_price_cents: STANDARD_PLAN_PRICE_CENTS,
     subscription_status: 'trial',
     registration_origin: 'landing',
+    requested_plan: requestedPlan,
     condominium_document_type: condominiumDocumentType,
     address_details: addressDetails,
     sub_syndic: { name: subSyndicName, whatsapp: subSyndicWhatsapp },

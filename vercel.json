@@ -19,6 +19,10 @@
     {
       "source": "/politicas/:path*",
       "destination": "/"
+    },
+    {
+      "source": "/cadastro/:path*",
+      "destination": "/"
     }
   ],
   "functions": {

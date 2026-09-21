@@ -271,7 +271,8 @@ export default function Contador() {
         ))}
       </div>
 
-      <div className="card" style={{ marginTop: 24, maxWidth: 460 }}>
+      <div className="grid-2" style={{ marginTop: 24, alignItems: 'start' }}>
+        <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <FileText size={20} color="#58a6ff" />
@@ -285,11 +286,11 @@ export default function Contador() {
           </button>
         </div>
         <ChargeTrendLine data={chartData} />
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>Ultimos 6 meses. O CSV traz todas as competencias.</div>
-      </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>Ultimos 6 meses. O CSV traz todas as competencias.</div>
+        </div>
 
-      {isSyndic && (
-        <div className="card" style={{ marginTop: 24 }}>
+        {isSyndic && (
+        <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <Calculator size={20} color="#bc8cff" />
@@ -354,7 +355,8 @@ export default function Contador() {
             </div>
           )}
         </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

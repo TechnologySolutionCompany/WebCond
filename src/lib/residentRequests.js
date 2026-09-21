@@ -45,6 +45,25 @@ export function isResidentRequestPending(item) {
   return String(item?.status || '').toLowerCase() !== 'resolvido'
 }
 
+/**
+ * O que o sindico ve na caixa de notificacoes. Tira tres coisas:
+ *  - o que ele mesmo criou: aviso enviado e para quem recebe, nao volta para quem mandou;
+ *  - confirmacao de pagamento de cobranca que nao existe mais (cobranca excluida);
+ *  - o que ja foi resolvido.
+ * `chargeIds` e o conjunto de cobrancas vivas; sem ele, nada e descartado por esse motivo.
+ */
+export function filterSyndicNotifications(items = [], { chargeIds = null, viewerId = '' } = {}) {
+  return items.filter((item) => {
+    if (!isResidentRequestPending(item)) return false
+    if (viewerId && item.created_by === viewerId) return false
+
+    const parsed = parseResidentRequest(item)
+    if (parsed.kind === 'payment_confirmation' && chargeIds && !chargeIds.has(parsed.chargeId)) return false
+
+    return true
+  })
+}
+
 export function buildResidentRequestSummary(item = {}) {
   const parsed = parseResidentRequest(item)
 

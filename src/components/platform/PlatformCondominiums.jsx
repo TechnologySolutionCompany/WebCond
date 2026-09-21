@@ -473,6 +473,9 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
                 )}
 
                 <div className="condo-readonly" style={{ display: 'grid', gap: 4 }}>
+                  {selected.metadata?.requested_plan && (
+                    <div>Plano que o sindico marcou no cadastro: <strong>{selected.metadata.requested_plan}</strong> (intencao, nao contratacao)</div>
+                  )}
                   <div>Aprovado em: <strong>{formatDate(selected.approved_at)}</strong></div>
                   <div>Teste: {formatDate(selected.trial_started_at)} ate <strong>{formatDate(selected.trial_ends_at)}</strong></div>
                   <div>Limite de documentos: <strong>{selectedPlan?.documentLimit}</strong> ({selected.documents_count || 0} usados)</div>
