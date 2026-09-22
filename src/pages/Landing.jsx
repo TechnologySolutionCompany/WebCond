@@ -55,7 +55,7 @@ export default function Landing() {
   const [error, setError] = useState('')
   const [condominiumForm, setCondominiumForm] = useState(emptyCondominiumForm)
   const [successMode, setSuccessMode] = useState('')
-  const { user, loading: authLoading, resolvedRole, authIssue, signOut } = useAuth()
+  const { user, loading: authLoading, resolvedRole, authIssue, sessionNotice, signOut } = useAuth()
   const navigate = useNavigate()
   const hasBlockedSession = !authLoading && user && !resolvedRole && authIssue
 
@@ -239,6 +239,7 @@ export default function Landing() {
         <div style={S.card} className="landing-card">
 
           {error && tab === 'login' && <div style={S.err}>{error}</div>}
+          {!error && sessionNotice && tab === 'login' && <div style={{ ...S.note, marginTop: 0, marginBottom: 14 }}>{sessionNotice}</div>}
 
           {hasBlockedSession && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

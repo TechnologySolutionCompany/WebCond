@@ -42,6 +42,7 @@ No **SQL Editor**, execute:
   4. `2026-09-22_seguranca_parceria_avisos.sql`
   5. `2026-09-23_importacao_de_unidades.sql`
   6. `2026-09-24_autocadastro_por_link.sql`
+  7. `2026-09-25_perfil_suporte_presenca.sql`
 
 Em **Authentication > Sign In / Providers**, desative **Allow new users to sign up**. Todas as contas são
 criadas pelo backend (service role); o cadastro público do Supabase Auth não é usado pelo sistema.

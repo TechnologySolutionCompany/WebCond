@@ -81,6 +81,11 @@ export function updatePlatformSyndicPassword(payload) {
   return callPlatformApi('/api/platform/condominiums-syndic-password', payload)
 }
 
+// Irreversivel: apaga o condominio, as pessoas e os arquivos. Exige a senha do admin da plataforma.
+export function deletePlatformCondominium(payload) {
+  return callPlatformApi('/api/platform/condominiums-delete', payload, { timeoutMs: 120000 })
+}
+
 export async function registerCondominium(payload) {
   let response
 

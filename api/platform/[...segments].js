@@ -6,6 +6,7 @@ import * as condominiumsList from '../_platform/condominiums/list.js'
 import * as condominiumsRegister from '../_platform/condominiums/register.js'
 import * as condominiumsUpdate from '../_platform/condominiums/update.js'
 import * as syndicPassword from '../_platform/condominiums/update-syndic-password.js'
+import * as condominiumsDelete from '../_platform/condominiums/delete.js'
 
 export const { GET, POST } = createRouter({
   '/api/platform/status': status,
@@ -15,4 +16,5 @@ export const { GET, POST } = createRouter({
   '/api/platform/condominiums-register': condominiumsRegister,
   '/api/platform/condominiums-update': condominiumsUpdate,
   '/api/platform/condominiums-syndic-password': syndicPassword,
+  '/api/platform/condominiums-delete': condominiumsDelete,
 })

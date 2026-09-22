@@ -66,7 +66,7 @@ async function call(path, { token, body, method = 'POST', headers: extraHeaders 
 const client = (token) => createClient(URL_, ANON, { auth: { persistSession: false, autoRefreshToken: false }, global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined })
 const PASS = 'Teste@12345'
 const PASS_RESIDENT = 'Morador@54321'
-const created = { condos: [], authUsers: [], files: { cobrancas: [], documentos: [] } }
+const created = { condos: [], authUsers: [], files: { cobrancas: [], documentos: [], suporte: [] } }
 const rowsOf = (data) => data || []
 const leaksFrom = (data, foreignIds) => rowsOf(data).some((row) => foreignIds.includes(row.condominium_id) || foreignIds.includes(row.condominio_id) || foreignIds.includes(row.id))
 
@@ -208,7 +208,7 @@ try {
   check('API', 'tentativas seguidas de senha errada seguem recusadas', brute.every((status) => status === 401 || status === 429), brute.join(','))
 
   // ---------------- Banco (RLS) ----------------
-  const sA = client(A.S)
+  let sA = client(A.S)
   const oA = client(A.O)
   const tA = client(A.T)
   const cA = client(A.C)
@@ -500,6 +500,96 @@ try {
     skip(G, 'restante dos fluxos de cadastro', 'limite de envios por hora por IP no site publicado')
   }
 
+  // ---------------- Perfil do sindico (v1.09A2) ----------------
+  const GP = 'Perfil'
+  const loginSyndic = (condo, password) => call('auth/login-cnpj', { ip: true, body: { cnpj: condo.doc, password } })
+  res = await call('admin/profile/update', { token: A.S, body: { nome: 'Sindico A Editado', whatsapp: '(11) 98888-7777', email: '' } })
+  const { data: editedSyndic } = await supabaseAdmin.from('profiles').select('nome, whatsapp').eq('id', A.syndicId).single()
+  check(GP, 'sindico edita o proprio nome e WhatsApp', res.status === 200 && editedSyndic?.nome === 'Sindico A Editado' && editedSyndic?.whatsapp === '11988887777', JSON.stringify(res.data))
+  check(GP, 'morador nao usa a rota de perfil do sindico', (await call('admin/profile/update', { token: A.O, body: { nome: 'Invasor' } })).status === 403)
+  check(GP, 'sem login a rota de perfil recusa', (await call('admin/profile/update', { body: { nome: 'Invasor' } })).status === 401)
+  const { data: syndicB } = await supabaseAdmin.from('profiles').select('email').eq('id', B.syndicId).single()
+  const stolenEmail = await call('admin/profile/update', { token: A.S, body: { nome: 'Sindico A Editado', email: syndicB.email } })
+  check(GP, 'sindico nao assume o e-mail de login de outro sindico', stolenEmail.status === 409, `status ${stolenEmail.status}`)
+  const { data: syndicBAfter } = await supabaseAdmin.from('profiles').select('email').eq('id', B.syndicId).single()
+  check(GP, 'o e-mail do sindico B continua dele', syndicBAfter.email === syndicB.email)
+
+  const wrongCurrent = await call('admin/profile/password', { token: A.S, body: { senhaAtual: 'errada123', novaSenha: 'NovaSenha@1' } })
+  check(GP, 'troca de senha com a senha atual errada e recusada', wrongCurrent.status === 422 && wrongCurrent.data?.code === 'SENHA_INCORRETA', `status ${wrongCurrent.status}`)
+  check(GP, 'depois da tentativa errada a senha antiga continua valendo', (await loginSyndic(A, PASS)).status === 200)
+  const changed = await call('admin/profile/password', { token: A.S, body: { senhaAtual: PASS, novaSenha: 'NovaSenha@1' } })
+  check(GP, 'troca de senha com a senha atual certa funciona e devolve sessao nova', changed.status === 200 && Boolean(changed.data?.session?.access_token), `status ${changed.status}`)
+  const oldSessionAfterChange = await call('admin/profile/update', { token: A.S, body: { nome: 'Sindico A Editado' } })
+  check(GP, 'troca de senha derruba as sessoes antigas (outro aparelho logado sai)', oldSessionAfterChange.status === 401, `status ${oldSessionAfterChange.status}`)
+  if (changed.data?.session?.access_token) A.S = changed.data.session.access_token
+  check(GP, 'entra com a senha nova', (await loginSyndic(A, 'NovaSenha@1')).status === 200)
+  check(GP, 'a senha antiga deixa de valer', (await loginSyndic(A, PASS)).status === 401)
+  const restored = await call('admin/profile/password', { token: A.S, body: { senhaAtual: 'NovaSenha@1', novaSenha: PASS } })
+  check(GP, 'a sessao nova devolvida continua funcionando (volta a senha original)', restored.status === 200)
+  if (restored.data?.session?.access_token) A.S = restored.data.session.access_token
+  sA = client(A.S)
+  check(GP, 'morador nao troca senha pela rota do sindico', (await call('admin/profile/password', { token: A.O, body: { senhaAtual: PASS_RESIDENT, novaSenha: 'Qualquer@1' } })).status === 403)
+
+  // ---------------- Suporte e presenca (SQL 09-25) ----------------
+  const GS = 'Suporte (SQL 09-25)'
+  const supportTable = await supabaseAdmin.from('suporte_chamados').select('id').limit(1)
+  if (supportTable.error) {
+    skip(GS, 'chamados, anexos e presenca', 'aplique sql/2026-09-25_perfil_suporte_presenca.sql no Supabase e rode de novo')
+  } else {
+    const ticketId = crypto.randomUUID()
+    const attachPath = `${A.id}/${ticketId}/print.pdf`
+    const upload = await sA.storage.from('suporte').upload(attachPath, new Blob(['%PDF-1.4 suporte'], { type: 'application/pdf' }), { contentType: 'application/pdf' })
+    if (!upload.error) created.files.suporte.push(attachPath)
+    check(GS, 'sindico anexa arquivo na pasta do proprio condominio', !upload.error, upload.error?.message)
+    const foreignAttach = `${B.id}/${ticketId}/invasao.pdf`
+    const uploadForeign = await sA.storage.from('suporte').upload(foreignAttach, new Blob(['%PDF-1.4 x'], { type: 'application/pdf' }), { contentType: 'application/pdf' })
+    if (!uploadForeign.error) created.files.suporte.push(foreignAttach)
+    check(GS, 'sindico A NAO anexa arquivo na pasta do B', Boolean(uploadForeign.error))
+    const exe = await sA.storage.from('suporte').upload(`${A.id}/${ticketId}/virus.exe`, new Blob(['MZ'], { type: 'application/x-msdownload' }), { contentType: 'application/x-msdownload' })
+    if (!exe.error) created.files.suporte.push(`${A.id}/${ticketId}/virus.exe`)
+    check(GS, 'anexo que nao e imagem nem PDF e recusado', Boolean(exe.error))
+
+    res = await sA.from('suporte_chamados').insert({ id: ticketId, condominium_id: A.id, created_by: A.syndicId, assunto: 'Sistema lento', mensagem: 'O sistema ficou lento ao lancar cobrancas.', anexos: [{ path: attachPath, nome: 'print.pdf', tipo: 'application/pdf', tamanho: 16 }] }).select('id')
+    check(GS, 'sindico abre chamado do proprio condominio', !res.error && res.data?.length === 1, res.error?.message)
+    res = await sA.from('suporte_chamados').insert({ condominium_id: B.id, created_by: A.syndicId, mensagem: 'Chamado em nome do B' }).select('id')
+    check(GS, 'sindico A NAO abre chamado em nome do condominio B', Boolean(res.error) || !res.data?.length)
+    res = await sA.from('suporte_chamados').insert({ condominium_id: A.id, created_by: A.syndicId, mensagem: 'Ja respondido por mim mesmo', status: 'resolvido', resposta: 'forjada' }).select('id')
+    check(GS, 'sindico NAO abre chamado ja respondido ou resolvido', Boolean(res.error) || !res.data?.length)
+    res = await oA.from('suporte_chamados').insert({ condominium_id: A.id, created_by: A.ownerId, mensagem: 'Morador tentando' }).select('id')
+    check(GS, 'morador NAO abre chamado de suporte da plataforma', Boolean(res.error) || !res.data?.length)
+    res = await sA.from('suporte_chamados').update({ status: 'resolvido', resposta: 'eu mesmo' }).eq('id', ticketId).select('id')
+    check(GS, 'sindico NAO responde nem fecha o proprio chamado', !res.data?.length)
+    check(GS, 'sindico B NAO ve o chamado do A', !rowsOf((await client(B.S).from('suporte_chamados').select('id')).data).some((row) => row.id === ticketId))
+    check(GS, 'morador NAO ve chamados de suporte', !rowsOf((await oA.from('suporte_chamados').select('id')).data).length)
+    check(GS, 'sindico B NAO abre o anexo do A', Boolean((await client(B.S).storage.from('suporte').download(attachPath)).error))
+    check(GS, 'morador do A NAO abre o anexo do chamado', Boolean((await oA.storage.from('suporte').download(attachPath)).error))
+    check(GS, 'sem login ninguem le chamados', !rowsOf((await client(null).from('suporte_chamados').select('id')).data).length)
+
+    const platformDb = client(P)
+    check(GS, 'admin da plataforma ve o chamado', rowsOf((await platformDb.from('suporte_chamados').select('id')).data).some((row) => row.id === ticketId))
+    check(GS, 'admin da plataforma abre o anexo', !(await platformDb.storage.from('suporte').download(attachPath)).error)
+    res = await platformDb.from('suporte_chamados').update({ status: 'resolvido', resposta: 'Corrigido, obrigado.', respondido_por: null, respondido_em: new Date().toISOString() }).eq('id', ticketId).select('id')
+    const { data: answered } = await sA.from('suporte_chamados').select('status, resposta').eq('id', ticketId).single()
+    check(GS, 'admin responde e o sindico ve a resposta', res.data?.length === 1 && answered?.status === 'resolvido' && answered?.resposta === 'Corrigido, obrigado.')
+
+    // Presenca
+    const GPr = 'Presenca (SQL 09-25)'
+    await supabaseAdmin.from('profiles').update({ ultimo_acesso_em: null, saiu_em: null }).in('id', [A.syndicId, B.syndicId])
+    res = await sA.rpc('registrar_presenca', { evento: 'ativo' })
+    const { data: presA } = await supabaseAdmin.from('profiles').select('ultimo_acesso_em, saiu_em').eq('id', A.syndicId).single()
+    const { data: presB } = await supabaseAdmin.from('profiles').select('ultimo_acesso_em').eq('id', B.syndicId).single()
+    check(GPr, 'sinal do sindico A grava so o A', !res.error && Boolean(presA?.ultimo_acesso_em) && !presB?.ultimo_acesso_em, res.error?.message)
+    await client(null).rpc('registrar_presenca', { evento: 'ativo' })
+    const { data: presBAnon } = await supabaseAdmin.from('profiles').select('ultimo_acesso_em').eq('id', B.syndicId).single()
+    check(GPr, 'sem login o sinal nao grava nada', !presBAnon?.ultimo_acesso_em)
+    const listing = await call('platform/condominiums/list', { token: P, method: 'GET' })
+    const rowA = (listing.data?.condominiums || []).find((row) => row.id === A.id)
+    check(GPr, 'painel da plataforma recebe o ultimo acesso do sindico', Boolean(rowA?.syndic?.ultimo_acesso_em))
+    await sA.rpc('registrar_presenca', { evento: 'saiu' })
+    const { data: presAOut } = await supabaseAdmin.from('profiles').select('saiu_em, nome, role').eq('id', A.syndicId).single()
+    check(GPr, 'ao sair o horario de saida e gravado, sem mexer no resto do perfil', Boolean(presAOut?.saiu_em) && presAOut.nome === 'Sindico A Editado' && presAOut.role === 'ADMIN_CONDOMINIUM')
+  }
+
   // ---------------- Pessoa removida da unidade perde o acesso na hora ----------------
   const removed = await call('admin/units/delete', { token: C.S, body: { unitId: C.unitId } })
   const removedClient = client(C.T)
@@ -516,6 +606,7 @@ try {
   check('Plano (SQL 09-21)', 'plano vencido: banco bloqueia aviso do sindico', Boolean(res.error) || !res.data?.length)
   check('Plano', 'plano vencido: sindico continua lendo', rowsOf((await sA.from('cobrancas').select('id')).data).length >= 1)
   check('Plano', 'plano vencido: API recusa alteracao', (await call('admin/units/save', { token: A.S, body: { numero: '105', situacao: 'desocupada' } })).status === 402)
+  check('Plano', 'plano vencido: perfil do sindico continua editavel (senha, dados, suporte)', (await call('admin/profile/update', { token: A.S, body: { nome: 'Sindico A Editado' } })).status === 200)
   check('Plano', 'plano vencido: API recusa gerar link de cadastro', (await call('admin/signup/link', { token: A.S, body: { action: 'gerar' } })).status === 402)
   check('Plano', 'plano vencido: API recusa aprovar cadastro', (await call('admin/signup/review', { token: A.S, body: { requestId: '00000000-0000-0000-0000-000000000000', action: 'aprovar', numero: '9' } })).status === 402)
   if (A.inviteToken) {
@@ -530,6 +621,33 @@ try {
   check('Plano', 'Parceria: ativo, sem vencimento e sem bloqueio', bRow?.plan_name === 'PARCERIA' && !bRow?.plan_ends_at && !bRow?.plan_locked, JSON.stringify({ plan: bRow?.plan_name, ends: bRow?.plan_ends_at }))
   const status = await call('platform/status', { token: P, method: 'GET' })
   check('Plataforma', 'status detalhado responde para o admin', status.status === 200 && Array.isArray(status.data?.components), `${status.data?.overall} ${status.data?.serverMs}ms`)
+
+  // ---------------- Excluir condominio (v1.09A2) ----------------
+  const GD = 'Excluir condominio'
+  check(GD, 'sindico nao exclui condominio', (await call('platform/condominiums/delete', { token: C.S, body: { condominiumId: C.id, password: PASS } })).status === 403)
+  // O A esta com plano vencido aqui: e barrado antes (402), o que tambem e recusa.
+  check(GD, 'sindico A nao exclui o condominio C', [402, 403].includes((await call('platform/condominiums/delete', { token: A.S, body: { condominiumId: C.id, password: PASS } })).status))
+  check(GD, 'sem login nao exclui', (await call('platform/condominiums/delete', { body: { condominiumId: C.id, password: 'x' } })).status === 401)
+  const wrongDelete = await call('platform/condominiums/delete', { token: P, body: { condominiumId: C.id, password: 'senha-errada-123' } })
+  const stillThere = await supabaseAdmin.from('condominiums').select('id').eq('id', C.id).maybeSingle()
+  check(GD, 'senha errada do admin nao exclui nada', wrongDelete.status === 422 && Boolean(stillThere.data), `status ${wrongDelete.status}`)
+  const { data: peopleC } = await supabaseAdmin.from('profiles').select('id').eq('condominium_id', C.id)
+  const deleted = await call('platform/condominiums/delete', { token: P, body: { condominiumId: C.id, password: process.env.PLATFORM_ADMIN_PASSWORD } })
+  check(GD, 'com a senha certa o condominio e excluido', deleted.status === 200 && deleted.data?.success === true, JSON.stringify(deleted.data))
+  const [goneCondo, goneProfiles, goneUnits, goneCharges, goneFiles] = await Promise.all([
+    supabaseAdmin.from('condominiums').select('id').eq('id', C.id).maybeSingle(),
+    supabaseAdmin.from('profiles').select('id').eq('condominium_id', C.id),
+    supabaseAdmin.from('unidades').select('id').eq('condominium_id', C.id),
+    supabaseAdmin.from('cobrancas').select('id').or(`condominium_id.eq.${C.id},condominio_id.eq.${C.id}`),
+    supabaseAdmin.storage.from('cobrancas').list(`${C.id}/boletos`),
+  ])
+  check(GD, 'nada do condominio excluido fica no banco (condominio, pessoas, unidades, cobrancas)', !goneCondo.data && !rowsOf(goneProfiles.data).length && !rowsOf(goneUnits.data).length && !rowsOf(goneCharges.data).length)
+  check(GD, 'os arquivos do condominio excluido saem do storage', !rowsOf(goneFiles.data).length, `${rowsOf(goneFiles.data).length} arquivos`)
+  const authLeft = await Promise.all((peopleC || []).map((person) => supabaseAdmin.auth.admin.getUserById(person.id)))
+  check(GD, 'as contas de acesso do condominio excluido foram apagadas', authLeft.every((item) => !item.data?.user), `${authLeft.filter((item) => item.data?.user).length} restantes`)
+  check(GD, 'o login do sindico do condominio excluido para de funcionar', (await call('auth/login-cnpj', { ip: true, body: { cnpj: C.doc, password: PASS } })).status === 401)
+  const [aAlive, bAlive] = await Promise.all([A, B].map((condo) => supabaseAdmin.from('profiles').select('id').eq('condominium_id', condo.id)))
+  check(GD, 'os outros condominios nao foram tocados', rowsOf(aAlive.data).length >= 4 && rowsOf(bAlive.data).length >= 4)
 } catch (error) {
   check('execucao', 'sem excecao', false, error.stack)
 } finally {
@@ -538,6 +656,7 @@ try {
   for (const id of created.condos.filter(Boolean)) {
     const { data: people } = await supabaseAdmin.from('profiles').select('id').or(`condominium_id.eq.${id},condominio_id.eq.${id}`)
     for (const table of ['cobrancas', 'avisos', 'documentos', 'ocorrencias_predio', 'solicitacoes_cadastro']) await supabaseAdmin.from(table).delete().or(`condominium_id.eq.${id},condominio_id.eq.${id}`)
+    await supabaseAdmin.from('suporte_chamados').delete().eq('condominium_id', id)
     await supabaseAdmin.from('unidades').delete().eq('condominium_id', id)
     for (const person of people || []) { await supabaseAdmin.from('profiles').delete().eq('id', person.id); await supabaseAdmin.auth.admin.deleteUser(person.id) }
     const { error } = await supabaseAdmin.from('condominiums').delete().eq('id', id)

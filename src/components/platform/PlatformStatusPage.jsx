@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Activity, AlertTriangle, CheckCircle2, RefreshCcw, ServerCrash, Wifi, WifiOff } from 'lucide-react'
+import { Activity, AlertTriangle, CheckCircle2, History, RefreshCcw, ServerCrash, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { getPlatformStatus } from '../../lib/platformApi'
+import { clearStatusHistory, loadStatusHistory, pruneHistory, saveStatusHistory, STATUS_REFRESH_MS } from '../../lib/statusHistory'
+import { APP_VERSION } from '../../lib/appVersion'
 
-const REFRESH_MS = 30000
-const HISTORY_SIZE = 20
+const REFRESH_MS = STATUS_REFRESH_MS
+// Barras do grafico: as ultimas 40 verificacoes (10 minutos a cada 15 s).
+const CHART_SIZE = 40
 
 const STATUS_META = {
   ok: { label: 'Operacional', color: 'var(--green)', badge: 'badge-green', Icon: CheckCircle2 },
@@ -21,7 +24,8 @@ function formatUptime(seconds = 0) {
 // historico da sessao e indicadores gerais (sem dados financeiros dos condominios).
 export default function PlatformStatusPage() {
   const [report, setReport] = useState(null)
-  const [history, setHistory] = useState([])
+  // Historico persistido no navegador: sair e voltar mantem as ultimas 24 h.
+  const [history, setHistory] = useState(() => loadStatusHistory())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine)
@@ -37,16 +41,21 @@ export default function PlatformStatusPage() {
       const roundTripMs = Math.round(performance.now() - startedAt)
       setReport({ ...result, roundTripMs })
       setError('')
-      setHistory((current) => [...current, { at: result.timestamp, ms: roundTripMs, overall: result.overall }].slice(-HISTORY_SIZE))
+      const failing = (result.components || []).filter((component) => component.status !== 'ok').map((component) => component.label)
+      setHistory((current) => pruneHistory([...current, { at: result.timestamp, ms: roundTripMs, overall: result.overall, failing }]))
     } catch (refreshError) {
       const roundTripMs = Math.round(performance.now() - startedAt)
       setError(refreshError.message || 'Nao foi possivel consultar o servidor.')
-      setHistory((current) => [...current, { at: new Date().toISOString(), ms: roundTripMs, overall: 'down' }].slice(-HISTORY_SIZE))
+      setHistory((current) => pruneHistory([...current, { at: new Date().toISOString(), ms: roundTripMs, overall: 'down', failing: ['Servidor'] }]))
     } finally {
       busyRef.current = false
       setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    saveStatusHistory(history)
+  }, [history])
 
   useEffect(() => {
     void refresh()
@@ -66,6 +75,14 @@ export default function PlatformStatusPage() {
   const meta = STATUS_META[overall]
   const incidents = history.filter((item) => item.overall !== 'ok')
   const avgMs = history.length ? Math.round(history.reduce((sum, item) => sum + item.ms, 0) / history.length) : null
+  const chart = history.slice(-CHART_SIZE)
+  const since = history[0]?.at
+
+  const handleClearHistory = () => {
+    if (!window.confirm('Apagar o historico de verificacoes deste navegador?')) return
+    clearStatusHistory()
+    setHistory([])
+  }
   const metrics = report?.metrics
   const runtime = report?.runtime
 
@@ -75,7 +92,7 @@ export default function PlatformStatusPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div>
             <div className="page-title">Status da plataforma</div>
-            <div className="page-subtitle">Saude dos servicos, tempo de resposta e andamento do sistema. Atualiza a cada {REFRESH_MS / 1000}s.</div>
+            <div className="page-subtitle">Saude dos servicos, tempo de resposta e andamento do sistema. Atualiza sozinho a cada {REFRESH_MS / 1000}s · Versao do App {APP_VERSION}</div>
           </div>
           <button className="btn btn-ghost" onClick={() => void refresh()} disabled={loading}>
             <RefreshCcw size={14} className={loading ? 'spin-icon' : ''} /> Verificar agora
@@ -121,12 +138,12 @@ export default function PlatformStatusPage() {
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <Activity size={16} color="var(--blue)" />
-            <span style={{ fontWeight: 700 }}>Tempo de resposta (esta sessao)</span>
+            <span style={{ fontWeight: 700 }}>Tempo de resposta (ultimas {chart.length} verificacoes)</span>
           </div>
-          <ResponseBars history={history} />
+          <ResponseBars history={chart} />
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-muted)', marginTop: 10 }}>
             <span>Media: <strong style={{ color: 'var(--text)' }}>{avgMs ?? '-'} ms</strong></span>
-            <span>Verificacoes: <strong style={{ color: 'var(--text)' }}>{history.length}</strong></span>
+            <span>Verificacoes (24 h): <strong style={{ color: 'var(--text)' }}>{history.length}</strong></span>
             <span>Com problema: <strong style={{ color: incidents.length ? 'var(--orange)' : 'var(--text)' }}>{incidents.length}</strong></span>
           </div>
           {incidents.length > 0 && (
@@ -152,6 +169,18 @@ export default function PlatformStatusPage() {
             <InfoRow label="Memoria da instancia" value={runtime ? `${runtime.memoryMb} MB` : '-'} />
           </div>
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <History size={16} color="var(--blue)" />
+            <span style={{ fontWeight: 700 }}>Historico de atualizacoes</span>
+            {since && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>desde {new Date(since).toLocaleString('pt-BR')}</span>}
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={handleClearHistory} disabled={!history.length}><Trash2 size={12} /> Limpar</button>
+        </div>
+        <StatusLog history={history} />
       </div>
 
       {metrics && (
@@ -187,6 +216,27 @@ function ResponseBars({ history }) {
           style={{ height: `${Math.max(6, (item.ms / max) * 100)}%`, background: STATUS_META[item.overall].color }}
         />
       ))}
+    </div>
+  )
+}
+
+// Lista das verificacoes, a mais recente primeiro. Mostra as ultimas 30 da janela de 24 h.
+function StatusLog({ history }) {
+  if (!history.length) return <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Nenhuma verificacao registrada ainda.</div>
+  return (
+    <div className="status-log">
+      {history.slice(-30).reverse().map((item) => {
+        const meta = STATUS_META[item.overall] || STATUS_META.down
+        return (
+          <div key={item.at} className="status-log-row">
+            <span className="status-dot" style={{ background: meta.color }} />
+            <span className="status-log-time">{new Date(item.at).toLocaleString('pt-BR')}</span>
+            <span className={`badge ${meta.badge}`}>{meta.label}</span>
+            <span className="status-log-ms">{item.ms} ms</span>
+            {item.failing?.length > 0 && <span className="status-log-failing">{item.failing.join(', ')}</span>}
+          </div>
+        )
+      })}
     </div>
   )
 }

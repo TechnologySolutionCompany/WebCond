@@ -1,17 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Building2, LayoutDashboard, Menu } from 'lucide-react'
+import { Activity, Building2, LayoutDashboard, LifeBuoy, Menu } from 'lucide-react'
 import Sidebar from '../shared/Sidebar'
 import { useSidebarMenu } from '../../hooks/useSidebarMenu'
 import PlatformDashboard from './PlatformDashboard'
 import PlatformCondominiums from './PlatformCondominiums'
 import PlatformStatusPage from './PlatformStatusPage'
+import PlatformSuporte from './PlatformSuporte'
+import { supabase } from '../../lib/supabase'
 import { listPlatformCondominiums } from '../../lib/platformApi'
 
 const PAGES = {
   dashboard: PlatformDashboard,
   condominiums: PlatformCondominiums,
   status: PlatformStatusPage,
+  suporte: PlatformSuporte,
 }
+
+// Lista de condominios (presenca dos sindicos) e contador de chamados sao atualizados em segundo plano.
+const BACKGROUND_REFRESH_MS = 60000
 
 export default function PlatformLayout() {
   const [page, setPage] = useState('dashboard')
@@ -28,6 +34,7 @@ export default function PlatformLayout() {
     blocked_count: 0,
   })
   const [condominiums, setCondominiums] = useState([])
+  const [openTickets, setOpenTickets] = useState(0)
   const mainContentRef = useRef(null)
   const scrollPositionsRef = useRef({})
 
@@ -38,13 +45,25 @@ export default function PlatformLayout() {
         { key: 'dashboard', label: 'Painel global', icon: LayoutDashboard },
         { key: 'condominiums', label: 'Condominios', icon: Building2 },
         { key: 'status', label: 'Status da plataforma', icon: Activity },
+        { key: 'suporte', label: 'Suporte', icon: LifeBuoy, badge: openTickets },
       ],
     },
-  ]), [])
+  ]), [openTickets])
 
-  const loadPlatformData = async () => {
-    setLoading(true)
-    setError('')
+  const loadTicketCount = async () => {
+    const { count, error: countError } = await supabase
+      .from('suporte_chamados')
+      .select('id', { count: 'exact', head: true })
+      .neq('status', 'resolvido')
+    if (!countError) setOpenTickets(count || 0)
+  }
+
+  // silent: atualizacao de fundo, sem spinner e sem apagar a tela se falhar.
+  const loadPlatformData = async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true)
+      setError('')
+    }
 
     try {
       const result = await listPlatformCondominiums()
@@ -58,14 +77,21 @@ export default function PlatformLayout() {
       })
       setCondominiums(result.condominiums || [])
     } catch (requestError) {
-      setError(requestError.message || 'Nao foi possivel carregar o painel global.')
+      if (!silent) setError(requestError.message || 'Nao foi possivel carregar o painel global.')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
   useEffect(() => {
     void loadPlatformData()
+    void loadTicketCount()
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void loadPlatformData({ silent: true })
+      void loadTicketCount()
+    }, BACKGROUND_REFRESH_MS)
+    return () => window.clearInterval(interval)
   }, [])
 
   useEffect(() => {
@@ -121,6 +147,7 @@ export default function PlatformLayout() {
                   metrics={metrics}
                   condominiums={condominiums}
                   reload={loadPlatformData}
+                  onChanged={loadTicketCount}
                 />
               </div>
             )

@@ -297,6 +297,11 @@ tr:hover td { background: var(--bg-3); }
 .theme-morador .btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; }
 .theme-morador .btn-primary:hover { background: var(--accent-morador-2); border-color: var(--accent-morador-2); }
 .theme-morador .stat-card:hover { border-color: var(--blue); }
+.theme-platform .nav-item.active { background: var(--yellow-dim); color: var(--yellow); }
+.theme-platform .input:focus { border-color: var(--yellow); }
+.theme-platform .btn-primary { background: var(--yellow); border-color: var(--yellow); color: #111; }
+.theme-platform .btn-primary:hover { background: #c79516; border-color: #c79516; }
+.theme-platform .stat-card:hover { border-color: var(--yellow); }
 
 .theme-toggle {
   display: grid;
@@ -695,3 +700,75 @@ tr:hover td { background: var(--bg-3); }
 @media (max-width: 720px) {
   .planos-grid { grid-template-columns: 1fr; }
 }
+
+/* Versao do app no rodape do menu lateral (todos os paineis) */
+.sidebar-version { font-size: 10.5px; color: var(--text-dim); text-align: center; padding: 8px 0 2px; letter-spacing: .03em; }
+
+/* ---------------------------------------------------------------
+   Meu perfil (sindico / contador): dados, senha, plano, suporte
+--------------------------------------------------------------- */
+.profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.profile-col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.profile-card-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; margin-bottom: 14px; }
+.profile-card-sub { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; margin: -6px 0 14px; }
+.profile-hint { font-size: 11.5px; color: var(--text-dim); line-height: 1.5; }
+.profile-readonly { display: flex; align-items: center; min-height: 40px; }
+.profile-rows { display: flex; flex-direction: column; }
+.profile-rows > div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
+.profile-rows > div:last-child { border-bottom: none; }
+.profile-rows span { color: var(--text-muted); }
+.profile-rows strong { text-align: right; }
+.plan-summary { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: var(--r); background: var(--bg-3); margin-bottom: 8px; }
+.plan-summary-name { font-weight: 700; font-size: 15px; }
+.plan-summary-price { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+.plan-table { display: flex; flex-direction: column; gap: 8px; }
+.plan-table-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r); }
+.plan-table-current { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; }
+.plan-table-summary { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+.plan-table-price { font-weight: 700; white-space: nowrap; }
+.plan-table-price span { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+.support-form { display: flex; flex-direction: column; gap: 12px; }
+.support-form textarea { resize: vertical; min-height: 90px; }
+.support-attach { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.support-hint { font-size: 11.5px; color: var(--text-dim); }
+.support-files { display: flex; flex-wrap: wrap; gap: 6px; }
+.support-file { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; padding: 4px 8px; border-radius: 8px; background: var(--bg-3); border: 1px solid var(--border); color: var(--text-muted); }
+.support-file button { background: none; border: none; color: var(--text-muted); display: inline-flex; padding: 0; }
+.support-file-link { cursor: pointer; }
+.support-file-link:hover { border-color: var(--green); color: var(--text); }
+.support-history { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.support-ticket { padding: 12px 0; border-bottom: 1px solid var(--border-subtle); }
+.support-ticket:last-child { border-bottom: none; }
+.support-ticket-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 13px; }
+.support-ticket-date { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.support-ticket-text { font-size: 12.5px; color: var(--text-muted); margin: 6px 0; white-space: pre-wrap; line-height: 1.55; }
+.support-reply { margin-top: 8px; padding: 10px 12px; border-left: 3px solid var(--green); background: var(--green-dim); border-radius: 8px; font-size: 12px; }
+.support-reply p { margin: 4px 0 0; white-space: pre-wrap; line-height: 1.55; color: var(--text); }
+@media (max-width: 1100px) { .profile-grid { grid-template-columns: 1fr; } }
+
+/* Presenca do sindico (painel da plataforma) */
+.presence { position: relative; display: inline-flex; align-items: center; gap: 5px; cursor: default; }
+.presence-dot { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 0 2px var(--bg-2); flex-shrink: 0; }
+.presence-label { font-size: 11px; font-weight: 600; }
+.presence[data-tip]:hover::after {
+  content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 6px); z-index: 30;
+  width: max-content; max-width: 260px; white-space: normal; font-size: 11.5px; font-weight: 500; line-height: 1.5;
+  padding: 7px 10px; border-radius: 8px; background: var(--bg-3); color: var(--text); border: 1px solid var(--border);
+  box-shadow: 0 8px 20px rgba(0,0,0,.3);
+}
+.presence-legend { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); margin: -6px 0 14px; }
+.presence-legend-title { font-weight: 600; }
+.presence-legend .presence-label { color: var(--text-muted); font-weight: 500; }
+
+/* Zona de perigo: excluir condominio */
+.danger-zone { border-color: var(--red); background: var(--red-dim); }
+.danger-zone p { font-size: 13px; line-height: 1.7; color: var(--text); margin: 8px 0 0; }
+.danger-zone-title { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--red); }
+
+/* Status da plataforma: historico de verificacoes */
+.status-log { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; }
+.status-log-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); font-size: 12px; flex-wrap: wrap; }
+.status-log-row:last-child { border-bottom: none; }
+.status-log-time { color: var(--text-muted); min-width: 150px; font-variant-numeric: tabular-nums; }
+.status-log-ms { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.status-log-failing { color: var(--orange); }

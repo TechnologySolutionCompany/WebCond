@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { Mail } from 'lucide-react'
 import { DiscordIcon, GithubIcon, InstagramIcon, YoutubeIcon } from './SocialIcons'
 import WhatsAppIcon from './WhatsAppIcon'
-import { version } from '../../../package.json'
+import { APP_VERSION } from '../../lib/appVersion'
 
 // Mesmo formato do rodape do site oficial (tscbr.com.br), com as cores do WebCond.
 // O numero nao aparece escrito: o contato e sempre pelo botao do WhatsApp, ja com a mensagem pronta.
@@ -71,7 +71,7 @@ export default function SiteFooter() {
       </div>
 
       <div className="site-footer-bottom">
-        <span>© 2026 Technology Solution Company BR — Todos os direitos reservados. · v{version.split('.').slice(0, 2).join('.')}</span>
+        <span>© 2026 Technology Solution Company BR — Todos os direitos reservados. · {APP_VERSION}</span>
         <div className="site-footer-policies">
           {FOOTER_POLICIES.map((policy) => (
             <Link key={policy.to} to={policy.to}>{policy.label}</Link>

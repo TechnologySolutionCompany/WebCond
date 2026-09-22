@@ -244,6 +244,9 @@ export async function requireAdmin(req, options = {}) {
   const {
     allowPlatformAdmin = true,
     allowAccountant = true,
+    // Perfil, senha e suporte seguem abertos com o plano vencido: o painel fica so leitura,
+    // mas a pessoa ainda precisa trocar a senha, corrigir o cadastro e pedir ajuda.
+    allowLockedPlan = false,
   } = options
 
   const configError = ensureBackendConfig()
@@ -297,7 +300,7 @@ export async function requireAdmin(req, options = {}) {
   }
 
   if (normalizedRole !== 'platform_admin') {
-    const accessError = await resolveCondominiumAccessError(condominiumId, { blockLockedPlan: true })
+    const accessError = await resolveCondominiumAccessError(condominiumId, { blockLockedPlan: !allowLockedPlan })
     if (accessError) {
       return { error: accessError }
     }

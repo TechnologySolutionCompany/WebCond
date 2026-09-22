@@ -72,6 +72,10 @@ export async function GET(req) {
     return json({ error: profileError.message || 'Nao foi possivel carregar as metricas da plataforma.' }, 500)
   }
 
+  // Presenca do sindico em consulta separada: sem o SQL 09-25 aplicado, a lista continua funcionando.
+  const presenceResult = await supabaseAdmin.from('profiles').select('id, ultimo_acesso_em, saiu_em')
+  const presenceById = new Map((presenceResult.error ? [] : presenceResult.data || []).map((row) => [row.id, row]))
+
   const detailsByCondominium = new Map()
   const ensureDetails = (condominiumId) => {
     if (!detailsByCondominium.has(condominiumId)) {
@@ -106,6 +110,8 @@ export async function GET(req) {
         nome: profile.nome || '',
         email: profile.email || '',
         whatsapp: profile.whatsapp || '',
+        ultimo_acesso_em: presenceById.get(profile.id)?.ultimo_acesso_em || null,
+        saiu_em: presenceById.get(profile.id)?.saiu_em || null,
       }
     }
   }

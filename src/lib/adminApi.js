@@ -161,3 +161,12 @@ export function saveSignupLink(payload) {
 export function reviewSignupRequest(payload) {
   return callAdminApi('/api/admin/signup-review', payload)
 }
+
+// Perfil do proprio sindico (ou contador). A troca de senha exige a senha atual.
+export function updateOwnProfile(payload) {
+  return callAdminApi('/api/admin/profile-update', payload)
+}
+
+export function changeOwnPassword(payload) {
+  return callAdminApi('/api/admin/profile-password', payload)
+}

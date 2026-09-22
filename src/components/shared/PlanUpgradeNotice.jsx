@@ -17,7 +17,7 @@ function readDismissed() {
   }
 }
 
-function UpgradeButton({ small = false }) {
+export function UpgradeButton({ small = false }) {
   if (!PLAN_UPGRADE_URL) {
     return <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Link de pagamento em breve. Fale com a WebCond para renovar.</span>
   }

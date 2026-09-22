@@ -1,4 +1,5 @@
 import { checkRateLimit, ensureBackendConfig, ensureServiceRoleConfig, getClientIp, json, parseJsonBody, rejectForeignOrigin, supabaseAdmin, supabaseServer } from '../_lib/supabaseAdmin.js'
+import { loginCondominiumAdminByDocument } from './login-cnpj.js'
 
 function invalidCredentials() {
   return json({ error: 'CPF ou senha incorretos.' }, 401)
@@ -48,7 +49,10 @@ export async function POST(req) {
   }
 
   if (!profiles?.length) {
-    return invalidCredentials()
+    // Condominio cadastrado com CPF como documento: o sindico entra por ele, como faria com o CNPJ.
+    const condominiumLogin = await loginCondominiumAdminByDocument(cpf, password)
+    if (condominiumLogin?.error) return condominiumLogin.error
+    return condominiumLogin || invalidCredentials()
   }
 
   if (profiles.length > 1) {

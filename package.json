@@ -1,7 +1,7 @@
 {
   "name": "webcond",
   "private": true,
-  "version": "1.21.0",
+  "version": "1.9.2",
   "type": "module",
   "engines": {
     "node": "24.x"

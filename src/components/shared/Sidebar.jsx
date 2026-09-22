@@ -5,6 +5,7 @@ import { Building2, Lock, LogOut, Moon, Sun, X } from 'lucide-react'
 import { getUserRoleLabel } from '../../lib/auth'
 import { getPlan } from '../../lib/condominiumPlan'
 import { describeResidentAccess } from '../../lib/units'
+import { APP_VERSION } from '../../lib/appVersion'
 
 export default function Sidebar({
   items,
@@ -145,6 +146,7 @@ export default function Sidebar({
           >
             <LogOut size={16} /> Sair
           </button>
+          <div className="sidebar-version" title="Versao do WebCond em uso neste navegador">Versao do App: {APP_VERSION}</div>
         </div>
       </aside>
     </>

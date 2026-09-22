@@ -51,6 +51,36 @@ async function tryProfilePasswordLogin(profile, password, condominiumId = null) 
   return buildSessionResponse(data, profile, condominiumId)
 }
 
+// Sindico entrando pelo documento do condominio. O documento pode ser CNPJ ou, em condominio
+// pequeno, o CPF do responsavel: o login por CPF chama esta mesma funcao quando nao acha pessoa.
+// Devolve a Response da sessao, null (credencial nao confere) ou { error } quando falha a consulta.
+export async function loginCondominiumAdminByDocument(document, password) {
+  const { data: condominium, error: condominiumError } = await supabaseAdmin
+    .from('condominiums')
+    .select('id, status')
+    .eq('cnpj', document)
+    .maybeSingle()
+
+  if (condominiumError) return { error: json({ error: 'Nao foi possivel validar o documento informado.' }, 500) }
+  if (!condominium) return null
+
+  const { data: profiles, error: profilesError } = await supabaseAdmin
+    .from('profiles')
+    .select('id, email, role, ativo, condominium_id, condominio_id')
+    .eq('ativo', true)
+    .or(`condominium_id.eq.${condominium.id},condominio_id.eq.${condominium.id}`)
+    .limit(20)
+
+  if (profilesError) return { error: json({ error: 'Nao foi possivel validar o administrador do condominio.' }, 500) }
+
+  for (const adminProfile of (profiles || []).filter((profile) => isCondominiumAdminRole(profile.role) && profile.email)) {
+    const response = await tryProfilePasswordLogin(adminProfile, password, condominium.id)
+    if (response) return response
+  }
+
+  return null
+}
+
 export async function POST(req) {
   const originError = rejectForeignOrigin(req)
   if (originError) return originError
@@ -100,40 +130,7 @@ export async function POST(req) {
     if (response) return response
   }
 
-  const { data: condominium, error: condominiumError } = await supabaseAdmin
-    .from('condominiums')
-    .select('id, status')
-    .eq('cnpj', cnpj)
-    .maybeSingle()
-
-  if (condominiumError) {
-    return json({ error: 'Nao foi possivel validar o CNPJ informado.' }, 500)
-  }
-
-  if (!condominium) {
-    return invalidCredentials()
-  }
-
-  const { data: profiles, error: profilesError } = await supabaseAdmin
-    .from('profiles')
-    .select('id, email, role, ativo, condominium_id, condominio_id')
-    .eq('ativo', true)
-    .or(`condominium_id.eq.${condominium.id},condominio_id.eq.${condominium.id}`)
-    .limit(20)
-
-  if (profilesError) {
-    return json({ error: 'Nao foi possivel validar o administrador do condominio.' }, 500)
-  }
-
-  const adminProfiles = (profiles || []).filter((profile) => isCondominiumAdminRole(profile.role) && profile.email)
-  if (!adminProfiles.length) {
-    return invalidCredentials()
-  }
-
-  for (const adminProfile of adminProfiles) {
-    const response = await tryProfilePasswordLogin(adminProfile, password, condominium.id)
-    if (response) return response
-  }
-
-  return invalidCredentials()
+  const result = await loginCondominiumAdminByDocument(cnpj, password)
+  if (result?.error) return result.error
+  return result || invalidCredentials()
 }

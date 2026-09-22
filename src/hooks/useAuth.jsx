@@ -1,8 +1,22 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { isAdminRole, normalizeRole } from '../lib/auth'
 import { getProfileCondominiumId } from '../lib/tenant'
 import { getCondominiumAccessState } from '../lib/condominiumPlan'
+import { ACTIVITY_TICK_MS, isAwayTooLong, markActivity, readLastActivity } from '../lib/sessionActivity'
+import { HEARTBEAT_MS } from '../lib/presence'
+
+const AWAY_NOTICE = 'Sua sessao foi encerrada porque o WebCond ficou fechado por mais de 5 minutos. Entre novamente.'
+
+// Sinal de presenca do sindico para o painel da plataforma. Falha em silencio: presenca e
+// informativa e nunca pode atrapalhar o uso do sistema (ex.: SQL 09-25 ainda nao aplicado).
+async function sendPresence(evento) {
+  try {
+    await supabase.rpc('registrar_presenca', { evento })
+  } catch {
+    // ignorado de proposito
+  }
+}
 
 const AuthContext = createContext(null)
 const PROFILE_NOT_FOUND_CODE = 'PROFILE_NOT_FOUND'
@@ -58,6 +72,8 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
   const [authIssue, setAuthIssue] = useState('')
   const [condominiumStatus, setCondominiumStatus] = useState(null)
+  const [sessionNotice, setSessionNotice] = useState('')
+  const userRef = useRef(null)
 
   const fetchProfile = async (authUser) => {
     if (!authUser?.id) return null
@@ -177,6 +193,17 @@ export const AuthProvider = ({ children }) => {
       try {
         const { data, error } = await supabase.auth.getSession()
         if (error) throw error
+
+        // Voltou depois de mais de 5 minutos com o sistema fechado: entra de novo.
+        if (data.session && isAwayTooLong(readLastActivity())) {
+          await supabase.auth.signOut({ scope: 'local' })
+          markActivity()
+          if (isActive) setSessionNotice(AWAY_NOTICE)
+          await syncSession(null)
+          return
+        }
+
+        markActivity()
         await syncSession(data.session)
       } catch (error) {
         if (!isActive) return
@@ -193,6 +220,10 @@ export const AuthProvider = ({ children }) => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'INITIAL_SESSION') return
+      if (event === 'SIGNED_IN') {
+        markActivity()
+        setSessionNotice('')
+      }
 
       setLoading(true)
       void syncSession(session)
@@ -204,15 +235,57 @@ export const AuthProvider = ({ children }) => {
     }
   }, [])
 
+  useEffect(() => {
+    userRef.current = user
+  }, [user])
+
+  // Carimbo de atividade enquanto o sistema esta aberto. Se o carimbo anterior for antigo demais
+  // (computador suspenso, aba congelada pelo navegador), a sessao e encerrada do mesmo jeito.
+  useEffect(() => {
+    const tick = () => {
+      if (userRef.current && isAwayTooLong(readLastActivity())) {
+        void supabase.auth.signOut({ scope: 'local' }).then(() => setSessionNotice(AWAY_NOTICE))
+        markActivity()
+        return
+      }
+      markActivity()
+    }
+    const onVisibility = () => { if (document.visibilityState === 'visible') tick(); else markActivity() }
+    const interval = window.setInterval(tick, ACTIVITY_TICK_MS)
+    document.addEventListener('visibilitychange', onVisibility)
+    const onPageHide = () => markActivity()
+    window.addEventListener('pagehide', onPageHide)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', onPageHide)
+    }
+  }, [])
+
+  // Presenca do sindico (Online / Ausente / Offline no painel da plataforma).
+  const isSyndic = normalizeRole(profile?.role) === 'admin'
+  useEffect(() => {
+    if (!isSyndic) return undefined
+    void sendPresence('ativo')
+    const interval = window.setInterval(() => void sendPresence('ativo'), HEARTBEAT_MS)
+    const onVisible = () => { if (document.visibilityState === 'visible') void sendPresence('ativo') }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [isSyndic, profile?.id])
+
   const signIn = (email, password) => supabase.auth.signInWithPassword({ email, password })
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
+    if (isSyndic) await sendPresence('saiu')
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)
     setCondominiumStatus(null)
     setAuthIssue('')
-  }
+  }, [isSyndic])
 
   const refreshProfile = useCallback(async () => {
     if (!user) return null
@@ -240,6 +313,7 @@ export const AuthProvider = ({ children }) => {
     profile,
     loading,
     authIssue,
+    sessionNotice,
     condominiumId,
     condominiumStatus,
     resolvedRole,
@@ -247,7 +321,7 @@ export const AuthProvider = ({ children }) => {
     signIn,
     signOut,
     refreshProfile,
-  }), [user, profile, loading, authIssue, condominiumId, condominiumStatus, resolvedRole, refreshProfile])
+  }), [user, profile, loading, authIssue, sessionNotice, condominiumId, condominiumStatus, resolvedRole, refreshProfile, signOut])
 
   return (
     <AuthContext.Provider value={value}>

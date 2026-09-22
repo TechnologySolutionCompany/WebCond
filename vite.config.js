@@ -16,6 +16,8 @@ const apiModules = {
   '/api/admin/units-import-confirm': new URL('./api/_admin/units/import-confirm.js', import.meta.url),
   '/api/admin/signup-link': new URL('./api/_admin/signup/link.js', import.meta.url),
   '/api/admin/signup-review': new URL('./api/_admin/signup/review.js', import.meta.url),
+  '/api/admin/profile-update': new URL('./api/_admin/profile/update.js', import.meta.url),
+  '/api/admin/profile-password': new URL('./api/_admin/profile/password.js', import.meta.url),
   '/api/platform/condominiums-list': new URL('./api/_platform/condominiums/list.js', import.meta.url),
   '/api/platform/status': new URL('./api/_platform/status.js', import.meta.url),
   '/api/platform/condominiums-export': new URL('./api/_platform/condominiums/export.js', import.meta.url),
@@ -23,6 +25,7 @@ const apiModules = {
   '/api/platform/condominiums-register': new URL('./api/_platform/condominiums/register.js', import.meta.url),
   '/api/platform/condominiums-update': new URL('./api/_platform/condominiums/update.js', import.meta.url),
   '/api/platform/condominiums-syndic-password': new URL('./api/_platform/condominiums/update-syndic-password.js', import.meta.url),
+  '/api/platform/condominiums-delete': new URL('./api/_platform/condominiums/delete.js', import.meta.url),
   '/api/tenant/charge-summary': new URL('./api/_tenant/charge-summary.js', import.meta.url),
 }
 

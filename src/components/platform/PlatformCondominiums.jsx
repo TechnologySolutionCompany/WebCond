@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
-import { AlertTriangle, Building2, CheckCircle2, Download, FileSpreadsheet, KeyRound, Loader2, Search, Upload, XCircle } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, Building2, CheckCircle2, Download, FileSpreadsheet, KeyRound, Loader2, Search, Trash2, Upload, XCircle } from 'lucide-react'
 import { useToast } from '../shared/Toast'
 import AddressFields from '../shared/AddressFields'
 import {
+  deletePlatformCondominium,
   exportPlatformCondominium,
   importPlatformResidents,
   updatePlatformCondominium,
@@ -11,6 +12,7 @@ import {
 import { formatCpfCnpj, normalizeCpfCnpj } from '../../lib/document'
 import { PLAN_LIST, PLAN_PERIOD_DAYS, PLAN_WARNING_DAYS, TRIAL_PERIOD_DAYS } from '../../lib/condominiumPlan'
 import { emptyAddress } from '../../lib/address'
+import { getPresence, PRESENCE_LEGEND } from '../../lib/presence'
 
 const STATUS_LABELS = {
   pending: { label: 'Pendente', badge: 'badge-orange' },
@@ -24,7 +26,20 @@ const TABS = [
   { key: 'plan', label: 'Status / Plano' },
   { key: 'access', label: 'Acesso do sindico' },
   { key: 'data', label: 'Exportar / Importar' },
+  { key: 'delete', label: 'Excluir' },
 ]
+
+// Bolinha de presenca do sindico: Online / Ausente / Offline, com a explicacao ao passar o mouse.
+function PresenceDot({ syndic, now }) {
+  const presence = getPresence({ lastSeenAt: syndic?.ultimo_acesso_em, leftAt: syndic?.saiu_em }, now)
+  const tip = `${presence.label} - ${presence.detail}`
+  return (
+    <span className="presence" data-tip={tip} aria-label={tip} role="img">
+      <span className="presence-dot" style={{ background: presence.color }} />
+      <span className="presence-label" style={{ color: presence.color }}>{presence.label}</span>
+    </span>
+  )
+}
 
 function formatDate(dateValue = '') {
   if (!dateValue) return '-'
@@ -98,7 +113,15 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
   const [importRows, setImportRows] = useState(null)
   const [importFileName, setImportFileName] = useState('')
   const [importResult, setImportResult] = useState(null)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [now, setNow] = useState(() => Date.now())
   const { toast } = useToast()
+
+  // Relogio da presenca: a cor muda sozinha (Online -> Ausente) mesmo sem recarregar a lista.
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30000)
+    return () => window.clearInterval(interval)
+  }, [])
 
   const filtered = useMemo(() => (condominiums || []).filter((item) => {
     const query = search.trim().toLowerCase()
@@ -121,6 +144,27 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
     setImportRows(null)
     setImportFileName('')
     setImportResult(null)
+    setDeletePassword('')
+  }
+
+  const handleDelete = async () => {
+    if (!deletePassword) return
+    if (!window.confirm(`Excluir ${selected.name} definitivamente? Nao ha como desfazer.`)) return
+
+    setBusy('delete')
+    try {
+      const result = await deletePlatformCondominium({ condominiumId: selected.id, password: deletePassword })
+      const removed = result.removidos || {}
+      toast(`Condominio ${result.nome || selected.name} excluido com sucesso. A exclusao nao e reversivel. (${removed.pessoas || 0} acesso(s), ${removed.unidades || 0} unidade(s) e ${removed.arquivos || 0} arquivo(s) removidos)`, 'success')
+      setDeletePassword('')
+      setSelected(null)
+      setForm(null)
+      await reload()
+    } catch (deleteError) {
+      toast(deleteError.message || 'Nao foi possivel excluir o condominio.', 'error')
+    } finally {
+      setBusy('')
+    }
   }
 
   const closeCondominium = () => {
@@ -279,6 +323,16 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
         </select>
       </div>
 
+      <div className="presence-legend">
+        <span className="presence-legend-title">Sindico:</span>
+        {PRESENCE_LEGEND.map((item) => (
+          <span key={item.key} className="presence" data-tip={item.detail}>
+            <span className="presence-dot" style={{ background: item.color }} />
+            <span className="presence-label">{item.label}</span>
+          </span>
+        ))}
+      </div>
+
       {filtered.length === 0 ? (
         <div className="empty-state">
           <Building2 size={40} />
@@ -313,7 +367,7 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
                   }}
                 >
                   <td>
-                    <div style={{ fontWeight: 700 }}>{item.name}</div>
+                    <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{item.name} <PresenceDot syndic={item.syndic} now={now} /></div>
                     <div style={{ fontSize: 12, color: '#8b949e' }}>{item.cnpj ? formatCpfCnpj(item.cnpj) : '-'}</div>
                     <div style={{ fontSize: 12, color: '#8b949e' }}>{item.address || '-'}</div>
                   </td>
@@ -572,7 +626,28 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
               </div>
             )}
 
-            {tab !== 'data' && (
+            {tab === 'delete' && (
+              <div className="card danger-zone" style={{ margin: 0 }}>
+                <div className="danger-zone-title"><Trash2 size={16} /> Excluir condominio</div>
+                <p>
+                  Apaga <strong>{selected.name}</strong> e tudo o que pertence a ele: sindico, moradores e contador (com os acessos),
+                  unidades, cobrancas, avisos, documentos, ocorrencias, chamados de suporte e todos os arquivos.
+                </p>
+                <p><strong>A exclusao nao e reversivel.</strong> Se precisar guardar algo, exporte a planilha antes na aba Exportar / Importar.</p>
+                <div className="form-group" style={{ maxWidth: 340, marginTop: 8 }}>
+                  <label className="form-label" htmlFor="delete-password">Digite a sua senha de administrador</label>
+                  <input id="delete-password" className="input" type="password" autoComplete="current-password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} placeholder="A mesma senha do seu login" />
+                </div>
+                <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn btn-danger" onClick={() => void handleDelete()} disabled={!deletePassword || Boolean(busy)}>
+                    {busy === 'delete' ? <><Loader2 size={14} className="spin-icon" /> Excluindo...</> : <><Trash2 size={14} /> Excluir definitivamente</>}
+                  </button>
+                  <button className="btn btn-ghost" onClick={closeCondominium} disabled={Boolean(busy)}>Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            {tab !== 'data' && tab !== 'delete' && (
               <div className="modal-footer">
                 <button className="btn btn-ghost" onClick={closeCondominium} disabled={Boolean(busy)}>Cancelar</button>
                 <button className="btn btn-primary" onClick={handleSave} disabled={Boolean(busy)}>

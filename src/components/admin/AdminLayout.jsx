@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { LayoutDashboard, Home, DollarSign, Bell, FileText, Calculator, Menu } from 'lucide-react'
+import { LayoutDashboard, Home, DollarSign, Bell, FileText, Calculator, Menu, UserCog } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { normalizeRole } from '../../lib/auth'
@@ -12,6 +12,7 @@ import Cobrancas from './Cobrancas'
 import Avisos from './Avisos'
 import Documentos from './Documentos'
 import Contador from './Contador'
+import Perfil from './Perfil'
 
 const PAGES = {
   dashboard: Dashboard,
@@ -20,7 +21,12 @@ const PAGES = {
   avisos: Avisos,
   documentos: Documentos,
   contador: Contador,
+  perfil: Perfil,
 }
+
+// Abrem mesmo com o plano vencido: painel (so leitura) e o proprio perfil (senha, suporte, plano).
+const ALWAYS_OPEN = new Set(['dashboard', 'perfil'])
+const ACCOUNT_SECTION = { label: 'Conta', items: [{ key: 'perfil', label: 'Meu perfil', icon: UserCog }] }
 
 export default function AdminLayout() {
   const { condominiumId, resolvedRole, profile } = useAuth()
@@ -47,7 +53,7 @@ export default function AdminLayout() {
   }, [page])
 
   const handleNavigate = (nextPage) => {
-    if (planLocked && nextPage !== 'dashboard') {
+    if (planLocked && !ALWAYS_OPEN.has(nextPage)) {
       setUpgradeOpen(true)
       return
     }
@@ -71,6 +77,7 @@ export default function AdminLayout() {
         { key: 'contador', label: 'Relatorios', icon: Calculator },
       ],
     },
+    ACCOUNT_SECTION,
   ] : [
     {
       label: 'Principal',
@@ -93,10 +100,11 @@ export default function AdminLayout() {
         { key: 'contador', label: 'Relatorios', icon: Calculator },
       ],
     },
+    ACCOUNT_SECTION,
   ]), [isAccountant])
 
   const nav = useMemo(() => (planLocked
-    ? baseNav.map((section) => ({ ...section, items: section.items.map((item) => ({ ...item, locked: item.key !== 'dashboard' })) }))
+    ? baseNav.map((section) => ({ ...section, items: section.items.map((item) => ({ ...item, locked: !ALWAYS_OPEN.has(item.key) })) }))
     : baseNav), [baseNav, planLocked])
 
   useEffect(() => {
