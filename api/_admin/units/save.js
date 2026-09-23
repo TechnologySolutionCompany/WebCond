@@ -9,6 +9,7 @@ import {
 } from '../../_lib/supabaseAdmin.js'
 import { checkUnitAvailability, isMissingTableError, loadUnitUsage } from '../../_lib/unitLimit.js'
 import { findLinkCandidate, releasePerson, sanitizePerson, saveUnitPerson } from '../../_lib/residentAccounts.js'
+import { recusaDeSenha } from '../../_lib/senhaVazada.js'
 import { normalizeUnitNumber, UNIT_STATUS_VALUES } from '../../../src/lib/units.js'
 
 const PENDING_SQL_MESSAGE = 'Estrutura de unidades pendente no banco. Execute os arquivos da pasta sql/ no Supabase.'
@@ -92,6 +93,15 @@ export async function POST(req) {
   }
   if (responsavel === 'proprietario' && situacao !== 'desocupada' && situacao !== 'interditada' && !links.proprietario && !people.proprietario?.cpf) {
     return json({ error: 'Defina o proprietario ou escolha o inquilino como responsavel financeiro.' }, 400)
+  }
+
+  // Senha fraca ou ja vista em vazamento nao vira acesso. Conferido antes de gravar qualquer
+  // coisa: unidade salva pela metade seria pior do que recusar tudo de uma vez.
+  for (const vinculo of ['proprietario', 'inquilino']) {
+    const senhaEscolhida = people[vinculo]?.password
+    if (!senhaEscolhida) continue
+    const senhaRecusada = await recusaDeSenha(senhaEscolhida)
+    if (senhaRecusada) return json({ error: `Senha do ${ROLE_LABEL[vinculo]}: ${senhaRecusada}` }, 400)
   }
 
   // CPF de alguem ja cadastrado neste condominio: pergunta antes de vincular (proprietario com varias unidades).

@@ -64,8 +64,8 @@ async function call(path, { token, body, method = 'POST', headers: extraHeaders 
   return { status: res.status, data }
 }
 const client = (token) => createClient(URL_, ANON, { auth: { persistSession: false, autoRefreshToken: false }, global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined })
-const PASS = 'Teste@12345'
-const PASS_RESIDENT = 'Morador@54321'
+const PASS = 'Sindico-E2E-4h7p2k'
+const PASS_RESIDENT = 'Morador-E2E-9f3m5t'
 const created = { condos: [], authUsers: [], files: { cobrancas: [], documentos: [], suporte: [] } }
 const rowsOf = (data) => data || []
 const leaksFrom = (data, foreignIds) => rowsOf(data).some((row) => foreignIds.includes(row.condominium_id) || foreignIds.includes(row.condominio_id) || foreignIds.includes(row.id))
@@ -196,6 +196,38 @@ try {
   const condos = [A, B, C]
   check('setup', 'tres condominios ativos ao mesmo tempo', condos.every((condo) => condo.id && condo.S && condo.O && condo.T && condo.C && condo.chargeId && condo.documentId))
 
+  // ---------------- Senha fraca ou vazada nao vira conta ----------------
+  // O Supabase so oferece essa protecao no plano Pro; aqui ela e feita pelo proprio backend
+  // (api/_lib/senhaVazada.js), com a mesma base publica de vazamentos.
+  {
+    const GSV = 'Senha vazada'
+    const cadastroCom = (senha) => call('platform/condominiums/register', { ip: true, body: {
+      name: 'E2E Senha Fraca', cnpj: cnpj(), whatsapp: '11999990000', unit_count: 5,
+      address_details: { zip_code: '01001000', street: 'Rua Teste', number: '1', district: 'Centro', city: 'Sao Paulo', state: 'SP' },
+      syndic_name: 'Sindico Senha Fraca', syndic_cpf: cpf(), syndic_email: `e2e-senha-${Date.now()}@example.com`, password: senha,
+    } })
+
+    const obvia = await cadastroCom('123456')
+    check(GSV, 'senha obvia nao cria condominio', obvia.status === 400 && /vazamentos|adivinhar/i.test(obvia.data?.error || ''), JSON.stringify(obvia.data))
+
+    // Senha que existe em vazamento conhecido (conferida na base publica). Nao e obvia:
+    // so a consulta pega. Se o servico estiver fora do ar, a checagem deixa passar de
+    // proposito — por isso 400 e o esperado, mas 200 aqui significa servico indisponivel.
+    const vazada = await cadastroCom('Teste@12345')
+    if (vazada.status === 400) {
+      check(GSV, 'senha de vazamento conhecido nao cria condominio', /vazamentos|adivinhar/i.test(vazada.data?.error || ''), JSON.stringify(vazada.data))
+    } else {
+      skip(GSV, 'senha de vazamento conhecido nao cria condominio', 'a consulta de vazamentos nao respondeu (a regra deixa passar de proposito)')
+      // O que foi criado por engano sai do banco: o teste nao pode deixar sujeira.
+      if (vazada.data?.condominiumId) created.condos.push(vazada.data.condominiumId)
+    }
+
+    check(GSV, 'senha boa continua sendo aceita nas contas de teste', condos.every((condo) => condo.id))
+
+    const senhaFracaNoSuporte = await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Suporte Senha Fraca', cpf: cpf(), senha: 'senha123' } })
+    check(GSV, 'senha obvia nao cria conta de suporte', senhaFracaNoSuporte.status === 400, JSON.stringify(senhaFracaNoSuporte.data))
+  }
+
   // ---------------- Uso simultaneo: cada um so enxerga o proprio ----------------
   const simultaneous = await Promise.all(condos.map(async (condo) => {
     const others = condos.filter((item) => item.id !== condo.id).map((item) => item.id)
@@ -251,7 +283,7 @@ try {
     ['sindico nao exporta dados pela plataforma', await call('platform/condominiums/export', { token: A.S, method: 'GET' }), (r) => r.status === 403],
     ['sindico nao importa pessoas pela plataforma', await call('platform/condominiums/import', { token: A.S, body: { condominiumId: B.id, rows: [] } }), (r) => r.status === 403],
     ['sindico nao muda plano/status pela plataforma', await call('platform/condominiums/update', { token: A.S, body: { condominiumId: A.id, action: 'approve' } }), (r) => r.status === 403],
-    ['sindico nao troca a senha do sindico do B', await call('platform/condominiums/update-syndic-password', { token: A.S, body: { condominiumId: B.id, password: 'NovaSenha@123' } }), (r) => r.status === 403],
+    ['sindico nao troca a senha do sindico do B', await call('platform/condominiums/update-syndic-password', { token: A.S, body: { condominiumId: B.id, password: 'Trocada-E2E-3x5v7z' } }), (r) => r.status === 403],
     ['sindico nao le o status tecnico da plataforma', await call('platform/status', { token: A.S, method: 'GET' }), (r) => r.status === 403],
     ['morador nao usa rotas do sindico', await call('admin/units/save', { token: A.O, body: { numero: '999', situacao: 'desocupada' } }), (r) => r.status === 403],
     ['contador nao cadastra unidade', await call('admin/units/save', { token: A.C, body: { numero: '998', situacao: 'desocupada' } }), (r) => r.status === 403],
@@ -584,17 +616,17 @@ try {
   const { data: syndicBAfter } = await supabaseAdmin.from('profiles').select('email').eq('id', B.syndicId).single()
   check(GP, 'o e-mail do sindico B continua dele', syndicBAfter.email === syndicB.email)
 
-  const wrongCurrent = await call('admin/profile/password', { token: A.S, body: { senhaAtual: 'errada123', novaSenha: 'NovaSenha@1' } })
+  const wrongCurrent = await call('admin/profile/password', { token: A.S, body: { senhaAtual: 'errada123', novaSenha: 'Trocada-E2E-3x5v7z' } })
   check(GP, 'troca de senha com a senha atual errada e recusada', wrongCurrent.status === 422 && wrongCurrent.data?.code === 'SENHA_INCORRETA', `status ${wrongCurrent.status}`)
   check(GP, 'depois da tentativa errada a senha antiga continua valendo', (await loginSyndic(A, PASS)).status === 200)
-  const changed = await call('admin/profile/password', { token: A.S, body: { senhaAtual: PASS, novaSenha: 'NovaSenha@1' } })
+  const changed = await call('admin/profile/password', { token: A.S, body: { senhaAtual: PASS, novaSenha: 'Trocada-E2E-3x5v7z' } })
   check(GP, 'troca de senha com a senha atual certa funciona e devolve sessao nova', changed.status === 200 && Boolean(changed.data?.session?.access_token), `status ${changed.status}`)
   const oldSessionAfterChange = await call('admin/profile/update', { token: A.S, body: { nome: 'Sindico A Editado' } })
   check(GP, 'troca de senha derruba as sessoes antigas (outro aparelho logado sai)', oldSessionAfterChange.status === 401, `status ${oldSessionAfterChange.status}`)
   if (changed.data?.session?.access_token) A.S = changed.data.session.access_token
-  check(GP, 'entra com a senha nova', (await loginSyndic(A, 'NovaSenha@1')).status === 200)
+  check(GP, 'entra com a senha nova', (await loginSyndic(A, 'Trocada-E2E-3x5v7z')).status === 200)
   check(GP, 'a senha antiga deixa de valer', (await loginSyndic(A, PASS)).status === 401)
-  const restored = await call('admin/profile/password', { token: A.S, body: { senhaAtual: 'NovaSenha@1', novaSenha: PASS } })
+  const restored = await call('admin/profile/password', { token: A.S, body: { senhaAtual: 'Trocada-E2E-3x5v7z', novaSenha: PASS } })
   check(GP, 'a sessao nova devolvida continua funcionando (volta a senha original)', restored.status === 200)
   if (restored.data?.session?.access_token) A.S = restored.data.session.access_token
   sA = client(A.S)
@@ -719,7 +751,7 @@ try {
     // Equipe de suporte: acesso limitado
     const GE = 'Equipe de suporte (SQL 09-26)'
     const supCpf = cpf()
-    const SUP_PASS = 'Suporte@12345'
+    const SUP_PASS = 'Suporte-E2E-6b8n1q'
     check(GE, 'sindico NAO cria conta de suporte', (await call('platform/team', { token: A.S, body: { acao: 'criar', nome: 'Invasor Teste', cpf: supCpf, senha: SUP_PASS } })).status === 403)
     check(GE, 'senha curta e recusada', (await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Suporte Curto', cpf: cpf(), senha: '123' } })).status === 400)
     const createdSup = await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Suporte E2E Teste', cpf: supCpf, senha: SUP_PASS } })

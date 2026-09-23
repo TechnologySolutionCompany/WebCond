@@ -30,8 +30,8 @@ async function call(path, { token, body, method = 'POST' } = {}) {
   return { status: res.status, data }
 }
 
-const SENHA = 'Teste@12345'
-const SENHA_MORADOR = 'Morador@54321'
+const SENHA = 'Sindico-E2E-4h7p2k'
+const SENHA_MORADOR = 'Morador-E2E-9f3m5t'
 const cpfDono1 = cpf()
 const condoDoc = cnpj()
 let condominiumId = null

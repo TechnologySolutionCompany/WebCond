@@ -203,7 +203,7 @@ O verificador do painel (*Advisors > Security*) apontou 40 avisos, todos de nív
 | Function Search Path Mutable | 3 | função sem `search_path` fixo | corrigido no SQL `2026-09-29` |
 | Public Bucket Allows Listing | 1 | bucket de logos podia ser **listado** | corrigido no SQL `2026-09-29` |
 | Public/Signed-In Can Execute SECURITY DEFINER | 35 | funções publicadas na API | 8 corrigidas, 27 são a própria RLS (abaixo) |
-| Leaked Password Protection Disabled | 1 | senha vazada não é barrada | ligar no painel (abaixo) |
+| Leaked Password Protection Disabled | 1 | senha vazada não é barrada | opção é do plano Pro: **feito no backend** (7.3) |
 
 ### 7.1 Corrigido no SQL `2026-09-29`
 
@@ -263,15 +263,52 @@ Por que ficam como estão:
 Enquanto isso, o `npm run security-test` já cobre o que importa de verdade: nenhuma das 16
 tabelas responde com dado para quem não fez login, e nenhum condomínio enxerga o outro.
 
-### 7.3 Para ligar no painel: proteção contra senha vazada
+### 7.3 Senha vazada: feito pelo próprio WebCond
 
-**Authentication > Sign In / Providers > Password > "Prevent use of leaked passwords".**
+O painel do Supabase tem essa verificação pronta em *Authentication > Sign In / Providers >
+Email*, mas **só no plano Pro** — no plano atual a opção responde:
 
-O Supabase passa a comparar a senha escolhida com a base do HaveIBeenPwned (sem enviar a senha
-inteira, só um pedaço do código dela) e recusa senha que já apareceu em vazamento. Vale para
-cadastro de condomínio, cadastro de morador, troca de senha e contas de suporte.
+    Configuring leaked password protection via HaveIBeenPwned.org is available on Pro Plans and up.
 
-O código já foi preparado para isso: a recusa do Supabase vem em inglês, e agora todas as telas
-que definem senha respondem **"Esta senha aparece em vazamentos conhecidos ou é fácil de
-adivinhar. Escolha outra senha."**, com status 400 em vez de erro genérico. Sem essa preparação,
-o síndico veria uma mensagem em inglês ou um "não foi possível criar a conta" sem explicação.
+Então a mesma proteção foi construída no backend, em `api/_lib/senhaVazada.js`, com a mesma
+técnica e a mesma base pública que o Supabase usaria.
+
+**Como a senha é protegida durante a consulta (k-anonimato):**
+
+1. a senha vira um hash SHA-1 dentro do servidor;
+2. só os **5 primeiros caracteres** desse hash saem dali;
+3. o serviço devolve todos os finais de hash que começam com esses 5 caracteres (algumas
+   centenas) e a comparação acontece de volta no servidor.
+
+A senha nunca sai do servidor — nem inteira, nem em hash completo. Quem observar o tráfego vê 5
+caracteres que servem para milhares de senhas diferentes. O cabeçalho `Add-Padding` faz a
+resposta ter sempre o mesmo tamanho, então nem o tamanho do tráfego diz algo. Senha e hash nunca
+aparecem em log, em mensagem de erro ou na resposta — isso está coberto por teste.
+
+**Duas barreiras, nesta ordem:**
+
+| Barreira | Depende de internet? | O que pega |
+| --- | :-: | --- |
+| Lista local (60 senhas + padrões) | não | `123456`, `senha123`, `qwerty`, `aaaaaa`, `condominio123`… |
+| Base de vazamentos (HaveIBeenPwned) | sim | qualquer senha já vista em vazamento real |
+
+**Se o serviço estiver fora do ar, o cadastro passa.** Impedir alguém de criar conta porque um
+site de terceiro caiu seria pior do que aceitar uma senha que talvez estivesse numa lista. A
+lista local continua valendo sempre, porque não depende de internet.
+
+**Onde vale:** cadastro de condomínio, auto-cadastro do morador pelo link, morador cadastrado
+pelo síndico, pessoa da unidade, troca da própria senha, troca da senha do síndico pela
+plataforma e contas da equipe de suporte. A mensagem é sempre **"Esta senha aparece em
+vazamentos conhecidos ou é fácil de adivinhar. Escolha outra senha."**, com status 400.
+
+**Na importação por planilha** vale só a lista local: um lote de 100 linhas não pode ficar
+esperando resposta de um serviço externo a cada pessoa. A linha com senha fraca aparece no
+relatório de conferência, antes de confirmar, com o código `SENHA_FRACA`.
+
+**Efeito colateral encontrado:** três senhas que os testes automatizados usavam
+(`Teste@12345`, `Suporte@12345`, `NovaSenha@123`) **estão em vazamentos reais** — a própria
+verificação as recusou. Foram trocadas por senhas que passam na mesma regra que os usuários
+enfrentam.
+
+Se um dia o projeto for para o plano Pro, dá para ligar a opção do painel e manter as duas: elas
+respondem com a mesma frase, então a tela não muda.

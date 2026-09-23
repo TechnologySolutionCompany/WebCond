@@ -2,7 +2,9 @@
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import test from 'node:test'
+import { createHash } from 'node:crypto'
 import { senhaRecusadaPeloAuth } from '../api/_lib/supabaseAdmin.js'
+import { recusaDeSenha, senhaEmVazamento, senhaMuitoComum, SENHA_VAZADA_AVISO } from '../api/_lib/senhaVazada.js'
 
 // Quebra de linha do Windows nao muda o conteudo: normaliza antes de comparar.
 const sql = readFileSync(new URL('../sql/2026-09-29_avisos_do_painel_supabase.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
@@ -62,4 +64,64 @@ test('todo arquivo SQL fecha os blocos que abre', () => {
     const fecha = (conteudo.match(/(^|\n)commit;/g) || []).length
     assert.equal(abre, fecha, `${nome}: ${abre} begin; para ${fecha} commit;`)
   }
+})
+
+// ------------------------------------------------------------------
+// Recusa de senha vazada feita pelo proprio WebCond (o Supabase so oferece no plano Pro)
+// ------------------------------------------------------------------
+test('senha obvia e recusada sem precisar de internet', () => {
+  for (const senha of ['123456', '12345678', 'senha123', 'password', 'qwerty', 'SENHA123', 'Senha123']) {
+    assert.equal(senhaMuitoComum(senha), true, `deveria recusar: ${senha}`)
+  }
+  assert.equal(senhaMuitoComum('aaaaaa'), true, 'mesmo caractere repetido')
+  assert.equal(senhaMuitoComum('Jabuticaba-Verde-77'), false)
+  assert.equal(senhaMuitoComum(''), false)
+  assert.equal(senhaMuitoComum(null), false)
+})
+
+test('a senha nunca sai do servidor: so 5 caracteres do hash', async () => {
+  const senha = 'Jabuticaba-Verde-77'
+  const hash = createHash('sha1').update(senha, 'utf8').digest('hex').toUpperCase()
+  let enderecoChamado = ''
+
+  await senhaEmVazamento(senha, {
+    fetchImpl: async (url) => {
+      enderecoChamado = String(url)
+      return { ok: true, text: async () => '' }
+    },
+  })
+
+  assert.ok(enderecoChamado.endsWith(`/${hash.slice(0, 5)}`), 'o endereco leva so o prefixo do hash')
+  assert.ok(!enderecoChamado.includes(senha), 'a senha nao aparece no endereco')
+  assert.ok(!enderecoChamado.includes(hash), 'o hash completo nao aparece no endereco')
+  assert.equal(enderecoChamado.replace(/^.*\//, '').length, 5)
+})
+
+test('vazamento reconhecido apenas quando a contagem passa de zero', async () => {
+  const senha = 'Jabuticaba-Verde-77'
+  const hash = createHash('sha1').update(senha, 'utf8').digest('hex').toUpperCase()
+  const sufixo = hash.slice(5)
+  const resposta = (corpo) => async () => ({ ok: true, text: async () => corpo })
+
+  assert.equal(await senhaEmVazamento(senha, { fetchImpl: resposta(`${sufixo}:42\r\nOUTRO:9`) }), true)
+  // Linha de preenchimento do Add-Padding: vem com contagem zero e nao conta.
+  assert.equal(await senhaEmVazamento(senha, { fetchImpl: resposta(`${sufixo}:0`) }), false)
+  assert.equal(await senhaEmVazamento(senha, { fetchImpl: resposta('OUTRO:9') }), false)
+})
+
+test('servico fora do ar nao impede o cadastro', async () => {
+  const senha = 'Jabuticaba-Verde-77'
+  assert.equal(await senhaEmVazamento(senha, { fetchImpl: async () => ({ ok: false, text: async () => '' }) }), false)
+  assert.equal(await senhaEmVazamento(senha, { fetchImpl: async () => { throw new Error('rede fora') } }), false)
+  assert.equal(await recusaDeSenha(senha, { fetchImpl: async () => { throw new Error('rede fora') } }), '')
+  // Mas a lista local continua valendo mesmo sem internet.
+  assert.equal(await recusaDeSenha('123456', { fetchImpl: async () => { throw new Error('rede fora') } }), SENHA_VAZADA_AVISO)
+})
+
+test('o aviso e sempre o mesmo, venha da lista local ou da base de vazamentos', async () => {
+  const senha = 'Jabuticaba-Verde-77'
+  const hash = createHash('sha1').update(senha, 'utf8').digest('hex').toUpperCase()
+  const vazada = await recusaDeSenha(senha, { fetchImpl: async () => ({ ok: true, text: async () => `${hash.slice(5)}:7` }) })
+  assert.equal(vazada, SENHA_VAZADA_AVISO)
+  assert.equal(senhaRecusadaPeloAuth({ code: 'weak_password' }), SENHA_VAZADA_AVISO, 'mesma frase do aviso vindo do Supabase')
 })

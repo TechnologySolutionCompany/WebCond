@@ -1,4 +1,5 @@
 import { json, parseJsonBody, rejectForeignOrigin, requirePlatformAdmin, senhaRecusadaPeloAuth, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
+import { recusaDeSenha } from '../../_lib/senhaVazada.js'
 
 function isCondominiumAdminRole(role = '') {
   const normalized = String(role || '').trim().toLowerCase()
@@ -27,6 +28,9 @@ export async function POST(req) {
   if (password.length < 6) {
     return json({ error: 'A nova senha precisa ter pelo menos 6 caracteres.' }, 400)
   }
+
+  const senhaRecusada = await recusaDeSenha(password)
+  if (senhaRecusada) return json({ error: senhaRecusada }, 400)
 
   const { data: profiles, error: profileError } = await supabaseAdmin
     .from('profiles')

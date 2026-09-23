@@ -235,6 +235,9 @@ Já implementado no código:
   (5 / hora por IP). É em memória, por instância serverless: reduz força bruta, mas não substitui um
   limite global (ex.: Vercel Firewall ou tabela no banco) se o tráfego crescer.
 - Valores de usuário em filtros `.or()` do PostgREST são escapados com `quoteFilterValue`.
+- Senha fraca ou já vista em vazamento é recusada no cadastro e na troca de senha
+  (`api/_lib/senhaVazada.js`). A opção equivalente do painel do Supabase é do plano Pro; se um
+  dia o projeto subir de plano, as duas podem conviver — a mensagem é a mesma.
 - Buckets com limite de tamanho e de tipo: nenhum aceita `.html` ou `.svg` (executam script).
 
 **Nunca crie view no schema `public` sem `security_invoker = on`.** View roda com os direitos de

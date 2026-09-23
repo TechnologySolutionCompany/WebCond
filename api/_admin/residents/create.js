@@ -10,12 +10,7 @@ import {
   supabaseAdmin,
 } from '../../_lib/supabaseAdmin.js'
 import { checkUnitAvailability, loadUnitUsage } from '../../_lib/unitLimit.js'
-
-function generateTemporaryPassword() {
-  const words = ['Sol', 'Rio', 'Mar', 'Lua', 'Eco']
-  const word = words[Math.floor(Math.random() * words.length)]
-  return `${word}${Math.floor(Math.random() * 900 + 100)}!`
-}
+import { recusaDeSenha } from '../../_lib/senhaVazada.js'
 
 function buildInternalResidentEmail(cpf, condominiumId) {
   return `morador-${cpf}-${condominiumId}@login.webcond.local`
@@ -91,6 +86,9 @@ export async function POST(req) {
     return json({ error: 'Informe uma senha de acesso com pelo menos 6 caracteres.' }, 400)
   }
 
+  const senhaRecusada = await recusaDeSenha(password)
+  if (senhaRecusada) return json({ error: senhaRecusada }, 400)
+
 
   if (role === 'morador') {
     try {
@@ -159,11 +157,11 @@ export async function POST(req) {
     return json({ error: 'Falha ao salvar o perfil do morador.' }, 500)
   }
 
+  // A senha nao volta na resposta: quem a definiu foi o sindico, que ja a conhece.
   return json({
     userId,
     email,
     cpf,
-    temporaryPassword: password || generateTemporaryPassword(),
     authMode: 'service-role',
   })
 }

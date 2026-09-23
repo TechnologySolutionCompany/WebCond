@@ -1,4 +1,5 @@
 import { checkRateLimit, ensureServiceRoleConfig, getClientIp, json, parseJsonBody, quoteFilterValue, rejectForeignOrigin, senhaRecusadaPeloAuth, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
+import { recusaDeSenha } from '../../_lib/senhaVazada.js'
 import { PLANS, STANDARD_PLAN_NAME, STANDARD_PLAN_PRICE_CENTS } from '../../../src/lib/condominiumPlan.js'
 import { composeAddress, sanitizeAddress } from '../../../src/lib/address.js'
 
@@ -121,6 +122,9 @@ export async function POST(req) {
   if (password.length < 6) {
     return json({ error: 'A senha precisa ter pelo menos 6 caracteres.' }, 400)
   }
+
+  const senhaRecusada = await recusaDeSenha(password)
+  if (senhaRecusada) return json({ error: senhaRecusada }, 400)
 
   const { data: existingCondominium, error: condominiumLookupError } = await supabaseAdmin
     .from('condominiums')

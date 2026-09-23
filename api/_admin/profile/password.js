@@ -1,5 +1,6 @@
 import { json, parseJsonBody, rejectForeignOrigin, requireAdmin, senhaRecusadaPeloAuth, supabaseAdmin, supabaseServer } from '../../_lib/supabaseAdmin.js'
 import { verifyOwnPassword } from '../../_lib/passwordCheck.js'
+import { recusaDeSenha } from '../../_lib/senhaVazada.js'
 
 // Troca da propria senha: exige a senha atual, mesmo com a sessao aberta, para que um
 // computador esquecido logado nao vire troca de senha e perda da conta.
@@ -17,8 +18,13 @@ export async function POST(req) {
   if (novaSenha.length < 6) return json({ error: 'A nova senha precisa ter pelo menos 6 caracteres.' }, 400)
   if (novaSenha === String(body.senhaAtual || '')) return json({ error: 'A nova senha precisa ser diferente da atual.' }, 400)
 
+  // A senha atual e conferida primeiro: so quem prova que e o dono da conta chega na parte
+  // de avaliar a senha nova.
   const wrong = await verifyOwnPassword(auth.user, body.senhaAtual, { scope: 'perfil' })
   if (wrong) return wrong
+
+  const senhaRecusada = await recusaDeSenha(novaSenha)
+  if (senhaRecusada) return json({ error: senhaRecusada }, 400)
 
   const { error } = await supabaseAdmin.auth.admin.updateUserById(auth.profile.id, { password: novaSenha })
   if (error) {

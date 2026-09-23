@@ -2,6 +2,9 @@ import { normalizeUnitNumber } from '../../src/lib/units.js'
 import { UNIT_IMPORT_COLUMNS } from '../../src/lib/unitImportColumns.js'
 // Mesmas regras de CPF, WhatsApp e e-mail usadas pelo auto-cadastro por link.
 import { isCpfValid, isEmailValid, isWhatsappValid, normalizeCpfDigits, normalizeWhatsapp } from './personValidation.js'
+// Lista local de senha obvia. A consulta a base de vazamentos fica nas telas de cadastro uma
+// a uma: num lote de planilha, uma consulta por linha seguraria a importacao inteira.
+import { senhaMuitoComum } from './senhaVazada.js'
 
 const HEADERS = Object.fromEntries(UNIT_IMPORT_COLUMNS.map(({ key, header }) => [key, header]))
 const STATUS_VALUES = { ocupado: 'ocupada', alugado: 'alugada', desocupado: 'desocupada' }
@@ -130,6 +133,8 @@ export function validateImportRows(rawRows, {
     // O cadastro atual cria acesso tambem para o proprietario de unidade alugada.
     if (person.password.length < 6) {
       issue(row, `${prefix}Password`, 'SENHA_INVALIDA', 'A senha inicial deve ter pelo menos 6 caracteres.', 'Informe uma senha inicial com no mínimo 6 caracteres. Espaços digitados são preservados.')
+    } else if (senhaMuitoComum(person.password)) {
+      issue(row, `${prefix}Password`, 'SENHA_FRACA', 'A senha inicial é fácil de adivinhar.', 'Troque por uma senha que não seja sequência de números nem palavra comum (ex.: 123456, senha123).')
     }
 
     const identifiersValid = (!rawCpf || isCpfValid(rawCpf)) && (!person.email || isEmailValid(person.email))

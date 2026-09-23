@@ -12,6 +12,7 @@ import { getCondominiumAccessState } from '../../src/lib/condominiumPlan.js'
 import { isCpfValid, isEmailValid, isWhatsappValid, normalizeCpfDigits, normalizeWhatsapp } from '../_lib/personValidation.js'
 import { normalizeUnitNumber } from '../../src/lib/units.js'
 import { buildInternalResidentEmail } from '../_lib/residentAccounts.js'
+import { recusaDeSenha } from '../_lib/senhaVazada.js'
 import { registerInviteUse, resolveInvite } from '../_lib/signupLink.js'
 import { POLICY_VERSION } from '../../src/lib/politicas.js'
 
@@ -163,6 +164,15 @@ export async function POST(req) {
   const resolved = await resolveInvite(body.token)
   if (resolved.error) {
     return json({ code: resolved.error, error: MOTIVOS[resolved.error] || MOTIVOS.FALHA }, resolved.error === 'FALHA' ? 503 : 404)
+  }
+
+  // Senha fraca ou ja vista em vazamento nao vira acesso. Fica depois da conferencia de
+  // tamanho (senha curta recebe o aviso certo) e depois do link ser reconhecido: esta rota e
+  // publica, e a consulta de vazamento sai para fora.
+  for (const [rotulo, pessoa] of [['proprietario', proprietario], ['inquilino', inquilinoComAcesso ? inquilino : null]]) {
+    if (!pessoa?.password) continue
+    const senhaRecusada = await recusaDeSenha(pessoa.password)
+    if (senhaRecusada) return json({ error: `Senha do ${rotulo}: ${senhaRecusada}` }, 400)
   }
 
   const condominiumId = resolved.condominium.id

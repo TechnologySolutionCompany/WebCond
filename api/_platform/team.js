@@ -1,5 +1,6 @@
 import { json, parseJsonBody, rejectForeignOrigin, requirePlatformAdmin, senhaRecusadaPeloAuth, supabaseAdmin } from '../_lib/supabaseAdmin.js'
 import { isCpfValid, isWhatsappValid, normalizeCpfDigits, normalizeWhatsapp } from '../_lib/personValidation.js'
+import { recusaDeSenha } from '../_lib/senhaVazada.js'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MIN_PASSWORD = 8
@@ -71,6 +72,9 @@ export async function POST(req) {
     if (rawWhatsapp && !isWhatsappValid(rawWhatsapp, whatsapp)) return json({ error: 'Informe um WhatsApp valido com DDD.' }, 400)
     if (senha.length < MIN_PASSWORD) return json({ error: `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.` }, 400)
 
+    const senhaRecusada = await recusaDeSenha(senha)
+    if (senhaRecusada) return json({ error: senhaRecusada }, 400)
+
     // O CPF e o login: nao pode existir em outro acesso (sindico, morador ou outro suporte).
     const { data: taken, error: takenError } = await supabaseAdmin.from('profiles').select('id').eq('cpf', cpf).limit(1)
     if (takenError) return json({ error: 'Nao foi possivel validar o CPF.' }, 500)
@@ -133,6 +137,9 @@ export async function POST(req) {
   if (acao === 'senha') {
     const senha = String(body.senha || '')
     if (senha.length < MIN_PASSWORD) return json({ error: `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.` }, 400)
+    const senhaRecusada = await recusaDeSenha(senha)
+    if (senhaRecusada) return json({ error: senhaRecusada }, 400)
+
     const { error } = await supabaseAdmin.auth.admin.updateUserById(member.id, { password: senha })
     if (error) {
       const senhaFraca = senhaRecusadaPeloAuth(error)
