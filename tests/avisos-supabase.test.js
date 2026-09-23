@@ -1,6 +1,6 @@
 // Respostas aos avisos do verificador de seguranca do painel do Supabase.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 import { senhaRecusadaPeloAuth } from '../api/_lib/supabaseAdmin.js'
 
@@ -45,4 +45,21 @@ test('SQL 09-29: bucket das logos continua publico para abrir, fechado para list
   assert.doesNotMatch(sql, /drop policy if exists storage_condominios_(insert|update|delete)/)
   // O bucket nao pode deixar de ser publico: a logo precisa abrir no boleto.
   assert.doesNotMatch(sql, /set public = false/)
+})
+
+test('todo arquivo SQL fecha os blocos que abre', () => {
+  // Um bloco PL/pgSQL abre com "do $$" e fecha com "$$;". Um cifrao perdido no meio do
+  // caminho (edicao automatica, copiar e colar) quebra o arquivo inteiro no banco.
+  const pasta = new URL('../sql/', import.meta.url)
+  for (const nome of readdirSync(pasta).filter((arquivo) => arquivo.endsWith('.sql'))) {
+    const conteudo = readFileSync(new URL(nome, pasta), 'utf8')
+    const delimitadores = (conteudo.match(/\$\$/g) || []).length
+    assert.equal(delimitadores % 2, 0, `${nome}: numero impar de delimitadores $$`)
+    assert.doesNotMatch(conteudo, /(^|\n)do \$(\r?\n)/, `${nome}: bloco aberto com um cifrao so`)
+    assert.doesNotMatch(conteudo, /(^|\n)\$;(\r?\n)/, `${nome}: bloco fechado com um cifrao so`)
+    // begin/commit sempre aos pares: arquivo que abre transacao tem de fechar.
+    const abre = (conteudo.match(/(^|\n)begin;/g) || []).length
+    const fecha = (conteudo.match(/(^|\n)commit;/g) || []).length
+    assert.equal(abre, fecha, `${nome}: ${abre} begin; para ${fecha} commit;`)
+  }
 })
