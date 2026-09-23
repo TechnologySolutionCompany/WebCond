@@ -118,6 +118,25 @@ async function loadMetrics() {
   return { condominiums, users, activeUsers, units, chargesMonth, documents, notices, staleNotices }
 }
 
+// Canal de aviso desligado nao e defeito: e etapa de configuracao que ainda falta. Por isso o
+// status e "setup" e nao "degraded". Um item laranja permanente deixa o painel laranja para
+// sempre, e ai um problema de verdade passa despercebido no meio do aviso de sempre.
+export function notificationsComponent(channels) {
+  const onOff = (value) => (value ? 'ligado' : 'desligado')
+  const canais = `Celular/computador: ${onOff(channels.push)} · E-mail: ${onOff(channels.email)} · WhatsApp: ${onOff(channels.whatsapp)}.`
+  return {
+    key: 'notifications',
+    label: 'Notificacoes',
+    // Push e o canal base: e gratuito e so depende das chaves VAPID. E-mail e WhatsApp dependem
+    // de conta no provedor, entao ficam de fora da conta do status.
+    status: channels.push ? 'ok' : 'setup',
+    latencyMs: null,
+    detail: channels.push
+      ? canais
+      : `${canais} Falta VITE_VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY na Vercel para ligar o aviso no aparelho.`,
+  }
+}
+
 function runtimeInfo() {
   const memory = process.memoryUsage()
   return {
@@ -167,24 +186,17 @@ export async function GET(req) {
     detail: missingEnv.length ? `Variaveis ausentes: ${missingEnv.join(', ')}.` : 'Variaveis de ambiente carregadas.',
   }
 
-  const channels = getChannelConfig()
-  const onOff = (value) => (value ? 'ligado' : 'desligado')
-  const notifications = {
-    key: 'notifications',
-    label: 'Notificacoes',
-    // Push e o canal base (gratuito). E-mail e WhatsApp dependem de conta no provedor.
-    status: channels.push ? 'ok' : 'degraded',
-    latencyMs: null,
-    detail: `Celular/computador: ${onOff(channels.push)} · E-mail: ${onOff(channels.email)} · WhatsApp: ${onOff(channels.whatsapp)}.`,
-  }
-
-  const components = [database, authCheck, storage, config, routines, notifications]
+  const components = [database, authCheck, storage, config, routines, notificationsComponent(getChannelConfig())]
+  // Quem so aguarda configuracao fica fora do "overall" e vai numa lista propria: o painel
+  // continua contando a verdade, sem chamar de incidente o que ainda nao foi ligado.
   const overall = components.some((item) => item.status === 'down')
     ? 'down'
     : components.some((item) => item.status === 'degraded') ? 'degraded' : 'ok'
+  const pendingSetup = components.filter((item) => item.status === 'setup').map((item) => item.label)
 
   return json({
     overall,
+    pendingSetup,
     components,
     metrics: isAdmin ? metrics : null,
     runtime: runtimeInfo(),

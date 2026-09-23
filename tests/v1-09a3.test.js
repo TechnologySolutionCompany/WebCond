@@ -20,6 +20,7 @@ import {
 } from '../src/lib/notifications.js'
 import { isPlatformStaffProfile } from '../api/_lib/supabaseAdmin.js'
 import { getChannelConfig } from '../api/_lib/notify.js'
+import { notificationsComponent } from '../api/_platform/status.js'
 
 const CONDO = '11111111-1111-1111-1111-111111111111'
 
@@ -111,6 +112,20 @@ test('canais por plano: WhatsApp so nos planos maiores', () => {
 test('canais ligados so com as variaveis do servidor', () => {
   assert.deepEqual(getChannelConfig({}), { push: false, email: false, whatsapp: false })
   assert.deepEqual(getChannelConfig({ VITE_VAPID_PUBLIC_KEY: 'a', VAPID_PRIVATE_KEY: 'b', RESEND_API_KEY: 'c' }), { push: true, email: false, whatsapp: false })
+})
+
+test('canal de aviso desligado e configuracao pendente, nao lentidao', () => {
+  const desligado = notificationsComponent({ push: false, email: false, whatsapp: false })
+  // "setup" e o ponto do conserto: com "degraded" o painel inteiro ficava laranja e uma
+  // verificacao de 253 ms aparecia etiquetada como "Lento / com alerta".
+  assert.equal(desligado.status, 'setup')
+  assert.notEqual(desligado.status, 'degraded', 'nao pode entrar na mesma gaveta de lento/falha')
+  assert.match(desligado.detail, /VAPID/, 'diz o que falta para ligar')
+
+  const ligado = notificationsComponent({ push: true, email: false, whatsapp: false })
+  assert.equal(ligado.status, 'ok', 'push ligado basta: e-mail e WhatsApp dependem de conta no provedor')
+  assert.doesNotMatch(ligado.detail, /VAPID/, 'com push ligado nao fica pedindo chave')
+  assert.match(ligado.detail, /E-mail: desligado/, 'continua mostrando o estado dos tres canais')
 })
 
 test('resumo para o sindico depois de publicar', () => {

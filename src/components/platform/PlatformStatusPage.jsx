@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Activity, AlertTriangle, CheckCircle2, History, RefreshCcw, ServerCrash, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { Activity, AlertTriangle, CheckCircle2, History, RefreshCcw, ServerCrash, Settings, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { getPlatformStatus } from '../../lib/platformApi'
 import { clearStatusHistory, loadStatusHistory, pruneHistory, saveStatusHistory, STATUS_REFRESH_MS } from '../../lib/statusHistory'
 import { APP_VERSION } from '../../lib/appVersion'
@@ -12,6 +12,9 @@ const STATUS_META = {
   ok: { label: 'Operacional', color: 'var(--green)', badge: 'badge-green', Icon: CheckCircle2 },
   degraded: { label: 'Lento / com alerta', color: 'var(--orange)', badge: 'badge-orange', Icon: AlertTriangle },
   down: { label: 'Fora do ar', color: 'var(--red)', badge: 'badge-red', Icon: ServerCrash },
+  // Nao e problema: e passo de instalacao que ainda falta. Fica azul, nao laranja, e nao conta
+  // como incidente no historico.
+  setup: { label: 'Aguardando configuracao', color: 'var(--blue)', badge: 'badge-blue', Icon: Settings },
 }
 
 function formatUptime(seconds = 0) {
@@ -41,7 +44,11 @@ export default function PlatformStatusPage() {
       const roundTripMs = Math.round(performance.now() - startedAt)
       setReport({ ...result, roundTripMs })
       setError('')
-      const failing = (result.components || []).filter((component) => component.status !== 'ok').map((component) => component.label)
+      // So problema de verdade entra no historico. Item aguardando configuracao nao e incidente:
+      // se entrasse, o grafico ficaria laranja o tempo todo e esconderia uma queda real.
+      const failing = (result.components || [])
+        .filter((component) => component.status === 'degraded' || component.status === 'down')
+        .map((component) => component.label)
       setHistory((current) => pruneHistory([...current, { at: result.timestamp, ms: roundTripMs, overall: result.overall, failing }]))
     } catch (refreshError) {
       const roundTripMs = Math.round(performance.now() - startedAt)
@@ -72,7 +79,8 @@ export default function PlatformStatusPage() {
   }, [refresh])
 
   const overall = error ? 'down' : report?.overall || 'ok'
-  const meta = STATUS_META[overall]
+  const meta = STATUS_META[overall] || STATUS_META.down
+  const pendingSetup = error ? [] : report?.pendingSetup || []
   const incidents = history.filter((item) => item.overall !== 'ok')
   const avgMs = history.length ? Math.round(history.reduce((sum, item) => sum + item.ms, 0) / history.length) : null
   const chart = history.slice(-CHART_SIZE)
@@ -109,6 +117,11 @@ export default function PlatformStatusPage() {
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
             {error || (report ? `Ultima verificacao ${new Date(report.timestamp).toLocaleTimeString('pt-BR')} · servidor ${report.serverMs} ms · ida e volta ${report.roundTripMs} ms` : 'Verificando...')}
           </div>
+          {pendingSetup.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--blue)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Settings size={12} /> Aguardando configuracao: {pendingSetup.join(', ')}.
+            </div>
+          )}
         </div>
         <span className={`badge ${online ? 'badge-green' : 'badge-red'}`}>
           {online ? <Wifi size={10} /> : <WifiOff size={10} />} {online ? 'Sua conexao: online' : 'Sua conexao: offline'}
@@ -151,7 +164,11 @@ export default function PlatformStatusPage() {
               {incidents.slice(-5).reverse().map((item) => (
                 <div key={item.at} style={{ fontSize: 12, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <span>{new Date(item.at).toLocaleTimeString('pt-BR')}</span>
-                  <span className={`badge ${STATUS_META[item.overall].badge}`}>{STATUS_META[item.overall].label} · {item.ms} ms</span>
+                  {/* Diz qual servico puxou o alerta: "Rotinas automaticas · 200 ms" explica melhor
+                      do que "Lento / com alerta" ao lado de um tempo que nao tem nada de lento. */}
+                  <span className={`badge ${(STATUS_META[item.overall] || STATUS_META.down).badge}`}>
+                    {item.failing?.length ? item.failing.join(', ') : (STATUS_META[item.overall] || STATUS_META.down).label} · {item.ms} ms
+                  </span>
                 </div>
               ))}
             </div>
@@ -213,7 +230,7 @@ function ResponseBars({ history }) {
         <span
           key={item.at}
           title={`${new Date(item.at).toLocaleTimeString('pt-BR')}: ${item.ms} ms`}
-          style={{ height: `${Math.max(6, (item.ms / max) * 100)}%`, background: STATUS_META[item.overall].color }}
+          style={{ height: `${Math.max(6, (item.ms / max) * 100)}%`, background: (STATUS_META[item.overall] || STATUS_META.down).color }}
         />
       ))}
     </div>

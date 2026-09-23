@@ -29,6 +29,11 @@ Síndico publica/lança ──► aviso gravado no banco ──► painel pede o
 | E-mail (Resend) | Grátis até 3.000/mês (100/dia); depois ~US$ 20/mês por 50 mil | Código pronto, desligado | Conta no Resend + domínio verificado (DNS) |
 | WhatsApp oficial (Meta Cloud API) | Por mensagem, cobrado pela Meta (utilidade no Brasil: cerca de R$ 0,04–0,05) | Código pronto, desligado | Conta Meta Business verificada + número dedicado + modelo aprovado |
 
+Enquanto as chaves VAPID não estiverem na Vercel, **Status da plataforma** mostra Notificações em
+azul, como *"Aguardando configuração"*. É informação, não incidente: não deixa o painel laranja e não
+entra na conta de "com problema". Quem marca laranja ali é lentidão de verdade (acima de 800 ms) ou
+serviço com falha.
+
 Canais por plano (em `src/lib/condominiumPlan.js`, campo `notificationChannels`): ONE e teste gratuito
 têm aparelho + e-mail; PRO, MAX e Parceria também têm WhatsApp, porque ele custa por mensagem. É uma
 linha para mudar se a decisão for outra.
