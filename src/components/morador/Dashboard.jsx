@@ -8,6 +8,7 @@ import { Bell, CalendarClock, DollarSign, KeyRound, MessageSquareText } from 'lu
 import { countChargeStatuses, getChargeStatus } from '../../lib/chargeStatus'
 import { formatReferenceLabel } from '../../lib/billingShared'
 import ChargeSummaryBars from '../shared/ChargeSummaryBars'
+import PushPrompt from '../shared/PushPrompt'
 import { getTenantChargeSummary } from '../../lib/tenantApi'
 
 const EMPTY_SUMMARY = {
@@ -94,6 +95,8 @@ export default function MoradorDashboard({ isActive = true }) {
           <span className="badge badge-purple">{access.unitsLabel}</span>
         </div>
       </div>
+
+      <PushPrompt />
 
       <div className="card" style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>

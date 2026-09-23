@@ -52,8 +52,11 @@ export function resolveCondominiumSettings(condominium = null) {
     ? unitCountValue
     : DEFAULT_CONDOMINIUM_SETTINGS.unitCount
 
+  const logoPath = String(metadata.logo_path || '').trim()
+
   return {
     id: condominium?.id || null,
+    logoPath,
     name: String(condominium?.name || condominium?.nome || DEFAULT_CONDOMINIUM_SETTINGS.name).trim(),
     address: String(condominium?.address || condominium?.endereco || DEFAULT_CONDOMINIUM_SETTINGS.address).trim(),
     pixKey: String(condominium?.pix_key || condominium?.chave_pix || DEFAULT_CONDOMINIUM_SETTINGS.pixKey).trim(),

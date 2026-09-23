@@ -72,7 +72,7 @@ function validateFiles() {
     'src/App.jsx',
     'src/main.jsx',
     'api/health.js',
-    'schema.sql',
+    'sql/base/schema.sql',
   ]
 
   criticalFiles.forEach(file => {

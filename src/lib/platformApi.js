@@ -120,3 +120,39 @@ export function exportPlatformCondominium(condominiumId) {
 export function importPlatformResidents(payload) {
   return callPlatformApi('/api/platform/condominiums-import', payload, { timeoutMs: 60000 })
 }
+
+// Chamados de suporte (admin e equipe de suporte).
+export function listSupportTickets(filtro = 'abertos') {
+  return callPlatformApi(`/api/platform/support-tickets?filtro=${encodeURIComponent(filtro)}`, undefined, { method: 'GET' })
+}
+
+export function saveSupportTicket(payload) {
+  return callPlatformApi('/api/platform/support-tickets', payload)
+}
+
+export function openSupportAttachment(payload) {
+  return callPlatformApi('/api/platform/support-attachment', payload)
+}
+
+// Equipe de suporte: so o administrador da plataforma.
+export function listSupportTeam() {
+  return callPlatformApi('/api/platform/team', undefined, { method: 'GET' })
+}
+
+export function saveSupportTeam(payload) {
+  return callPlatformApi('/api/platform/team', payload)
+}
+
+// Conversa do chamado (sindico <-> suporte).
+export function listSupportMessages(id) {
+  return callPlatformApi(`/api/platform/support-messages?id=${encodeURIComponent(id)}`, undefined, { method: 'GET' })
+}
+
+export function sendSupportMessage(payload) {
+  return callPlatformApi('/api/platform/support-messages', payload)
+}
+
+// Logo do condominio (so o administrador da plataforma).
+export function saveCondominiumLogo(payload) {
+  return callPlatformApi('/api/platform/condominiums-logo', payload, { timeoutMs: 30000 })
+}

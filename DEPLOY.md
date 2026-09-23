@@ -32,8 +32,8 @@ Pré-requisitos: Node.js 24.x (fixado em `engines`), contas no Supabase e na Ver
 
 No **SQL Editor**, execute:
 
-- Projeto novo: todo o `schema.sql`.
-- Projeto que já tem dados: todo o `schema_updates.sql`.
+- Projeto novo: todo o `sql/base/schema.sql`.
+- Projeto que já tem dados: todo o `sql/base/schema_updates.sql`.
 - Depois, em ordem, os arquivos da pasta `sql/` que ainda não foram aplicados (cada um pode ser executado
   de novo sem risco):
   1. `2026-09-19_unidades_e_limite_documentos.sql`
@@ -43,6 +43,12 @@ No **SQL Editor**, execute:
   5. `2026-09-23_importacao_de_unidades.sql`
   6. `2026-09-24_autocadastro_por_link.sql`
   7. `2026-09-25_perfil_suporte_presenca.sql`
+  8. `2026-09-26_avisos_equipe_notificacoes.sql`
+  9. `2026-09-27_suporte_chat_logo_condominio.sql`
+  10. `2026-09-28_limpeza_seguranca_e_plano_pro.sql` — **obrigatório.** Remove a view
+      `public.condominios`, que entregava (e deixava alterar) os dados de todos os condomínios
+      sem login, limpa dados vencidos e cria o espaço da assinatura. Veja
+      `docs/seguranca-v1.09A3.md`.
 
 Em **Authentication > Sign In / Providers**, desative **Allow new users to sign up**. Todas as contas são
 criadas pelo backend (service role); o cadastro público do Supabase Auth não é usado pelo sistema.
@@ -99,6 +105,14 @@ Modelo em `.env.example`. Localmente, copie para `.env` (é o arquivo que o Vite
 | `SUPABASE_ANON_KEY` | `api/` e `scripts/` | Production, Preview, Development |
 | `SUPABASE_SERVICE_ROLE_KEY` | `api/` e `scripts/` | Production, Preview — **não** Development |
 | `CHROME_EXECUTABLE_PATH` | Opcional, só local: caminho do Chrome para gerar PDF | — |
+| `VITE_VAPID_PUBLIC_KEY` | Frontend e `api/` (notificação no aparelho) | Production, Preview, Development |
+| `VAPID_PRIVATE_KEY` | `api/` (assina as notificações) | Production, Preview — **não** Development |
+| `VAPID_SUBJECT` | `api/` (contato exigido pelos serviços de push) | Production, Preview |
+| `APP_URL` | `api/` (link dos e-mails) | Production |
+| `RESEND_API_KEY`, `NOTIFY_EMAIL_FROM` | `api/` — opcional: liga o e-mail | Production |
+| `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TEMPLATE`, `WHATSAPP_TEMPLATE_LANG` | `api/` — opcional: liga o WhatsApp | Production |
+| `VITE_ASSINATURA_PROVEDOR`, `VITE_ASSINATURA_CHECKOUT_URL` | Frontend — opcional: liga o pagamento da assinatura (v1.10) | Production |
+| `ASSINATURA_WEBHOOK_SECRET` | `api/` — opcional: confere a assinatura do webhook do provedor | Production |
 
 Regras da `SUPABASE_SERVICE_ROLE_KEY` (ignora RLS, acesso total ao banco):
 
@@ -161,6 +175,19 @@ Detalhes em [docs/autocadastro-por-link.md](docs/autocadastro-por-link.md).
 
 ---
 
+### 3.4 Notificações (aparelho, e-mail, WhatsApp) e equipe de suporte
+
+Aviso publicado ou cobrança lançada chega no celular/computador do morador (Web Push), e opcionalmente
+por e-mail (Resend) e WhatsApp (Meta). Como funciona, custos e como ligar cada canal:
+[docs/notificacoes.md](docs/notificacoes.md). A equipe de suporte (acesso limitado ao painel da
+plataforma) é criada em **Plataforma → Equipe de suporte**.
+
+O chamado de suporte é uma conversa (síndico ↔ equipe), organizada em um quadro de três colunas.
+A logo do condomínio fica no bucket `condominios` (leitura pública, gravação só do admin da plataforma)
+e entra no boleto nos planos MAX e Parceria.
+
+---
+
 ## 4. Desenvolvimento local
 
 ```bash
@@ -205,10 +232,17 @@ Já implementado no código:
   (5 / hora por IP). É em memória, por instância serverless: reduz força bruta, mas não substitui um
   limite global (ex.: Vercel Firewall ou tabela no banco) se o tráfego crescer.
 - Valores de usuário em filtros `.or()` do PostgREST são escapados com `quoteFilterValue`.
+- Buckets com limite de tamanho e de tipo: nenhum aceita `.html` ou `.svg` (executam script).
+
+**Nunca crie view no schema `public` sem `security_invoker = on`.** View roda com os direitos de
+quem a criou e **ignora a RLS** — foi assim que a view antiga `condominios` passou a entregar os
+dados de todos os condomínios para quem tinha só a chave pública do navegador (corrigido em
+`sql/2026-09-28`). O grupo "Superfície pública" do `npm run security-test` agora vigia isso.
 
 Checklist antes de publicar:
 
 - [ ] `git ls-files | grep -i env` só mostra `.env.example`.
+- [ ] `npm run security-test` sem nenhuma falha, incluindo o grupo "Superfície pública".
 - [ ] `npm run lint` e `npm run build` sem erros.
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` fora do escopo Development na Vercel.
 - [ ] Backups automáticos habilitados no Supabase (plano pago).

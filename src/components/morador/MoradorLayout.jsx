@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { LayoutDashboard, DollarSign, Bell, FileText, User, TriangleAlert, Menu } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
+import { painelLogoUrl } from '../../lib/condominiumLogo'
 import { useMoradorPresence } from '../../hooks/useMoradorPresence'
 import { isResidentRole } from '../../lib/auth'
 import Sidebar from '../shared/Sidebar'
 import { useSidebarMenu } from '../../hooks/useSidebarMenu'
+import { useDeepLinkPage } from '../../hooks/useDeepLinkPage'
 import PlanAttentionBanner from '../shared/PlanAttentionBanner'
 import MoradorDashboard from './Dashboard'
 import MoradorCobrancas from './Cobrancas'
@@ -76,6 +78,8 @@ export default function MoradorLayout() {
     setActivePage(nextPage)
   }
 
+  useDeepLinkPage(Object.keys(pages), handleNavigate)
+
   return (
     <div className={`app-layout theme-morador ${layoutClassName}`}>
       <Sidebar items={nav} activeKey={activePage} onNav={handleNavigate} theme="morador" mobileOpen={mobileOpen} onClose={closeMobile} />
@@ -84,6 +88,7 @@ export default function MoradorLayout() {
           <button className="btn btn-ghost btn-icon" onClick={toggleMenu} aria-label="Abrir ou recolher o menu" aria-expanded={mobileOpen || !layoutClassName}>
             <Menu size={18} />
           </button>
+          <img src={painelLogoUrl(condominiumSettings.logoPath)} alt="" aria-hidden="true" className="marca-mini" />
           <div>
             <div className="mobile-topbar-title">{condominiumSettings.name}</div>
             <div className="mobile-topbar-sub">{currentLabel}</div>

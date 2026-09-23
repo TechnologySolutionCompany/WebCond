@@ -17,7 +17,7 @@ function memoryStorage() {
 }
 
 test('versao segue o padrao v<tipo>.<mes>A<ajuste>', () => {
-  assert.equal(APP_VERSION, 'v1.09A2')
+  assert.equal(APP_VERSION, 'v1.09A3')
   assert.equal(formatAppVersion('1.9.2'), 'v1.09A2')
   assert.equal(formatAppVersion('2.10.8'), 'v2.10A8')
   assert.equal(formatAppVersion('3.1.0'), 'v3.01A0')

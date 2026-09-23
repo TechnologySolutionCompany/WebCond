@@ -1,7 +1,7 @@
 {
   "name": "webcond",
   "private": true,
-  "version": "1.9.2",
+  "version": "1.9.3",
   "type": "module",
   "engines": {
     "node": "24.x"
@@ -30,6 +30,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.13.2",
+    "web-push": "^3.6.7",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {

@@ -33,7 +33,7 @@ export default function App() {
                   <ProtectedRoute requiredRole={['admin', 'contador']}><AdminLayout/></ProtectedRoute>
                 }/>
                 <Route path="/platform/*" element={
-                  <ProtectedRoute requiredRole="platform_admin"><PlatformLayout/></ProtectedRoute>
+                  <ProtectedRoute requiredRole={['platform_admin', 'suporte']}><PlatformLayout/></ProtectedRoute>
                 }/>
                 <Route path="/morador/*" element={
                   <ProtectedRoute requiredRole="morador"><MoradorLayout/></ProtectedRoute>

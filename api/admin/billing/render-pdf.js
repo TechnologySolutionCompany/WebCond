@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import { requireCondominiumAdmin, json, parseJsonBody, rejectForeignOrigin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
 import { resolveCondominiumSettings } from '../../../src/lib/condominium.js'
 import { buildChargePdfHtml } from '../../../src/lib/billingPdfTemplate.js'
+import { getCondominiumAccessState, planAllowsCustomLogo } from '../../../src/lib/condominiumPlan.js'
 
 let webcondLogoDataUri = null
 
@@ -19,6 +20,29 @@ function loadWebcondLogoDataUri() {
   }
 
   return webcondLogoDataUri
+}
+
+// Logo do proprio condominio no boleto: so nos planos que preveem personalizacao (MAX, Parceria)
+// e so a imagem cadastrada pela plataforma. Qualquer falha cai na logo do WebCond.
+const LOGO_TYPES = { png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg' }
+
+async function loadCondominiumLogoDataUri(condominium) {
+  const path = String(condominium?.metadata?.logo_path || '')
+  if (!path) return ''
+
+  const state = getCondominiumAccessState(condominium)
+  if (state.subscriptionStatus !== 'active' || !planAllowsCustomLogo(state.planName)) return ''
+
+  try {
+    const { data, error } = await supabaseAdmin.storage.from('condominios').download(path)
+    if (error || !data) return ''
+    const buffer = Buffer.from(await data.arrayBuffer())
+    if (!buffer.length || buffer.length > 2 * 1024 * 1024) return ''
+    const type = LOGO_TYPES[path.split('.').pop()?.toLowerCase()] || 'image/png'
+    return `data:${type};base64,${buffer.toString('base64')}`
+  } catch {
+    return ''
+  }
 }
 
 function sanitizeText(value = '', fallback = '') {
@@ -57,7 +81,7 @@ function buildPixDetails(pixKey, fallbackPhone, bankDestination) {
 async function loadCondominiumData(condominiumId) {
   const { data, error } = await supabaseAdmin
     .from('condominiums')
-    .select('id, name, nome, address, endereco, pix_key, chave_pix, whatsapp, bank_details, metadata')
+    .select('id, name, nome, address, endereco, pix_key, chave_pix, whatsapp, bank_details, metadata, status, created_at, updated_at')
     .eq('id', condominiumId)
     .maybeSingle()
 
@@ -150,7 +174,7 @@ export async function POST(req) {
   const html = buildChargePdfHtml({
     nomeCondominio: settings.name,
     enderecoCondominio: settings.address,
-    logoCondominioUrl: loadWebcondLogoDataUri(),
+    logoCondominioUrl: (await loadCondominiumLogoDataUri(condominium)) || loadWebcondLogoDataUri(),
     nomeMorador: sanitizeText(body.nomeMorador, 'Morador'),
     apartamento: sanitizeText(body.apartamento, '-'),
     numero: sanitizeText(body.numero || body.telefone, '-'),

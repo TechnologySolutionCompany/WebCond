@@ -245,6 +245,10 @@ tr:hover td { background: var(--bg-3); }
 .mobile-topbar-title { font-size: 14px; font-weight: 700; }
 .mobile-topbar-sub { font-size: 11px; color: var(--text-muted); }
 
+/* Marca do painel: logo do condominio quando existir, senao o simbolo do WebCond. */
+.marca-mini { width: 22px; height: 22px; flex-shrink: 0; object-fit: contain; display: block; border-radius: 5px; }
+.marca-mini-sm { width: 13px; height: 13px; border-radius: 3px; align-self: center; }
+
 .sidebar-logo { padding: 20px 16px 16px; border-bottom: 1px solid var(--border); }
 .sidebar-logo-title { font-size: 14px; font-weight: 700; }
 .sidebar-logo-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
@@ -707,26 +711,13 @@ tr:hover td { background: var(--bg-3); }
 /* ---------------------------------------------------------------
    Meu perfil (sindico / contador): dados, senha, plano, suporte
 --------------------------------------------------------------- */
-.profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
-.profile-col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 .profile-card-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; margin-bottom: 14px; }
 .profile-card-sub { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; margin: -6px 0 14px; }
 .profile-hint { font-size: 11.5px; color: var(--text-dim); line-height: 1.5; }
 .profile-readonly { display: flex; align-items: center; min-height: 40px; }
-.profile-rows { display: flex; flex-direction: column; }
-.profile-rows > div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
-.profile-rows > div:last-child { border-bottom: none; }
-.profile-rows span { color: var(--text-muted); }
-.profile-rows strong { text-align: right; }
 .plan-summary { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: var(--r); background: var(--bg-3); margin-bottom: 8px; }
 .plan-summary-name { font-weight: 700; font-size: 15px; }
 .plan-summary-price { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
-.plan-table { display: flex; flex-direction: column; gap: 8px; }
-.plan-table-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r); }
-.plan-table-current { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; }
-.plan-table-summary { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
-.plan-table-price { font-weight: 700; white-space: nowrap; }
-.plan-table-price span { font-size: 11px; font-weight: 500; color: var(--text-muted); }
 .support-form { display: flex; flex-direction: column; gap: 12px; }
 .support-form textarea { resize: vertical; min-height: 90px; }
 .support-attach { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -744,7 +735,70 @@ tr:hover td { background: var(--bg-3); }
 .support-ticket-text { font-size: 12.5px; color: var(--text-muted); margin: 6px 0; white-space: pre-wrap; line-height: 1.55; }
 .support-reply { margin-top: 8px; padding: 10px 12px; border-left: 3px solid var(--green); background: var(--green-dim); border-radius: 8px; font-size: 12px; }
 .support-reply p { margin: 4px 0 0; white-space: pre-wrap; line-height: 1.55; color: var(--text); }
-@media (max-width: 1100px) { .profile-grid { grid-template-columns: 1fr; } }
+.support-ticket-head strong, .support-ticket-text, .support-reply p { overflow-wrap: anywhere; }
+
+/* Perfil em uma coluna: cabecalho, abas e um painel por vez. Nada passa da largura. */
+.me-shell { max-width: 720px; }
+.me-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; min-width: 0; }
+.me-avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; background: var(--bg-3); border: 1px solid var(--border); font-weight: 700; color: var(--accent); }
+.me-head-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.me-head-text strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me-head-text span { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me-panel { display: flex; flex-direction: column; gap: 14px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 20px; min-width: 0; }
+.me-panel .form-group { margin: 0; min-width: 0; }
+.me-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.me-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.me-rows { display: flex; flex-direction: column; }
+.me-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
+.me-row:last-child { border-bottom: none; }
+.me-row span { color: var(--text-muted); }
+.me-row strong { text-align: right; font-weight: 600; }
+.me-row strong span { color: inherit; }
+.me-subtitle { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin-top: 6px; }
+.me-plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.me-plan { display: flex; flex-direction: column; gap: 4px; padding: 12px; border: 1px solid var(--border); border-radius: var(--r); min-width: 0; }
+.me-plan-current { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; }
+.me-plan-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.me-plan-name .badge { font-size: 10px; }
+.me-plan-price { font-weight: 700; font-size: 15px; }
+.me-plan-price span { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+.me-plan-summary { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; overflow-wrap: anywhere; }
+.me-version { margin-top: 18px; font-size: 11px; color: var(--text-dim); display: flex; align-items: center; justify-content: center; gap: 6px; }
+.plan-summary { margin-bottom: 0; }
+@media (max-width: 640px) {
+  .me-grid, .me-plans { grid-template-columns: 1fr; }
+  .me-panel { padding: 16px; }
+}
+
+/* Notificacoes: linhas com interruptor */
+.notify-rows { display: flex; flex-direction: column; }
+.notify-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--border-subtle); }
+.notify-row:last-child { border-bottom: none; }
+.notify-row > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.notify-row strong { font-size: 13px; }
+.notify-row span { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; overflow-wrap: anywhere; }
+.switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-3); cursor: pointer; padding: 0; transition: background .15s, border-color .15s; }
+.switch span { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-muted); transition: transform .15s, background .15s; }
+.switch-on { background: var(--green); border-color: var(--green); }
+.switch-on span { transform: translateX(18px); background: #fff; }
+.switch:disabled { opacity: .5; cursor: not-allowed; }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Convite para ligar as notificacoes (Inicio do morador) */
+.push-prompt { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 20px; border: 1px solid var(--border); border-left: 3px solid var(--green); border-radius: var(--r); background: var(--bg-2); }
+.push-prompt > svg { color: var(--green); flex-shrink: 0; }
+.push-prompt-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.push-prompt-text strong { font-size: 13px; }
+.push-prompt-text span { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; }
+
+/* Equipe de suporte (painel da plataforma) */
+.team-list { display: flex; flex-direction: column; }
+.team-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
+.team-row:last-child { border-bottom: none; }
+.team-row-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.team-row-info span { font-size: 11.5px; color: var(--text-muted); }
+.team-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.support-context { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: var(--text-muted); margin: 6px 0 2px; }
 
 /* Presenca do sindico (painel da plataforma) */
 .presence { position: relative; display: inline-flex; align-items: center; gap: 5px; cursor: default; }
@@ -772,3 +826,86 @@ tr:hover td { background: var(--bg-3); }
 .status-log-time { color: var(--text-muted); min-width: 150px; font-variant-numeric: tabular-nums; }
 .status-log-ms { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .status-log-failing { color: var(--orange); }
+
+/* ---------------------------------------------------------------
+   Suporte: quadro de chamados, conversa e lista do sindico
+--------------------------------------------------------------- */
+.board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.board-foco { grid-template-columns: 1fr; }
+.board-col { display: flex; flex-direction: column; min-width: 0; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 10px; gap: 10px; }
+.board-col-alvo { border-color: var(--accent); border-style: dashed; }
+.board-col-head { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; color: var(--text); font-size: 12.5px; font-weight: 700; padding: 4px 4px 8px; cursor: pointer; border-bottom: 1px solid var(--border-subtle); }
+.board-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.board-count { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--text-muted); background: var(--bg-3); border-radius: 999px; padding: 1px 8px; }
+.board-col-body { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
+.board-empty { font-size: 11.5px; color: var(--text-dim); padding: 10px 4px; margin: 0; }
+.board-card { text-align: left; background: var(--bg-3); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; cursor: grab; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.board-card:hover { border-color: var(--accent); }
+.board-card:active { cursor: grabbing; }
+.board-card-condo { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-card-title { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-card-text { font-size: 11.5px; color: var(--text-muted); margin: 0; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.board-card-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 10.5px; color: var(--text-dim); margin-top: 2px; }
+.board-card-foot span { display: inline-flex; align-items: center; gap: 4px; }
+
+.chat-modal { max-width: 720px; width: 100%; }
+.chat-panel { display: flex; flex-direction: column; gap: 12px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px; }
+.chat-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); }
+.chat-head strong { font-size: 14px; }
+.chat-status { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.chat-scroll { display: flex; flex-direction: column; gap: 10px; max-height: 46vh; overflow-y: auto; padding: 4px 2px; }
+.chat-empty { font-size: 12px; color: var(--text-dim); text-align: center; padding: 20px 0; margin: 0; }
+.chat-line { display: flex; }
+.chat-line-mine { justify-content: flex-end; }
+.chat-bubble { max-width: 82%; background: var(--bg-3); border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px; min-width: 0; }
+.chat-line-mine .chat-bubble { background: var(--green-dim); border-color: var(--green); }
+.chat-author { display: flex; gap: 8px; align-items: baseline; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 3px; }
+.chat-author span { font-weight: 400; color: var(--text-dim); font-size: 10.5px; }
+.chat-bubble p { margin: 0; font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-note { font-size: 11.5px; color: var(--text-dim); margin: 0; }
+.chat-form { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border-subtle); padding-top: 12px; }
+.chat-form textarea { resize: vertical; min-height: 60px; }
+
+.ticket-list { display: flex; flex-direction: column; gap: 10px; }
+.ticket-card { text-align: left; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r); padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; color: var(--text); }
+.ticket-card:hover { border-color: var(--accent); }
+.ticket-card-top { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.ticket-card-top strong { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ticket-card-text { font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ticket-card-foot { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--text-dim); }
+
+/* Perfil do condominio no painel da plataforma */
+.condo-perfil { display: flex; flex-direction: column; gap: 18px; }
+.condo-perfil-head { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.condo-logo { width: 64px; height: 64px; border-radius: var(--r); overflow: hidden; flex-shrink: 0; display: grid; place-items: center; background: var(--bg-3); border: 1px solid var(--border); font-size: 24px; font-weight: 700; color: var(--accent); }
+.condo-logo img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.condo-perfil-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.condo-perfil-id strong { font-size: 16px; overflow-wrap: anywhere; }
+.condo-perfil-id > span { font-size: 12px; color: var(--text-muted); }
+.condo-logo-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; max-width: 260px; }
+.condo-perfil-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.condo-perfil-grid .me-row strong { overflow-wrap: anywhere; }
+.condo-perfil-nota { background: var(--bg-3); border-left: 3px solid var(--orange); border-radius: 8px; padding: 10px 12px; font-size: 12px; }
+.condo-perfil-nota p { margin: 4px 0 0; color: var(--text-muted); line-height: 1.55; white-space: pre-wrap; }
+
+/* Tela de planos do sindico */
+.planos-shell { max-width: 1000px; }
+.plano-atual { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; background: var(--bg-2); border: 1px solid var(--green); border-radius: var(--r-lg); padding: 14px 16px; margin-bottom: 18px; }
+.plano-atual > div:first-child { display: flex; flex-direction: column; }
+.plano-atual span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.plano-atual strong { font-size: 18px; }
+.plano-atual-info { font-size: 12.5px; color: var(--text-muted); }
+.planos-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: stretch; margin-bottom: 18px; }
+.plano-card-cta { margin-top: auto; width: 100%; justify-content: center; }
+.plano-card-cta-atual { font-size: 11.5px; color: var(--text-muted); text-align: center; padding: 10px 0 2px; }
+.planos-duvidas { display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; align-items: center; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px 16px; margin-bottom: 14px; }
+.planos-duvidas span { display: block; font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.planos-vitrine-link { display: inline-block; margin-top: 10px; font-size: 12.5px; font-weight: 600; color: var(--green); text-decoration: none; }
+.planos-vitrine-link:hover { text-decoration: underline; }
+
+@media (max-width: 900px) {
+  .board { grid-template-columns: 1fr; }
+  .board-col-body { max-height: none; }
+  .planos-cards { grid-template-columns: 1fr; }
+  .condo-perfil-grid { grid-template-columns: 1fr; }
+}

@@ -1,11 +1,12 @@
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { useTheme } from '../../hooks/useTheme'
-import { Building2, Lock, LogOut, Moon, Sun, X } from 'lucide-react'
+import { Lock, LogOut, Moon, Sun, X } from 'lucide-react'
 import { getUserRoleLabel } from '../../lib/auth'
 import { getPlan } from '../../lib/condominiumPlan'
 import { describeResidentAccess } from '../../lib/units'
 import { APP_VERSION } from '../../lib/appVersion'
+import { painelLogoUrl } from '../../lib/condominiumLogo'
 
 export default function Sidebar({
   items,
@@ -35,6 +36,7 @@ export default function Sidebar({
   const accentColor = resolvedAccent.color
   const accentDim = resolvedAccent.dim
   const productTitle = theme === 'platform' ? 'WebCond' : condominiumSettings.name
+  const marcaDoPainel = theme === 'platform' ? '/logo.svg' : painelLogoUrl(condominiumSettings.logoPath)
   const productSubtitle = theme === 'platform' ? 'Technology Solution Company BR' : 'Painel do condominio'
 
   const handleNavigate = (key) => {
@@ -49,7 +51,7 @@ export default function Sidebar({
         <div className="sidebar-logo">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Building2 size={20} color={accentColor} />
+              <img src={marcaDoPainel} alt="" aria-hidden="true" className="marca-mini" />
               <div>
                 <div className="sidebar-logo-title">{productTitle}</div>
                 <div className="sidebar-logo-sub">{productSubtitle}</div>

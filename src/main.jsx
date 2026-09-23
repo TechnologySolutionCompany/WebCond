@@ -15,8 +15,17 @@ if ('serviceWorker' in navigator) {
       return
     }
 
+    // Em desenvolvimento o service worker nao faz cache (ver public/sw.js). So e mantido quando
+    // ha notificacoes ligadas neste navegador, para dar para testar o push em localhost.
     const registrations = await navigator.serviceWorker.getRegistrations()
-    await Promise.all(registrations.map((registration) => registration.unregister()))
+    await Promise.all(registrations.map(async (registration) => {
+      const subscription = await registration.pushManager?.getSubscription().catch(() => null)
+      if (subscription) {
+        await registration.update().catch(() => {})
+        return
+      }
+      await registration.unregister()
+    }))
 
     if ('caches' in window) {
       const cacheKeys = await caches.keys()

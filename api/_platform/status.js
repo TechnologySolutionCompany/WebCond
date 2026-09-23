@@ -1,9 +1,10 @@
-import { ensureServiceRoleConfig, json, requirePlatformAdmin, supabaseAdmin } from '../_lib/supabaseAdmin.js'
+import { ensureServiceRoleConfig, json, normalizeRole, requirePlatformStaff, supabaseAdmin } from '../_lib/supabaseAdmin.js'
+import { getChannelConfig } from '../_lib/notify.js'
 import { getCondominiumAccessState } from '../../src/lib/condominiumPlan.js'
 
 // Acima disso o componente aparece como "lento".
 const SLOW_MS = 800
-const REQUIRED_BUCKETS = ['documentos', 'cobrancas']
+const REQUIRED_BUCKETS = ['documentos', 'cobrancas', 'suporte']
 const REQUIRED_ENV = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY']
 
 async function timed(fn) {
@@ -75,7 +76,7 @@ async function checkStorage() {
     latencyMs: ms,
     detail: error
       ? `Storage indisponivel: ${error.message}`
-      : missing.length ? `Bucket ausente: ${missing.join(', ')}.` : 'Buckets documentos e cobrancas disponiveis.',
+      : missing.length ? `Bucket ausente: ${missing.join(', ')}.` : 'Buckets documentos, cobrancas e suporte disponiveis.',
   }
 }
 
@@ -131,8 +132,10 @@ function runtimeInfo() {
 
 export async function GET(req) {
   const startedAt = performance.now()
-  const auth = await requirePlatformAdmin(req)
+  // Admin e equipe de suporte veem o status. Indicadores de negocio (metricas) so o admin.
+  const auth = await requirePlatformStaff(req)
   if (auth.error) return auth.error
+  const isAdmin = normalizeRole(auth.profile.role) === 'platform_admin'
 
   const missingEnv = REQUIRED_ENV.filter((name) => !process.env[name] && !process.env[`VITE_${name}`])
   const serviceRoleError = ensureServiceRoleConfig()
@@ -164,7 +167,18 @@ export async function GET(req) {
     detail: missingEnv.length ? `Variaveis ausentes: ${missingEnv.join(', ')}.` : 'Variaveis de ambiente carregadas.',
   }
 
-  const components = [database, authCheck, storage, config, routines]
+  const channels = getChannelConfig()
+  const onOff = (value) => (value ? 'ligado' : 'desligado')
+  const notifications = {
+    key: 'notifications',
+    label: 'Notificacoes',
+    // Push e o canal base (gratuito). E-mail e WhatsApp dependem de conta no provedor.
+    status: channels.push ? 'ok' : 'degraded',
+    latencyMs: null,
+    detail: `Celular/computador: ${onOff(channels.push)} · E-mail: ${onOff(channels.email)} · WhatsApp: ${onOff(channels.whatsapp)}.`,
+  }
+
+  const components = [database, authCheck, storage, config, routines, notifications]
   const overall = components.some((item) => item.status === 'down')
     ? 'down'
     : components.some((item) => item.status === 'degraded') ? 'degraded' : 'ok'
@@ -172,7 +186,7 @@ export async function GET(req) {
   return json({
     overall,
     components,
-    metrics,
+    metrics: isAdmin ? metrics : null,
     runtime: runtimeInfo(),
     serverMs: Math.round(performance.now() - startedAt),
     timestamp: new Date().toISOString(),

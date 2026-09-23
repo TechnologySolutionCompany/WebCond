@@ -9,6 +9,7 @@ import * as signupLink from '../_admin/signup/link.js'
 import * as signupReview from '../_admin/signup/review.js'
 import * as profileUpdate from '../_admin/profile/update.js'
 import * as profilePassword from '../_admin/profile/password.js'
+import * as notifySend from '../_admin/notify/send.js'
 
 // /api/admin/billing/render-pdf continua em funcao propria: carrega o Chromium e e pesada.
 export const { GET, POST } = createRouter({
@@ -22,4 +23,5 @@ export const { GET, POST } = createRouter({
   '/api/admin/signup-review': signupReview,
   '/api/admin/profile-update': profileUpdate,
   '/api/admin/profile-password': profilePassword,
+  '/api/admin/notify': notifySend,
 })

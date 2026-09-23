@@ -30,7 +30,7 @@ function cnpj() {
 const BASE_URL = String(process.env.SECURITY_TEST_URL || '').replace(/\/+$/, '')
 
 // Endereco publico da rota: uma funcao por area, um segmento depois da area.
-const HTTP_ROUTES = { 'platform/condominiums/update-syndic-password': 'platform/condominiums-syndic-password' }
+const HTTP_ROUTES = { 'platform/condominiums/update-syndic-password': 'platform/condominiums-syndic-password', 'admin/notify/send': 'admin/notify' }
 function httpRoute(path) {
   if (HTTP_ROUTES[path]) return HTTP_ROUTES[path]
   if (path === 'health' || path.startsWith('admin/billing/')) return path
@@ -120,6 +120,66 @@ async function setupCondo(label, P) {
 try {
   const P = (await call('auth/login-cnpj', { body: { cnpj: process.env.PLATFORM_ADMIN_DOCUMENT, password: process.env.PLATFORM_ADMIN_PASSWORD } })).data?.session?.access_token
   check('setup', 'login do admin da plataforma', Boolean(P))
+
+  // ---------------- Superficie publica: o que responde sem login ----------------
+  // A chave "anon" fica no bundle do navegador: qualquer pessoa a tem. Tudo o que ela alcanca
+  // e, na pratica, publico. Aqui a gente confere que nada escapa da RLS por fora dela.
+  {
+    const GSP = 'Superficie publica (SQL 09-28)'
+    const semLogin = (caminho, init = {}) => fetch(`${URL_}/rest/v1/${caminho}`, {
+      ...init,
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'content-type': 'application/json', ...(init.headers || {}) },
+    })
+
+    // View antiga em portugues: view nao respeita RLS, entao ela entregava (e deixava alterar)
+    // os dados de todos os condominios, chave Pix e dados bancarios inclusive.
+    const viewLeitura = await semLogin('condominios?select=*&limit=1')
+    let viewLinhas = []
+    try { viewLinhas = await viewLeitura.json() } catch { viewLinhas = [] }
+    check(GSP, 'view antiga "condominios" nao entrega dado nenhum sem login',
+      viewLeitura.status === 404 || !Array.isArray(viewLinhas) || viewLinhas.length === 0,
+      `status ${viewLeitura.status}`)
+
+    const NINGUEM = '00000000-0000-0000-0000-000000000000'
+    const viewEscrita = await semLogin(`condominios?id=eq.${NINGUEM}`, { method: 'PATCH', body: JSON.stringify({ whatsapp: '00000000000' }) })
+    check(GSP, 'view antiga "condominios" nao aceita alteracao sem login', viewEscrita.status >= 400, `status ${viewEscrita.status}`)
+
+    const viewExclusao = await semLogin(`condominios?id=eq.${NINGUEM}`, { method: 'DELETE' })
+    check(GSP, 'view antiga "condominios" nao aceita exclusao sem login', viewExclusao.status >= 400, `status ${viewExclusao.status}`)
+
+    // Tabela de teste do comeco do projeto.
+    const morta = await semLogin('webcond?select=id&limit=1')
+    check(GSP, 'tabela de teste "webcond" nao existe mais', morta.status === 404, `status ${morta.status}`)
+
+    // Varredura: nenhuma tabela do sistema pode devolver linha para quem nao fez login.
+    const tabelas = ['condominiums', 'profiles', 'cobrancas', 'avisos', 'documentos', 'unidades',
+      'unidade_vinculos', 'ocorrencias_predio', 'solicitacoes_cadastro', 'suporte_chamados',
+      'suporte_mensagens', 'push_inscricoes', 'condominio_convites', 'unidade_importacoes',
+      'unidade_importacao_itens', 'assinatura_eventos']
+    const vazando = []
+    for (const tabela of tabelas) {
+      const res = await semLogin(`${tabela}?select=*&limit=1`)
+      let linhas = []
+      try { linhas = await res.json() } catch { linhas = [] }
+      if (Array.isArray(linhas) && linhas.length > 0) vazando.push(tabela)
+    }
+    check(GSP, 'nenhuma tabela do sistema responde com dados sem login', vazando.length === 0, vazando.join(', '))
+
+    // Arquivos: limite de tamanho e de tipo (bloqueia .html e .svg, que executam script).
+    const { data: buckets } = await supabaseAdmin.storage.listBuckets()
+    const porId = Object.fromEntries((buckets || []).map((bucket) => [bucket.id, bucket]))
+    const limitado = (id) => Boolean(porId[id]?.file_size_limit) && Array.isArray(porId[id]?.allowed_mime_types) && porId[id].allowed_mime_types.length > 0
+    const perigoso = (id) => (porId[id]?.allowed_mime_types || []).some((tipo) => /html|svg/i.test(tipo))
+    if (!porId.documentos || !porId.cobrancas) {
+      skip(GSP, 'buckets de arquivo com limite de tamanho e tipo', 'aplique o SQL 2026-09-28')
+    } else {
+      check(GSP, 'buckets de arquivo com limite de tamanho e tipo', limitado('documentos') && limitado('cobrancas'))
+      check(GSP, 'nenhum bucket aceita arquivo que executa script (html/svg)',
+        !['documentos', 'cobrancas', 'suporte', 'condominios'].some(perigoso))
+      check(GSP, 'so o bucket das logos e publico',
+        porId.condominios?.public === true && !porId.documentos.public && !porId.cobrancas.public && !porId.suporte?.public)
+    }
+  }
 
   // Tres condominios criados ao mesmo tempo, com a mesma numeracao de unidade (101).
   const [A, B, C] = await Promise.all([setupCondo('A', P), setupCondo('B', P), setupCondo('C', P)])
@@ -590,6 +650,208 @@ try {
     check(GPr, 'ao sair o horario de saida e gravado, sem mexer no resto do perfil', Boolean(presAOut?.saiu_em) && presAOut.nome === 'Sindico A Editado' && presAOut.role === 'ADMIN_CONDOMINIUM')
   }
 
+  // ---------------- v1.09A3: exclusao real de aviso ----------------
+  const GA = 'Avisos (v1.09A3)'
+  const { data: avisoTemp } = await sA.from('avisos').insert({ condominium_id: A.id, condominio_id: A.id, titulo: 'Aviso para excluir', conteudo: 'x', destinatario: 'todos', created_by: A.syndicId }).select('id').single()
+  res = await client(B.S).from('avisos').delete().eq('id', avisoTemp?.id).select('id')
+  check(GA, 'sindico B NAO exclui aviso do A', !rowsOf(res.data).length)
+  res = await oA.from('avisos').delete().eq('id', avisoTemp?.id).select('id')
+  check(GA, 'morador NAO exclui aviso', !rowsOf(res.data).length)
+  res = await sA.from('avisos').delete().eq('id', avisoTemp?.id).select('id')
+  const avisoGone = await supabaseAdmin.from('avisos').select('id').eq('id', avisoTemp?.id).maybeSingle()
+  check(GA, 'sindico exclui o proprio aviso de verdade (sai do banco)', rowsOf(res.data).length === 1 && !avisoGone.data)
+
+  // ---------------- v1.09A3: notificacoes e equipe de suporte (SQL 09-26) ----------------
+  const sql0926 = await supabaseAdmin.from('push_inscricoes').select('id').limit(1)
+  if (sql0926.error) {
+    skip('SQL 09-26', 'notificacoes e equipe de suporte', 'aplique sql/2026-09-26_avisos_equipe_notificacoes.sql no Supabase e rode de novo')
+  } else {
+    const GN = 'Notificacoes (SQL 09-26)'
+    const fakeSub = (n) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/e2e-${n}-${Date.now()}`, keys: { p256dh: 'B'.repeat(87), auth: 'A'.repeat(22) } })
+    check(GN, 'sem login nao registra aparelho', (await call('tenant/push/subscribe', { body: { subscription: fakeSub(0) } })).status === 401)
+    check(GN, 'endereco fora dos servicos oficiais de push e recusado', (await call('tenant/push/subscribe', { token: A.O, body: { subscription: { ...fakeSub(1), endpoint: 'https://evil.example.com/push' } } })).status === 400)
+    const subA = fakeSub(2)
+    check(GN, 'morador registra o aparelho', (await call('tenant/push/subscribe', { token: A.O, body: { subscription: subA, dispositivo: 'Chrome no Teste' } })).status === 200)
+    check(GN, 'morador ve o proprio aparelho', rowsOf((await oA.from('push_inscricoes').select('endpoint')).data).some((row) => row.endpoint === subA.endpoint))
+    const foreignViews = await Promise.all([sA, client(B.S), client(B.O), client(A.T)].map((db) => db.from('push_inscricoes').select('endpoint')))
+    check(GN, 'sindico, outro condominio e o inquilino NAO veem os aparelhos do morador', foreignViews.every((view) => !rowsOf(view.data).some((row) => row.endpoint === subA.endpoint)))
+    res = await oA.from('push_inscricoes').insert({ profile_id: A.ownerId, endpoint: 'https://fcm.googleapis.com/fcm/send/direto', p256dh: 'x', auth: 'y' }).select('id')
+    check(GN, 'app NAO grava aparelho direto no banco (so pelo backend)', Boolean(res.error) || !rowsOf(res.data).length)
+    await call('tenant/push/subscribe', { token: A.T, body: { subscription: subA } })
+    const owners = await supabaseAdmin.from('push_inscricoes').select('profile_id').eq('endpoint', subA.endpoint)
+    check(GN, 'mesmo aparelho com outro login passa a ser so de quem entrou por ultimo', rowsOf(owners.data).length === 1 && owners.data[0].profile_id === A.tenantId)
+    await call('tenant/push/unsubscribe', { token: A.O, body: { endpoint: subA.endpoint } })
+    check(GN, 'ninguem desliga o aparelho de outra pessoa', rowsOf((await supabaseAdmin.from('push_inscricoes').select('id').eq('endpoint', subA.endpoint)).data).length === 1)
+    check(GN, 'dono desliga o proprio aparelho', (await call('tenant/push/unsubscribe', { token: A.T, body: { endpoint: subA.endpoint } })).status === 200
+      && !rowsOf((await supabaseAdmin.from('push_inscricoes').select('id').eq('endpoint', subA.endpoint)).data).length)
+
+    const { data: fresh } = await sA.from('avisos').insert({ condominium_id: A.id, condominio_id: A.id, titulo: 'Aviso notificado', conteudo: 'Teste de envio', destinatario: 'todos', created_by: A.syndicId }).select('id').single()
+    check(GN, 'sem login nao dispara notificacao', (await call('admin/notify/send', { body: { avisos: [fresh?.id] } })).status === 401)
+    check(GN, 'morador NAO dispara notificacao', (await call('admin/notify/send', { token: A.O, body: { avisos: [fresh?.id] } })).status === 403)
+    const foreignNotify = await call('admin/notify/send', { token: B.S, body: { avisos: [fresh?.id] } })
+    check(GN, 'sindico B NAO dispara notificacao de aviso do A', foreignNotify.status === 200 && foreignNotify.data?.avisos === 0, JSON.stringify(foreignNotify.data))
+    const firstNotify = await call('admin/notify/send', { token: A.S, body: { avisos: [fresh?.id] } })
+    check(GN, 'sindico dispara a notificacao do proprio aviso para os moradores dele', firstNotify.status === 200 && firstNotify.data?.avisos === 1 && firstNotify.data?.pessoas >= 2, JSON.stringify(firstNotify.data))
+    check(GN, 'pedir de novo nao reenvia (uma vez por aviso)', (await call('admin/notify/send', { token: A.S, body: { avisos: [fresh?.id] } })).data?.avisos === 0)
+    check(GN, 'lista de avisos invalida e recusada', (await call('admin/notify/send', { token: A.S, body: { avisos: ['nao-e-uuid'] } })).status === 400)
+    const { data: oldNotice } = await supabaseAdmin.from('avisos').insert({ condominium_id: A.id, condominio_id: A.id, titulo: 'Aviso antigo', conteudo: 'x', destinatario: 'todos', created_by: A.syndicId, created_at: new Date(Date.now() - 2 * 86400000).toISOString() }).select('id').single()
+    check(GN, 'aviso com mais de 24 h nao dispara notificacao', (await call('admin/notify/send', { token: A.S, body: { avisos: [oldNotice?.id] } })).data?.avisos === 0)
+
+    const supTicketId = crypto.randomUUID()
+    const supAttach = `${A.id}/${supTicketId}/print.pdf`
+    const supUpload = await sA.storage.from('suporte').upload(supAttach, new Blob(['%PDF-1.4 suporte'], { type: 'application/pdf' }), { contentType: 'application/pdf' })
+    if (!supUpload.error) created.files.suporte.push(supAttach)
+    await sA.from('suporte_chamados').insert({ id: supTicketId, condominium_id: A.id, created_by: A.syndicId, assunto: 'Chamado v1.09A3', mensagem: 'Teste da equipe de suporte.', anexos: [{ path: supAttach, nome: 'print.pdf', tipo: 'application/pdf', tamanho: 16 }] })
+    check(GN, 'sindico B NAO dispara aviso de chamado do A', (await call('admin/notify/send', { token: B.S, body: { chamado: supTicketId } })).data?.pessoas === 0)
+    const ticketNotify = await call('admin/notify/send', { token: A.S, body: { chamado: supTicketId } })
+    check(GN, 'chamado novo avisa a equipe da plataforma (uma vez)', ticketNotify.status === 200 && ticketNotify.data?.pessoas >= 1 && (await call('admin/notify/send', { token: A.S, body: { chamado: supTicketId } })).data?.pessoas === 0, JSON.stringify(ticketNotify.data))
+
+    // Equipe de suporte: acesso limitado
+    const GE = 'Equipe de suporte (SQL 09-26)'
+    const supCpf = cpf()
+    const SUP_PASS = 'Suporte@12345'
+    check(GE, 'sindico NAO cria conta de suporte', (await call('platform/team', { token: A.S, body: { acao: 'criar', nome: 'Invasor Teste', cpf: supCpf, senha: SUP_PASS } })).status === 403)
+    check(GE, 'senha curta e recusada', (await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Suporte Curto', cpf: cpf(), senha: '123' } })).status === 400)
+    const createdSup = await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Suporte E2E Teste', cpf: supCpf, senha: SUP_PASS } })
+    const supId = createdSup.data?.id
+    if (supId) created.authUsers.push(supId)
+    check(GE, 'admin da plataforma cria conta de suporte', createdSup.status === 200 && Boolean(supId), JSON.stringify(createdSup.data))
+    check(GE, 'CPF que ja tem acesso e recusado', (await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Outro Suporte', cpf: A.owner.cpf, senha: SUP_PASS } })).status === 409)
+    const team = await call('platform/team', { token: P, method: 'GET' })
+    check(GE, 'lista da equipe mostra o CPF mascarado', team.status === 200 && (team.data?.membros || []).some((member) => member.id === supId && member.cpf.includes('***') && !member.cpf.includes(supCpf)))
+
+    const semCondo = await supabaseAdmin.from('profiles').select('condominium_id, condominio_id').eq('id', supId).maybeSingle()
+    check(GE, 'conta de suporte nao fica presa a nenhum condominio', !semCondo.data?.condominium_id && !semCondo.data?.condominio_id, JSON.stringify(semCondo.data))
+
+    const SU = (await call('auth/login-cpf', { ip: true, body: { cpf: supCpf, password: SUP_PASS } })).data?.session?.access_token
+    check(GE, 'suporte entra com CPF e senha', Boolean(SU))
+    const supTickets = await call('platform/support/tickets?filtro=todos', { token: SU, method: 'GET' })
+    const supTicket = (supTickets.data?.tickets || []).find((ticket) => ticket.id === supTicketId)
+    check(GE, 'suporte ve os chamados com condominio e contato do sindico', supTickets.status === 200 && supTicket?.condominio?.nome === 'E2E Seguranca A')
+    check(GE, 'chamado NAO traz CPF, cobrancas ou moradores', !/"(cpf|morador_id|valor|pix_[a-z_]+|apartamento)"\s*:/.test(JSON.stringify(supTickets.data || {})))
+    check(GE, 'suporte move o chamado entre as colunas', (await call('platform/support/tickets', { token: SU, body: { id: supTicketId, status: 'em_andamento' } })).status === 200)
+    const { data: seenBySyndic } = await sA.from('suporte_chamados').select('status').eq('id', supTicketId).single()
+    check(GE, 'o sindico ve a nova situacao do chamado', seenBySyndic?.status === 'em_andamento')
+    check(GE, 'situacao invalida e recusada', (await call('platform/support/tickets', { token: SU, body: { id: supTicketId, status: 'arquivado' } })).status === 400)
+    const attachOk = await call('platform/support/attachment', { token: SU, body: { id: supTicketId, path: supAttach } })
+    check(GE, 'suporte abre o anexo do chamado (link temporario)', attachOk.status === 200 && /^https:\/\//.test(attachOk.data?.url || ''))
+    check(GE, 'suporte NAO assina arquivo fora do chamado', (await call('platform/support/attachment', { token: SU, body: { id: supTicketId, path: A.boletoPath } })).status === 404)
+    check(GE, 'suporte NAO assina arquivo de outro condominio', (await call('platform/support/attachment', { token: SU, body: { id: supTicketId, path: `${B.id}/${supTicketId}/print.pdf` } })).status === 404)
+    check(GE, 'sindico e morador NAO usam as rotas de chamados da plataforma', (await call('platform/support/tickets', { token: A.S, method: 'GET' })).status === 403 && (await call('platform/support/tickets', { token: A.O, method: 'GET' })).status === 403)
+
+    const forbidden = [
+      ['platform/condominiums/list', null, 'GET'],
+      [`platform/condominiums/export?id=${B.id}`, null, 'GET'],
+      ['platform/condominiums/update', { condominiumId: B.id, action: 'status', status: 'blocked' }],
+      ['platform/condominiums/delete', { condominiumId: B.id, password: SUP_PASS }],
+      ['platform/condominiums/update-syndic-password', { condominiumId: B.id, password: 'Qualquer@123' }],
+      ['platform/condominiums/import', { condominiumId: B.id, rows: [] }],
+      ['platform/team', null, 'GET'],
+      ['platform/team', { acao: 'criar', nome: 'Suporte Dois', cpf: cpf(), senha: SUP_PASS }],
+      ['admin/units/save', { numero: '999', situacao: 'desocupada' }],
+      ['admin/residents/create', { role: 'morador', nome: 'Invasor', cpf: cpf(), password: PASS_RESIDENT, apartamento: '101' }],
+      ['admin/notify/send', { avisos: [fresh?.id] }],
+      ['platform/condominiums/logo', { condominiumId: B.id, remover: true }],
+    ]
+    const forbiddenResults = await Promise.all(forbidden.map(([route, body, method = 'POST']) => call(route, { token: SU, body, method })))
+    const allowed = forbidden.filter((_, index) => forbiddenResults[index].status < 400).map(([route]) => route)
+    check(GE, 'suporte NAO lista, edita, bloqueia, exporta nem exclui condominios, nem mexe em unidades, moradores e equipe', !allowed.length, allowed.join(', '))
+    const stillActiveB = await supabaseAdmin.from('condominiums').select('status').eq('id', B.id).single()
+    check(GE, 'nada mudou no condominio B', stillActiveB.data?.status === 'active')
+
+    const su = client(SU)
+    const direct = await Promise.all(['cobrancas', 'condominiums', 'avisos', 'unidades', 'unidade_vinculos', 'documentos', 'ocorrencias_predio', 'suporte_chamados', 'solicitacoes_cadastro'].map((table) => su.from(table).select('*').limit(5)))
+    check(GE, 'suporte NAO le nenhuma tabela dos condominios direto no banco', direct.every((item) => !rowsOf(item.data).length))
+    const ownProfiles = rowsOf((await su.from('profiles').select('id')).data)
+    check(GE, 'suporte so enxerga o proprio perfil', ownProfiles.length === 1 && ownProfiles[0].id === supId)
+    check(GE, 'suporte NAO baixa arquivos direto do storage', Boolean((await su.storage.from('suporte').download(supAttach)).error) && Boolean((await su.storage.from('cobrancas').download(A.boletoPath)).error))
+    await su.from('profiles').update({ role: 'platform_admin', condominium_id: A.id }).eq('id', supId)
+    const supRow = await supabaseAdmin.from('profiles').select('role, condominium_id').eq('id', supId).single()
+    check(GE, 'suporte NAO muda o proprio papel nem se liga a um condominio', supRow.data?.role === 'suporte' && !supRow.data?.condominium_id)
+    const supStatus = await call('platform/status', { token: SU, method: 'GET' })
+    check(GE, 'suporte ve o status da plataforma, sem os indicadores de negocio', supStatus.status === 200 && supStatus.data?.metrics === null && supStatus.data?.components?.some((item) => item.key === 'notifications'))
+
+    res = await sA.from('profiles').update({ role: 'suporte' }).eq('id', A.ownerId).select('id')
+    const ownerRole = await supabaseAdmin.from('profiles').select('role').eq('id', A.ownerId).single()
+    check(GE, 'sindico NAO transforma morador em suporte', ownerRole.data?.role !== 'suporte')
+    check(GE, 'rota da equipe NAO mexe em quem nao e suporte (ex.: senha do sindico)', (await call('platform/team', { token: P, body: { acao: 'senha', id: A.syndicId, senha: 'Invasao@12345' } })).status === 404)
+
+    // ---------------- Conversa do chamado e logo do condominio (SQL 09-27) ----------------
+    const sql0927 = await supabaseAdmin.from('suporte_mensagens').select('id').limit(1)
+    if (sql0927.error) {
+      skip('SQL 09-27', 'conversa do suporte e logo do condominio', 'aplique sql/2026-09-27_suporte_chat_logo_condominio.sql no Supabase e rode de novo')
+    } else {
+      const GC = 'Conversa do suporte (SQL 09-27)'
+      const mensagensDoChamado = async (db) => rowsOf((await db.from('suporte_mensagens').select('id, autor_tipo, mensagem').eq('chamado_id', supTicketId)).data)
+
+      check(GC, 'abrir chamado ja cria a primeira mensagem da conversa', (await mensagensDoChamado(sA)).length === 1)
+      check(GC, 'sindico B NAO le a conversa do A', !(await mensagensDoChamado(client(B.S))).length)
+      check(GC, 'morador NAO le a conversa do suporte', !(await mensagensDoChamado(oA)).length)
+      check(GC, 'sem login ninguem le a conversa', !(await mensagensDoChamado(client(null))).length)
+
+      res = await client(B.S).from('suporte_mensagens').insert({ chamado_id: supTicketId, autor_id: B.syndicId, autor_tipo: 'sindico', mensagem: 'Invasao do B' }).select('id')
+      check(GC, 'sindico B NAO escreve na conversa do A', Boolean(res.error) || !rowsOf(res.data).length)
+      res = await sA.from('suporte_mensagens').insert({ chamado_id: supTicketId, autor_id: A.syndicId, autor_tipo: 'suporte', mensagem: 'Resposta forjada' }).select('id')
+      check(GC, 'sindico NAO escreve se passando pelo suporte', Boolean(res.error) || !rowsOf(res.data).length)
+      res = await oA.from('suporte_mensagens').insert({ chamado_id: supTicketId, autor_id: A.ownerId, autor_tipo: 'sindico', mensagem: 'Morador tentando' }).select('id')
+      check(GC, 'morador NAO escreve na conversa', Boolean(res.error) || !rowsOf(res.data).length)
+
+      const respondeu = await call('platform/support/messages', { token: SU, body: { id: supTicketId, mensagem: 'Ja estamos olhando o seu caso.' } })
+      const depoisDaResposta = await supabaseAdmin.from('suporte_chamados').select('status, resposta').eq('id', supTicketId).single()
+      check(GC, 'suporte responde pela API e o chamado entra em andamento', respondeu.status === 200 && depoisDaResposta.data?.status === 'em_andamento', `status ${respondeu.status}`)
+      check(GC, 'sindico ve a resposta na conversa', (await mensagensDoChamado(sA)).some((item) => item.autor_tipo === 'suporte'))
+      check(GC, 'suporte NAO le a tabela da conversa direto no banco', !rowsOf((await client(SU).from('suporte_mensagens').select('*').limit(5)).data).length)
+      check(GC, 'sindico e morador NAO usam a rota da conversa', (await call('platform/support/messages', { token: A.S, body: { id: supTicketId, mensagem: 'x' } })).status === 403
+        && (await call(`platform/support/messages?id=${supTicketId}`, { token: A.O, method: 'GET' })).status === 403)
+
+      res = await sA.from('suporte_chamados').update({ status: 'resolvido' }).eq('id', supTicketId).select('id')
+      check(GC, 'sindico NAO fecha o proprio chamado', !rowsOf(res.data).length)
+
+      await call('platform/support/tickets', { token: SU, body: { id: supTicketId, status: 'resolvido' } })
+      res = await sA.from('suporte_mensagens').insert({ chamado_id: supTicketId, autor_id: A.syndicId, autor_tipo: 'sindico', autor_nome: 'Sindico A', mensagem: 'O problema voltou.' }).select('id')
+      const reaberto = await supabaseAdmin.from('suporte_chamados').select('status, ultima_mensagem_em').eq('id', supTicketId).single()
+      check(GC, 'mensagem nova do sindico reabre o chamado concluido', rowsOf(res.data).length === 1 && reaberto.data?.status === 'aberto' && Boolean(reaberto.data?.ultima_mensagem_em))
+
+      // Logo do condominio
+      const GL = 'Logo do condominio (SQL 09-27)'
+      // PNG 1x1 valido, so para o teste.
+      const pngMinimo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+      check(GL, 'sindico NAO cadastra logo', (await call('platform/condominiums/logo', { token: A.S, body: { condominiumId: A.id, arquivo: pngMinimo } })).status === 403)
+      check(GL, 'morador NAO cadastra logo', (await call('platform/condominiums/logo', { token: A.O, body: { condominiumId: A.id, arquivo: pngMinimo } })).status === 403)
+      check(GL, 'sem login nao cadastra logo', (await call('platform/condominiums/logo', { body: { condominiumId: A.id, arquivo: pngMinimo } })).status === 401)
+      check(GL, 'arquivo que nao e imagem e recusado', (await call('platform/condominiums/logo', { token: P, body: { condominiumId: A.id, arquivo: 'data:application/pdf;base64,JVBERi0=' } })).status === 400)
+      check(GL, 'imagem acima de 2 MB e recusada', (await call('platform/condominiums/logo', { token: P, body: { condominiumId: A.id, arquivo: `data:image/png;base64,${'A'.repeat(3_000_000)}` } })).status === 400)
+
+      const enviouLogo = await call('platform/condominiums/logo', { token: P, body: { condominiumId: A.id, arquivo: pngMinimo } })
+      const comLogo = await supabaseAdmin.from('condominiums').select('metadata').eq('id', A.id).single()
+      const logoPath = comLogo.data?.metadata?.logo_path || ''
+      check(GL, 'admin da plataforma cadastra a logo do condominio', enviouLogo.status === 200 && logoPath.startsWith(`${A.id}/`), JSON.stringify(enviouLogo.data))
+      check(GL, 'sindico NAO grava arquivo no bucket das logos', Boolean((await sA.storage.from('condominios').upload(`${A.id}/hack.png`, new Blob(['x'], { type: 'image/png' }), { contentType: 'image/png' })).error))
+      await oA.storage.from('condominios').remove([logoPath])
+      check(GL, 'morador NAO apaga a logo do condominio', rowsOf((await supabaseAdmin.storage.from('condominios').list(A.id)).data).length === 1)
+      check(GL, 'a lista da plataforma devolve o endereco da logo', Boolean(((await call('platform/condominiums/list', { token: P, method: 'GET' })).data?.condominiums || []).find((row) => row.id === A.id)?.logo_url))
+      const removeuLogo = await call('platform/condominiums/logo', { token: P, body: { condominiumId: A.id, remover: true } })
+      const semLogo = await supabaseAdmin.from('condominiums').select('metadata').eq('id', A.id).single()
+      check(GL, 'admin remove a logo e o arquivo sai do storage', removeuLogo.status === 200 && !semLogo.data?.metadata?.logo_path
+        && !rowsOf((await supabaseAdmin.storage.from('condominios').list(A.id)).data).length)
+
+      // Logo no condominio C: a exclusao do condominio tambem precisa apagar a imagem.
+      await call('platform/condominiums/logo', { token: P, body: { condominiumId: C.id, arquivo: pngMinimo } })
+    }
+
+    await call('platform/team', { token: P, body: { acao: 'bloquear', id: supId } })
+    check(GE, 'suporte bloqueado perde o acesso na hora (token antigo)', [401, 403].includes((await call('platform/support/tickets', { token: SU, method: 'GET' })).status))
+    check(GE, 'suporte bloqueado nao entra', (await call('auth/login-cpf', { ip: true, body: { cpf: supCpf, password: SUP_PASS } })).status >= 400)
+    await call('platform/team', { token: P, body: { acao: 'liberar', id: supId } })
+    check(GE, 'suporte liberado volta a entrar', Boolean((await call('auth/login-cpf', { ip: true, body: { cpf: supCpf, password: SUP_PASS } })).data?.session?.access_token))
+    const removedSup = await call('platform/team', { token: P, body: { acao: 'excluir', id: supId } })
+    const supAuth = await supabaseAdmin.auth.admin.getUserById(supId)
+    const keptTicket = await supabaseAdmin.from('suporte_chamados').select('id, status').eq('id', supTicketId).maybeSingle()
+    const keptMessages = await supabaseAdmin.from('suporte_mensagens').select('id').eq('chamado_id', supTicketId)
+    check(GE, 'admin remove a conta de suporte e o chamado (com a conversa) continua no lugar',
+      removedSup.status === 200 && !supAuth.data?.user && Boolean(keptTicket.data) && (Boolean(keptMessages.error) || rowsOf(keptMessages.data).length > 0))
+  }
+
   // ---------------- Pessoa removida da unidade perde o acesso na hora ----------------
   const removed = await call('admin/units/delete', { token: C.S, body: { unitId: C.unitId } })
   const removedClient = client(C.T)
@@ -641,8 +903,9 @@ try {
     supabaseAdmin.from('cobrancas').select('id').or(`condominium_id.eq.${C.id},condominio_id.eq.${C.id}`),
     supabaseAdmin.storage.from('cobrancas').list(`${C.id}/boletos`),
   ])
+  const goneLogos = await supabaseAdmin.storage.from('condominios').list(C.id)
   check(GD, 'nada do condominio excluido fica no banco (condominio, pessoas, unidades, cobrancas)', !goneCondo.data && !rowsOf(goneProfiles.data).length && !rowsOf(goneUnits.data).length && !rowsOf(goneCharges.data).length)
-  check(GD, 'os arquivos do condominio excluido saem do storage', !rowsOf(goneFiles.data).length, `${rowsOf(goneFiles.data).length} arquivos`)
+  check(GD, 'os arquivos do condominio excluido saem do storage', !rowsOf(goneFiles.data).length && !rowsOf(goneLogos.data).length, `${rowsOf(goneFiles.data).length} arquivos, ${rowsOf(goneLogos.data).length} logo(s)`)
   const authLeft = await Promise.all((peopleC || []).map((person) => supabaseAdmin.auth.admin.getUserById(person.id)))
   check(GD, 'as contas de acesso do condominio excluido foram apagadas', authLeft.every((item) => !item.data?.user), `${authLeft.filter((item) => item.data?.user).length} restantes`)
   check(GD, 'o login do sindico do condominio excluido para de funcionar', (await call('auth/login-cnpj', { ip: true, body: { cnpj: C.doc, password: PASS } })).status === 401)
@@ -652,6 +915,10 @@ try {
   check('execucao', 'sem excecao', false, error.stack)
 } finally {
   for (const [bucket, paths] of Object.entries(created.files)) if (paths.length) await supabaseAdmin.storage.from(bucket).remove(paths)
+  for (const id of created.condos.filter(Boolean)) {
+    const { data: logos } = await supabaseAdmin.storage.from('condominios').list(id)
+    if (logos?.length) await supabaseAdmin.storage.from('condominios').remove(logos.map((item) => `${id}/${item.name}`))
+  }
   for (const id of created.authUsers) { await supabaseAdmin.from('profiles').delete().eq('id', id); await supabaseAdmin.auth.admin.deleteUser(id) }
   for (const id of created.condos.filter(Boolean)) {
     const { data: people } = await supabaseAdmin.from('profiles').select('id').or(`condominium_id.eq.${id},condominio_id.eq.${id}`)

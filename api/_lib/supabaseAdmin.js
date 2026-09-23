@@ -32,6 +32,8 @@ const ROLE_ALIASES = {
   resident: 'morador',
   contador: 'contador',
   platform_admin: 'platform_admin',
+  suporte: 'suporte',
+  support: 'suporte',
 }
 
 function createBackendClient(apiKey, accessToken) {
@@ -329,6 +331,25 @@ export async function requirePlatformAdmin(req) {
 
   if (!isPlatformAdminRole(auth.profile?.role)) {
     return { error: json({ error: 'Acesso restrito ao administrador da plataforma.' }, 403) }
+  }
+
+  return auth
+}
+
+// Equipe da plataforma: o admin e o suporte. O suporte nunca tem condominio: se um perfil
+// "suporte" aparecer ligado a um condominio, e tratado como invalido.
+export function isPlatformStaffProfile(profile) {
+  const role = normalizeRole(profile?.role)
+  if (role === 'platform_admin') return true
+  return role === 'suporte' && !getProfileCondominiumId(profile)
+}
+
+export async function requirePlatformStaff(req) {
+  const auth = await requireAuthenticatedProfile(req)
+  if (auth.error) return auth
+
+  if (!isPlatformStaffProfile(auth.profile)) {
+    return { error: json({ error: 'Acesso restrito a equipe da plataforma.' }, 403) }
   }
 
   return auth

@@ -11,7 +11,8 @@ import { buildChargeStorageFileName, enrichChargesWithPaymentUrls } from '../../
 import { applyTenantFilter, withTenantFields } from '../../lib/tenant'
 import { getChargePaymentStatus, getChargePaymentStatusMeta, isChargePaid } from '../../lib/chargeStatus'
 import { buildPaymentConfirmationTitle, buildResidentRequestSummary, isResidentPaymentConfirmation, isResidentRequestPending, parseResidentRequest } from '../../lib/residentRequests'
-import { renderBillingPdf } from '../../lib/adminApi'
+import { notifyAvisos, renderBillingPdf } from '../../lib/adminApi'
+import { describeNotifyResult } from '../../lib/notifications'
 import { compareUnitNumbers } from '../../lib/units'
 
 const FILTER_TYPES = [
@@ -456,7 +457,10 @@ export default function Cobrancas() {
         if (error) throw error
       }
 
-      const { error: avisoError } = await supabase.from('avisos').insert(buildNotificationRows(selected, profile.id, referenceLabel, condominiumId, { resend: isRelaunch }))
+      const { data: createdNotices, error: avisoError } = await supabase
+        .from('avisos')
+        .insert(buildNotificationRows(selected, profile.id, referenceLabel, condominiumId, { resend: isRelaunch }))
+        .select('id')
       if (avisoError) toast('Cobranca salva, mas houve falha ao criar o aviso automatico.', 'info')
 
       toast(
@@ -468,6 +472,13 @@ export default function Cobrancas() {
       setOpenReference(form.mes_referencia)
       resetForm()
       void fetchAll()
+
+      // Celular, e-mail e WhatsApp de quem recebeu a cobranca (a cobranca ja esta salva).
+      if (createdNotices?.length) {
+        void notifyAvisos(createdNotices.map((row) => row.id))
+          .then((result) => { const summary = describeNotifyResult(result); if (summary) toast(summary, 'info') })
+          .catch(() => toast('Cobranca lancada, mas o envio das notificacoes falhou. O morador ve a cobranca ao abrir o app.', 'info'))
+      }
     } catch (error) {
       if (uploadedPaths.length > 0) await supabase.storage.from('cobrancas').remove(uploadedPaths)
       toast(error.message || 'Erro ao lancar cobranca.', 'error')

@@ -22,13 +22,12 @@ import { formatCpfCnpj, getCpfCnpjType, normalizeCpfCnpj } from '../lib/document
 import { registerCondominium } from '../lib/platformApi'
 import AddressFields from '../components/shared/AddressFields'
 import SiteFooter from '../components/shared/SiteFooter'
-import PlanosVitrine from '../components/shared/PlanosVitrine'
+import { MSG_PLANOS, whatsappUrl } from '../lib/contato'
+import { TRIAL_PERIOD_DAYS } from '../lib/condominiumPlan'
 import { composeAddress, emptyAddress, sanitizeAddress } from '../lib/address'
 
 const emptyCondominiumForm = {
   name: '',
-  // Intencao de plano: nada e cobrado no cadastro, todo condominio comeca no periodo de teste.
-  plan: '',
   cnpj: '',
   addressDetails: emptyAddress,
   whatsapp: '',
@@ -114,7 +113,6 @@ export default function Landing() {
       subSyndicName: condominiumForm.subSyndicName,
       subSyndicWhatsapp: condominiumForm.subSyndicWhatsapp,
       password: condominiumForm.password,
-      plan: condominiumForm.plan,
     }
     const address = payload.addressDetails
 
@@ -498,10 +496,24 @@ export default function Landing() {
                   />
                 </div>
 
-                <PlanosVitrine
-                  value={condominiumForm.plan}
-                  onChange={(plan) => setCondominiumForm((current) => ({ ...current, plan }))}
-                />
+                {/* Sem vitrine de planos no cadastro: o sindico nao precisa decidir nada agora.
+                    A escolha fica dentro do sistema, em Meu perfil > Meu plano. */}
+                <div className="planos-vitrine">
+                  <div className="planos-vitrine-title">Planos</div>
+                  <p className="planos-vitrine-sub">
+                    Assim que a plataforma autorizar seu cadastro, voce ja tem {TRIAL_PERIOD_DAYS} dias gratis com
+                    os recursos do plano ONE. Nada e cobrado agora: depois, se quiser, escolhe o plano dentro do
+                    sistema em <strong>Meu perfil &gt; Meu plano</strong>.
+                  </p>
+                  <a
+                    className="planos-vitrine-link"
+                    href={whatsappUrl(MSG_PLANOS)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Duvidas sobre os planos? Fale com a TSCBr no WhatsApp
+                  </a>
+                </div>
               </div>
 
               <p style={S.note}>
@@ -576,22 +588,22 @@ const PALETTES = {
     text: '#F2F4F7',
     muted: '#9CA3AF',
     surface: '#111821',
-    accent: '#43A047',
-    brandBlue: '#0D47A1',
+    accent: '#3DAE4A',
+    brandBlue: '#2160C4',
     border: 'rgba(255,255,255,0.08)',
     borderStrong: 'rgba(255,255,255,0.12)',
     overlay: 'rgba(3, 7, 12, 0.72)',
     errorBg: 'rgba(127,29,29,0.38)',
     errorBorder: 'rgba(248,81,73,0.55)',
     errorText: '#FCA5A5',
-    glowTop: 'rgba(13,71,161,0.16)',
-    glowBlue: 'rgba(13,71,161,0.12)',
-    glowGreen: 'rgba(67,160,71,0.12)',
+    glowTop: 'rgba(33,96,196,0.16)',
+    glowBlue: 'rgba(33,96,196,0.12)',
+    glowGreen: 'rgba(61,174,74,0.12)',
     grid: 'rgba(255,255,255,0.03)',
     shadow: '0 28px 70px rgba(0,0,0,0.34)',
     shadowStrong: '0 24px 60px rgba(0,0,0,0.45)',
     logoShadow: 'drop-shadow(0 16px 30px rgba(0,0,0,0.35))',
-    accentShadow: '0 18px 34px rgba(67,160,71,0.22)',
+    accentShadow: '0 18px 34px rgba(61,174,74,0.22)',
   },
   light: {
     bg: '#f4f7fb',
@@ -599,7 +611,7 @@ const PALETTES = {
     muted: '#475569',
     surface: '#ffffff',
     accent: '#15803d',
-    brandBlue: '#1d4ed8',
+    brandBlue: '#1B52A8',
     border: 'rgba(15,23,42,0.10)',
     borderStrong: 'rgba(15,23,42,0.16)',
     overlay: 'rgba(15,23,42,0.45)',

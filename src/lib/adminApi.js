@@ -170,3 +170,16 @@ export function updateOwnProfile(payload) {
 export function changeOwnPassword(payload) {
   return callAdminApi('/api/admin/profile-password', payload)
 }
+
+// Notificacoes (celular, e-mail, WhatsApp) dos avisos recem-publicados. O aviso ja esta gravado:
+// se o envio falhar, o morador ainda ve tudo ao abrir o app.
+export function notifyAvisos(ids) {
+  const list = (ids || []).filter(Boolean)
+  if (!list.length) return Promise.resolve(null)
+  return callAdminApi('/api/admin/notify', { avisos: list }, { timeoutMs: 60000 })
+}
+
+// Avisa a equipe da plataforma (no aparelho) que um chamado de suporte foi aberto.
+export function notifySupportTicket(id) {
+  return callAdminApi('/api/admin/notify', { chamado: id }, { timeoutMs: 30000 })
+}

@@ -3,17 +3,13 @@ import { formatCurrency, formatDateLabel, formatReferenceLabel } from './billing
 const GREEN = '#1f6b16'
 const TEXT = '#123f43'
 
+// Simbolo da marca WebCond (mesmo tracado do kit em logos/): telhado azul e visto verde.
 const WEBCOND_LOGO_FALLBACK = `
-  <svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">
-    <defs>
-      <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#0D47A1" />
-        <stop offset="100%" stop-color="#43A047" />
-      </linearGradient>
-    </defs>
-    <circle cx="160" cy="160" r="154" fill="url(#bg)" />
-    <text x="160" y="145" text-anchor="middle" font-family="Arial, sans-serif" font-size="58" font-weight="800" fill="#ffffff">Web</text>
-    <text x="160" y="206" text-anchor="middle" font-family="Arial, sans-serif" font-size="58" font-weight="800" fill="#D9F99D">Cond</text>
+  <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64">
+    <g transform="translate(0 1.5)">
+      <path d="M9 32 L32 12 L55 32" fill="none" stroke="#2160C4" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M21 41 L29 49 L44 34" fill="none" stroke="#3DAE4A" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
   </svg>
 `
 

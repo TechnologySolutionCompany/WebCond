@@ -5,6 +5,7 @@ import { getProfileCondominiumId } from '../lib/tenant'
 import { getCondominiumAccessState } from '../lib/condominiumPlan'
 import { ACTIVITY_TICK_MS, isAwayTooLong, markActivity, readLastActivity } from '../lib/sessionActivity'
 import { HEARTBEAT_MS } from '../lib/presence'
+import { detachPushOnSignOut, syncPushOwner } from '../lib/pushNotifications'
 
 const AWAY_NOTICE = 'Sua sessao foi encerrada porque o WebCond ficou fechado por mais de 5 minutos. Entre novamente.'
 
@@ -90,7 +91,8 @@ export const AuthProvider = ({ children }) => {
     }
 
     const normalizedRole = normalizeRole(data.role)
-    if (normalizedRole === 'platform_admin') {
+    // Admin e equipe de suporte da plataforma nao pertencem a nenhum condominio.
+    if (normalizedRole === 'platform_admin' || normalizedRole === 'suporte') {
       return {
         ...data,
         condominium_status: null,
@@ -276,10 +278,20 @@ export const AuthProvider = ({ children }) => {
     }
   }, [isSyndic, profile?.id])
 
+  // Notificacoes: se este navegador ja recebe notificacoes, elas passam a ser de quem entrou agora
+  // (computador compartilhado nao mostra aviso de outra pessoa).
+  useEffect(() => {
+    if (!profile?.id) return
+    void syncPushOwner()
+  }, [profile?.id])
+
   const signIn = (email, password) => supabase.auth.signInWithPassword({ email, password })
 
   const signOut = useCallback(async () => {
     if (isSyndic) await sendPresence('saiu')
+    // Sair de proposito desliga as notificacoes deste aparelho. O logout automatico de 5 minutos
+    // nao desliga: o morador continua recebendo aviso e cobranca com o app fechado.
+    await detachPushOnSignOut()
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)

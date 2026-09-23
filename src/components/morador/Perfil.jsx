@@ -4,6 +4,7 @@ import SensitiveValue from '../shared/SensitiveValue'
 import { useToast } from '../shared/Toast'
 import { User, Home, Phone, CreditCard, Send, FilePenLine, X, KeyRound, Mail, Wallet } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import NotificationSettings from '../shared/NotificationSettings'
 import { withTenantFields } from '../../lib/tenant'
 import { buildProfileUpdateTitle } from '../../lib/residentRequests'
 import { compareUnitNumbers, describeResidentAccess, getUnitStatusMeta } from '../../lib/units'
@@ -148,6 +149,10 @@ export default function MoradorPerfil() {
               </div>
             )}
           </div>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <NotificationSettings withChannels />
         </div>
 
         <div className="card" style={{ marginBottom: 20 }}>

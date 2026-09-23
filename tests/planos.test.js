@@ -4,12 +4,15 @@ import test from 'node:test'
 import { PLANS, PUBLIC_PLAN_LIST, TRIAL_PERIOD_DAYS } from '../src/lib/condominiumPlan.js'
 
 test('precos e limites de documentos sao os combinados', () => {
-  assert.equal(PLANS.ONE.priceLabel, 'R$ 59,90')
-  assert.equal(PLANS.PRO.priceLabel, 'R$ 79,90')
-  assert.equal(PLANS.MAX.priceLabel, 'R$ 99,90')
+  assert.equal(PLANS.ONE.priceLabel, 'R$ 49,90')
+  assert.equal(PLANS.PRO.priceLabel, 'R$ 65,90')
+  assert.equal(PLANS.MAX.priceLabel, 'R$ 89,90')
   assert.equal(PLANS.ONE.documentLimit, 10)
   assert.equal(PLANS.PRO.documentLimit, 20)
   assert.equal(PLANS.MAX.documentLimit, 50)
+  assert.equal(PLANS.ONE.priceCents, 4990)
+  assert.equal(PLANS.PRO.priceCents, 6590)
+  assert.equal(PLANS.MAX.priceCents, 8990)
   assert.equal(TRIAL_PERIOD_DAYS, 30)
 })
 
@@ -33,6 +36,14 @@ test('todo plano da vitrine tem resumo e itens; o que nao existe ainda vem marca
   assert.equal(PLANS.MAX.available, false)
 
   // O que o ONE entrega hoje precisa estar sem marca de "em breve".
+  // Cada plano tem nivel e um texto completo para a tela "Melhorar meu plano".
+  for (const plan of PUBLIC_PLAN_LIST) {
+    assert.ok(plan.nivel, `plano ${plan.id} sem nivel`)
+    assert.ok(plan.description && plan.description.length > 40, `plano ${plan.id} sem descricao completa`)
+  }
+  assert.equal(PLANS.MAX.customLogo, true, 'MAX usa a logo do condominio no boleto')
+  assert.equal(PLANS.ONE.customLogo, false)
+
   const prontos = PLANS.ONE.features.filter((feature) => !feature.soon)
   assert.ok(prontos.length >= 3, 'o plano ONE precisa listar o que ja funciona hoje')
 })

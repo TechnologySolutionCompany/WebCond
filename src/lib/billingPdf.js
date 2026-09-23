@@ -5,6 +5,9 @@ import { formatCurrency, formatDateLabel, formatReferenceLabel } from './billing
 const PAGE_WIDTH = 595.28
 const PAGE_HEIGHT = 841.89
 const GREEN = rgb(0.12, 0.42, 0.09)
+// Marca WebCond: azul #2160C4 e verde #3DAE4A.
+const BRAND_BLUE = rgb(0.129, 0.376, 0.769)
+const BRAND_GREEN = rgb(0.239, 0.682, 0.290)
 const TEXT = rgb(0.07, 0.25, 0.26)
 const LINE = rgb(0.18, 0.38, 0.4)
 const WHITE = rgb(1, 1, 1)
@@ -84,15 +87,16 @@ function drawHeader(page, fonts, settings, logoImage) {
   })
 
   if (logoImage) {
+    // O simbolo e quadrado: desenha sem esticar, centralizado no circulo branco.
     page.drawImage(logoImage, {
       x: logoX + 11,
-      y: logoY + 6,
+      y: logoY + 11,
       width: 72,
-      height: 80,
+      height: 72,
     })
   } else {
-    drawCenteredText(page, fonts.bold, 'Web', logoX, logoY + 53, logoSize, 19, TEXT)
-    drawCenteredText(page, fonts.bold, 'Cond', logoX, logoY + 32, logoSize, 19, GREEN)
+    drawCenteredText(page, fonts.bold, 'Web', logoX, logoY + 53, logoSize, 19, BRAND_BLUE)
+    drawCenteredText(page, fonts.bold, 'Cond', logoX, logoY + 32, logoSize, 19, BRAND_GREEN)
   }
 
   const titleX = 362

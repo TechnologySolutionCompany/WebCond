@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { LayoutDashboard, Home, DollarSign, Bell, FileText, Calculator, Menu, UserCog } from 'lucide-react'
+import { LayoutDashboard, Home, DollarSign, Bell, FileText, Calculator, Menu, UserCog, LifeBuoy } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
+import { painelLogoUrl } from '../../lib/condominiumLogo'
 import { normalizeRole } from '../../lib/auth'
 import Sidebar from '../shared/Sidebar'
 import { useSidebarMenu } from '../../hooks/useSidebarMenu'
@@ -13,6 +14,8 @@ import Avisos from './Avisos'
 import Documentos from './Documentos'
 import Contador from './Contador'
 import Perfil from './Perfil'
+import Suporte from './Suporte'
+import Planos from './Planos'
 
 const PAGES = {
   dashboard: Dashboard,
@@ -22,11 +25,22 @@ const PAGES = {
   documentos: Documentos,
   contador: Contador,
   perfil: Perfil,
+  suporte: Suporte,
+  planos: Planos,
 }
 
-// Abrem mesmo com o plano vencido: painel (so leitura) e o proprio perfil (senha, suporte, plano).
-const ALWAYS_OPEN = new Set(['dashboard', 'perfil'])
-const ACCOUNT_SECTION = { label: 'Conta', items: [{ key: 'perfil', label: 'Meu perfil', icon: UserCog }] }
+// Abrem mesmo com o plano vencido: painel (so leitura), perfil, suporte e a tela de planos.
+const ALWAYS_OPEN = new Set(['dashboard', 'perfil', 'suporte', 'planos'])
+const ACCOUNT_SECTION = {
+  label: 'Conta',
+  items: [
+    { key: 'perfil', label: 'Meu perfil', icon: UserCog },
+    { key: 'suporte', label: 'Suporte', icon: LifeBuoy },
+  ],
+}
+// Aberta pelo botao "Melhorar meu plano", dentro do perfil: nao ocupa espaco no menu.
+const HIDDEN_PAGES = new Set(['planos'])
+const HIDDEN_PAGE_LABELS = { planos: 'Planos e valores' }
 
 export default function AdminLayout() {
   const { condominiumId, resolvedRole, profile } = useAuth()
@@ -108,14 +122,14 @@ export default function AdminLayout() {
     : baseNav), [baseNav, planLocked])
 
   useEffect(() => {
-    const allowedPages = new Set(nav.flatMap((section) => section.items).filter((item) => !item.locked).map((item) => item.key))
+    const allowedPages = new Set([...HIDDEN_PAGES, ...nav.flatMap((section) => section.items).filter((item) => !item.locked).map((item) => item.key)])
     if (!allowedPages.has(page)) {
       setPage('dashboard')
       setMountedPages(['dashboard'])
     }
   }, [nav, page])
 
-  const currentLabel = nav.flatMap((section) => section.items).find((item) => item.key === page)?.label || 'Painel'
+  const currentLabel = nav.flatMap((section) => section.items).find((item) => item.key === page)?.label || HIDDEN_PAGE_LABELS[page] || 'Painel'
 
   return (
     <div className={`app-layout ${layoutClassName}`}>
@@ -125,6 +139,7 @@ export default function AdminLayout() {
           <button className="btn btn-ghost btn-icon" onClick={toggleMenu} aria-label="Abrir ou recolher o menu" aria-expanded={mobileOpen || !layoutClassName}>
             <Menu size={18} />
           </button>
+          <img src={painelLogoUrl(condominiumSettings.logoPath)} alt="" aria-hidden="true" className="marca-mini" />
           <div>
             <div className="mobile-topbar-title">{condominiumSettings.name}</div>
             <div className="mobile-topbar-sub">{currentLabel}</div>
@@ -144,7 +159,7 @@ export default function AdminLayout() {
 
             return (
               <div key={pageKey} style={{ display: isActive ? 'block' : 'none' }}>
-                <PageComponent isActive={isActive} />
+                <PageComponent isActive={isActive} onNavigate={handleNavigate} />
               </div>
             )
           })}

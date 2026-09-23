@@ -2,6 +2,12 @@ import { json, requirePlatformAdmin, supabaseAdmin } from '../../_lib/supabaseAd
 import { getCondominiumAccessState } from '../../../src/lib/condominiumPlan.js'
 import { resolveAddressDetails } from '../../../src/lib/address.js'
 
+// A logo fica num bucket de leitura publica: o endereco e montado direto, sem assinar.
+function publicLogoUrl(path) {
+  const base = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || ''
+  return path && base ? `${base.replace(/\/+$/, '')}/storage/v1/object/public/condominios/${path}` : ''
+}
+
 function normalizeCondominium(base = {}, details = {}) {
   const accessState = getCondominiumAccessState(base)
 
@@ -18,6 +24,8 @@ function normalizeCondominium(base = {}, details = {}) {
     created_at: base.created_at || null,
     updated_at: base.updated_at || null,
     metadata: base.metadata && typeof base.metadata === 'object' ? base.metadata : {},
+    logo_path: base.metadata?.logo_path || '',
+    logo_url: publicLogoUrl(base.metadata?.logo_path),
     address_details: resolveAddressDetails(base),
     sub_syndic: base.metadata?.sub_syndic || { name: '', whatsapp: '' },
     platform_note: base.metadata?.platform_note || '',

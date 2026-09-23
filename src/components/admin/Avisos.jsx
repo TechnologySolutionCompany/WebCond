@@ -6,6 +6,8 @@ import { useAuth } from '../../hooks/useAuth'
 import { applyTenantFilter, withTenantFields } from '../../lib/tenant'
 import { Plus, Bell, X, Loader2, AlertTriangle, Info, Wrench, Megaphone, Trash2 } from 'lucide-react'
 import { compareUnitNumbers } from '../../lib/units'
+import { notifyAvisos } from '../../lib/adminApi'
+import { describeNotifyResult } from '../../lib/notifications'
 
 const TIPOS = [
   { value: 'informativo', label: 'Informativo', icon: Info, color: 'blue' },
@@ -30,7 +32,8 @@ export default function Avisos() {
     setLoading(true)
     const query = supabase.from('avisos').select('*').order('created_at', { ascending: false })
     const { data } = await applyTenantFilter(query, condominiumId)
-    setAvisos((data || []).filter((aviso) => isNoticeCurrent(aviso)))
+    // Avisos antigos "excluidos" so eram escondidos (ativo = false); a partir da v1.09A3 a exclusao apaga.
+    setAvisos((data || []).filter((aviso) => aviso.ativo !== false && isNoticeCurrent(aviso)))
     setLoading(false)
   }, [condominiumId])
 
@@ -52,7 +55,10 @@ export default function Avisos() {
     }
 
     setSaving(true)
-    const { error } = await supabase.from('avisos').insert(withTenantFields({ ...form, created_by: profile.id }, condominiumId))
+    const { data: created, error } = await supabase
+      .from('avisos')
+      .insert(withTenantFields({ ...form, created_by: profile.id }, condominiumId))
+      .select('id')
     setSaving(false)
 
     if (error) {
@@ -64,13 +70,27 @@ export default function Avisos() {
     setShowModal(false)
     setForm(emptyForm)
     void fetchAvisos()
+
+    // Celular, e-mail e WhatsApp dos moradores: o aviso ja esta publicado, o envio vem depois.
+    try {
+      const result = await notifyAvisos((created || []).map((row) => row.id))
+      const summary = describeNotifyResult(result)
+      if (summary) toast(summary, 'info')
+    } catch {
+      toast('Aviso publicado, mas o envio das notificacoes falhou. Os moradores veem o aviso ao abrir o app.', 'info')
+    }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Deseja excluir este aviso?')) return
-    await supabase.from('avisos').update({ ativo: false }).eq('id', id)
-    toast('Aviso removido.', 'info')
-    void fetchAvisos()
+  const handleDelete = async (aviso) => {
+    if (!confirm(`Excluir o aviso "${aviso.titulo}"? Ele some para todos os moradores e nao pode ser recuperado.`)) return
+    // O select confirma que a linha saiu: bloqueada pelo RLS (plano vencido), a exclusao volta vazia sem erro.
+    const { data: removed, error } = await supabase.from('avisos').delete().eq('id', aviso.id).select('id')
+    if (error || !removed?.length) {
+      toast('Nao foi possivel excluir o aviso.', 'error')
+      return
+    }
+    setAvisos((current) => current.filter((item) => item.id !== aviso.id))
+    toast('Aviso excluido.', 'success')
   }
 
   const getTipo = (tipo) => TIPOS.find((item) => item.value === tipo) || TIPOS[0]
@@ -114,7 +134,6 @@ export default function Avisos() {
                             {aviso.destinatario === 'apartamento' ? `Unidade ${aviso.apartamento_destino}` : 'Individual'}
                           </span>
                         )}
-                        {!aviso.ativo && <span className="badge badge-red">Inativo</span>}
                       </div>
                       <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>{aviso.conteudo}</p>
                       <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 8 }}>
@@ -123,7 +142,7 @@ export default function Avisos() {
                       </div>
                     </div>
                   </div>
-                  <button className="btn btn-ghost btn-sm btn-icon" onClick={() => handleDelete(aviso.id)} style={{ color: '#f85149', flexShrink: 0, marginLeft: 8 }}>
+                  <button className="btn btn-ghost btn-sm btn-icon" onClick={() => handleDelete(aviso)} style={{ color: '#f85149', flexShrink: 0, marginLeft: 8 }} title="Excluir aviso" aria-label="Excluir aviso">
                     <Trash2 size={14} />
                   </button>
                 </div>

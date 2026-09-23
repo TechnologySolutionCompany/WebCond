@@ -3,14 +3,13 @@ import { Mail } from 'lucide-react'
 import { DiscordIcon, GithubIcon, InstagramIcon, YoutubeIcon } from './SocialIcons'
 import WhatsAppIcon from './WhatsAppIcon'
 import { APP_VERSION } from '../../lib/appVersion'
+import { whatsappUrl } from '../../lib/contato'
 
 // Mesmo formato do rodape do site oficial (tscbr.com.br), com as cores do WebCond.
 // O numero nao aparece escrito: o contato e sempre pelo botao do WhatsApp, ja com a mensagem pronta.
-const WHATSAPP_NUMBER = '5581997243724'
-const WHATSAPP_MESSAGE = 'Ola, queria mais informacoes sobre o WebCond'
 
 export const COMPANY = {
-  whatsapp: `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(WHATSAPP_MESSAGE)}`,
+  whatsapp: whatsappUrl(),
   email: 'techsocompany@gmail.com',
   site: 'https://www.tscbr.com.br/',
   socials: [

@@ -7,3 +7,9 @@ SUPABASE_AUDIT.md
 node_modules
 dist
 .agents
+
+# Material que nao faz parte do site publicado
+logos
+sql
+docs
+tests

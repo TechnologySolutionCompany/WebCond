@@ -6,6 +6,8 @@ const ROLE_ALIASES = {
   resident: 'morador',
   contador: 'contador',
   platform_admin: 'platform_admin',
+  suporte: 'suporte',
+  support: 'suporte',
 }
 
 export function normalizeRole(role) {
@@ -22,6 +24,11 @@ export function isAdminRole(role) {
   return normalizedRole === 'admin' || normalizedRole === 'platform_admin' || normalizedRole === 'contador'
 }
 
+// Equipe de suporte: entra no painel da plataforma, mas so ve chamados e o status.
+export function isSupportRole(role) {
+  return normalizeRole(role) === 'suporte'
+}
+
 export function isResidentRole(role) {
   return normalizeRole(role) === 'morador'
 }
@@ -29,7 +36,7 @@ export function isResidentRole(role) {
 export function getHomePathForRole(role) {
   const normalizedRole = normalizeRole(role)
 
-  if (normalizedRole === 'platform_admin') return '/platform'
+  if (normalizedRole === 'platform_admin' || normalizedRole === 'suporte') return '/platform'
   if (normalizedRole === 'admin' || normalizedRole === 'contador') return '/admin'
   return '/morador'
 }
@@ -50,6 +57,7 @@ export function getUserRoleLabel(role, apartment) {
   const normalizedRole = normalizeRole(role)
 
   if (normalizedRole === 'platform_admin') return 'Administrador da plataforma'
+  if (normalizedRole === 'suporte') return 'Suporte da plataforma'
   if (normalizedRole === 'admin') return 'Sindico'
   if (normalizedRole === 'contador') return 'Contador'
 

@@ -1,7 +1,7 @@
 import { isPlatformAdminRole, json, parseJsonBody, rejectForeignOrigin, requirePlatformAdmin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
 import { verifyOwnPassword } from '../../_lib/passwordCheck.js'
 
-const BUCKETS = ['cobrancas', 'documentos', 'suporte']
+const BUCKETS = ['cobrancas', 'documentos', 'suporte', 'condominios']
 // Ordem importa: quem aponta para outra tabela sai antes dela.
 const TABLES = ['cobrancas', 'avisos', 'documentos', 'ocorrencias_predio', 'solicitacoes_cadastro', 'suporte_chamados', 'unidade_importacoes', 'condominio_convites']
 

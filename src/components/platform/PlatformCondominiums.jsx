@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Building2, CheckCircle2, Download, FileSpreadsheet, KeyRound, Loader2, Search, Trash2, Upload, XCircle } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Building2, CheckCircle2, Download, FileSpreadsheet, ImagePlus, KeyRound, Loader2, Search, Settings, Trash2, Upload, UserRound, XCircle } from 'lucide-react'
 import { useToast } from '../shared/Toast'
 import AddressFields from '../shared/AddressFields'
 import {
   deletePlatformCondominium,
+  saveCondominiumLogo,
   exportPlatformCondominium,
   importPlatformResidents,
   updatePlatformCondominium,
   updatePlatformSyndicPassword,
 } from '../../lib/platformApi'
 import { formatCpfCnpj, normalizeCpfCnpj } from '../../lib/document'
-import { PLAN_LIST, PLAN_PERIOD_DAYS, PLAN_WARNING_DAYS, TRIAL_PERIOD_DAYS } from '../../lib/condominiumPlan'
+import { PLAN_LIST, PLAN_PERIOD_DAYS, PLAN_WARNING_DAYS, planAllowsCustomLogo, TRIAL_PERIOD_DAYS } from '../../lib/condominiumPlan'
 import { emptyAddress } from '../../lib/address'
 import { getPresence, PRESENCE_LEGEND } from '../../lib/presence'
 
@@ -20,6 +21,9 @@ const STATUS_LABELS = {
   blocked: { label: 'Bloqueado', badge: 'badge-red' },
   rejected: { label: 'Rejeitado', badge: 'badge-red' },
 }
+
+const LOGO_MAX_BYTES = 2 * 1024 * 1024
+const LOGO_TIPOS = ['image/png', 'image/jpeg', 'image/webp']
 
 const TABS = [
   { key: 'config', label: 'Configuracoes do condominio' },
@@ -81,6 +85,81 @@ function buildForm(item) {
   }
 }
 
+// Perfil do condominio: o que o atendimento precisa ver antes de mexer em qualquer coisa.
+function CondoPerfil({ item, now, onLogo, busy }) {
+  const inputRef = useRef(null)
+  const inicial = String(item.name || '?').trim().charAt(0).toUpperCase()
+  const podeLogoNoBoleto = planAllowsCustomLogo(item.subscription_status === 'active' ? item.plan_name : '')
+
+  return (
+    <div className="condo-perfil">
+      <div className="condo-perfil-head">
+        <div className="condo-logo">
+          {item.logo_url
+            ? <img src={item.logo_url} alt={`Logo do condominio ${item.name}`} />
+            : <span aria-hidden="true">{inicial}</span>}
+        </div>
+        <div className="condo-perfil-id">
+          <strong>{item.name}</strong>
+          <span>{item.cnpj ? formatCpfCnpj(item.cnpj) : 'Sem documento cadastrado'}</span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+            <span className={`badge ${STATUS_LABELS[item.status]?.badge}`}>{STATUS_LABELS[item.status]?.label}</span>
+            <PlanSummary item={item} />
+          </div>
+        </div>
+        <div className="condo-logo-actions">
+          <input
+            ref={inputRef}
+            type="file"
+            accept={LOGO_TIPOS.join(',')}
+            hidden
+            onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) onLogo(file) }}
+          />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => inputRef.current?.click()} disabled={Boolean(busy)}>
+            <ImagePlus size={13} /> {item.logo_url ? 'Trocar logo' : 'Adicionar logo'}
+          </button>
+          {item.logo_url && (
+            <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => onLogo(null)} disabled={Boolean(busy)}>
+              Remover
+            </button>
+          )}
+          <span className="support-hint">PNG, JPG ou WEBP, ate 2 MB. So a plataforma cadastra.</span>
+          {item.logo_url && !podeLogoNoBoleto && (
+            <span className="support-hint">No boleto, a logo vale para os planos MAX e Parceria.</span>
+          )}
+        </div>
+      </div>
+
+      <div className="condo-perfil-grid">
+        <div className="me-rows">
+          <div className="condo-section-title" style={{ margin: 0 }}>Responsaveis</div>
+          <div className="me-row"><span>Sindico</span><strong>{item.syndic?.nome || '-'}</strong></div>
+          <div className="me-row"><span>Presenca</span><strong><PresenceDot syndic={item.syndic} now={now} /></strong></div>
+          <div className="me-row"><span>E-mail</span><strong>{item.syndic?.email || '-'}</strong></div>
+          <div className="me-row"><span>WhatsApp</span><strong>{item.whatsapp || item.syndic?.whatsapp || '-'}</strong></div>
+          <div className="me-row"><span>Subsindico</span><strong>{item.sub_syndic?.name || '-'}</strong></div>
+        </div>
+
+        <div className="me-rows">
+          <div className="condo-section-title" style={{ margin: 0 }}>Condominio</div>
+          <div className="me-row"><span>Endereco</span><strong>{item.address || '-'}</strong></div>
+          <div className="me-row"><span>Unidades</span><strong>{item.apartments_count || 0} de {item.unit_count || '-'}</strong></div>
+          <div className="me-row"><span>Moradores</span><strong>{item.residents_count || 0}</strong></div>
+          <div className="me-row"><span>Documentos no mes</span><strong>{item.documents_count || 0} de {item.document_limit}</strong></div>
+          <div className="me-row"><span>Cadastrado em</span><strong>{formatDate(item.created_at)}</strong></div>
+        </div>
+      </div>
+
+      {item.platform_note && (
+        <div className="condo-perfil-nota">
+          <strong>Anotacao da plataforma</strong>
+          <p>{item.platform_note}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PlanSummary({ item }) {
   if (item.status === 'pending') return <span style={{ color: 'var(--text-muted)' }}>Aguardando aprovacao</span>
   if (item.plan_locked) {
@@ -106,7 +185,7 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [selected, setSelected] = useState(null)
-  const [tab, setTab] = useState('config')
+  const [tab, setTab] = useState('perfil')
   const [form, setForm] = useState(null)
   const [syndicPassword, setSyndicPassword] = useState('')
   const [busy, setBusy] = useState('')
@@ -139,7 +218,7 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
   const openCondominium = (item) => {
     setSelected(item)
     setForm(buildForm(item))
-    setTab('config')
+    setTab('perfil')
     setSyndicPassword('')
     setImportRows(null)
     setImportFileName('')
@@ -162,6 +241,34 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
       await reload()
     } catch (deleteError) {
       toast(deleteError.message || 'Nao foi possivel excluir o condominio.', 'error')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const handleLogo = async (file) => {
+    setBusy('logo')
+    try {
+      if (!file) {
+        await saveCondominiumLogo({ condominiumId: selected.id, remover: true })
+        toast('Logo removida.', 'success')
+      } else {
+        if (!LOGO_TIPOS.includes(file.type)) throw new Error('Envie uma imagem PNG, JPG ou WEBP.')
+        if (file.size > LOGO_MAX_BYTES) throw new Error('A imagem precisa ter ate 2 MB.')
+        const arquivo = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result || ''))
+          reader.onerror = () => reject(new Error('Nao foi possivel ler a imagem.'))
+          reader.readAsDataURL(file)
+        })
+        await saveCondominiumLogo({ condominiumId: selected.id, arquivo })
+        toast('Logo atualizada.', 'success')
+      }
+      const atualizados = await reload()
+      const atualizado = (atualizados?.condominiums || []).find((item) => item.id === selected.id)
+      if (atualizado) setSelected(atualizado)
+    } catch (logoError) {
+      toast(logoError.message || 'Nao foi possivel salvar a logo.', 'error')
     } finally {
       setBusy('')
     }
@@ -409,12 +516,23 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
                     </button>
                   </>
                 )}
+                <button
+                  className={`btn btn-icon ${tab === 'perfil' ? 'btn-ghost' : 'btn-primary'}`}
+                  onClick={() => setTab(tab === 'perfil' ? 'config' : 'perfil')}
+                  aria-label={tab === 'perfil' ? 'Abrir configuracoes' : 'Voltar ao perfil'}
+                  title={tab === 'perfil' ? 'Configuracoes' : 'Voltar ao perfil'}
+                >
+                  {tab === 'perfil' ? <Settings size={16} /> : <UserRound size={16} />}
+                </button>
                 <button className="btn btn-ghost btn-icon" onClick={closeCondominium} aria-label="Fechar">
                   <XCircle size={16} />
                 </button>
               </div>
             </div>
 
+            {tab === 'perfil' && <CondoPerfil item={selected} now={now} onLogo={handleLogo} busy={busy} />}
+
+            {tab !== 'perfil' && (
             <div className="condo-tabs" role="tablist">
               {TABS.map((item) => (
                 <button key={item.key} className="condo-tab" role="tab" aria-selected={tab === item.key} onClick={() => setTab(item.key)}>
@@ -422,6 +540,7 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
                 </button>
               ))}
             </div>
+            )}
 
             {tab === 'config' && (
               <div className="condo-form-grid">
@@ -647,7 +766,7 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
               </div>
             )}
 
-            {tab !== 'data' && tab !== 'delete' && (
+            {tab !== 'perfil' && tab !== 'data' && tab !== 'delete' && (
               <div className="modal-footer">
                 <button className="btn btn-ghost" onClick={closeCondominium} disabled={Boolean(busy)}>Cancelar</button>
                 <button className="btn btn-primary" onClick={handleSave} disabled={Boolean(busy)}>

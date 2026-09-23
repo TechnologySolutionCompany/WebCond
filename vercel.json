@@ -32,6 +32,9 @@
     },
     "api/platform/[...segments].js": {
       "maxDuration": 60
+    },
+    "api/admin/[...segments].js": {
+      "maxDuration": 60
     }
   },
   "headers": [
