@@ -213,6 +213,11 @@ O verificador do painel (*Advisors > Security*) apontou 40 avisos, todos de nív
 só existem para rodar dentro de um gatilho. Chamar pela API já não funcionava — o Postgres
 recusa —, mas elas apareciam na lista de funções publicadas. A permissão foi retirada.
 
+Medido no banco real, sem login: as oito respondem **404 (PGRST202, "função não encontrada")**.
+O PostgREST não publica função que devolve gatilho, então na prática a API nunca serviu nenhuma
+delas — o aviso é teórico. A permissão saiu mesmo assim, por higiene: o que não é para ser
+chamado não precisa de permissão para ser chamado.
+
 O banco confere a permissão na hora de **criar** o gatilho, não a cada vez que ele dispara,
 então nada para de funcionar. Mesmo assim, o arquivo traz um **teste dentro da própria
 transação**: monta uma tabela temporária com o gatilho real, vira um usuário comum e faz um
