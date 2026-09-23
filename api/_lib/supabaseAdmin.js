@@ -191,6 +191,19 @@ export async function parseJsonBody(req) {
 }
 
 // Escapa um valor para uso seguro dentro de filtros PostgREST como .or('col.eq.valor').
+// O Supabase pode recusar a senha escolhida quando a protecao contra senha vazada esta
+// ligada no painel (ele compara com a base do HaveIBeenPwned, sem enviar a senha inteira).
+// A mensagem dele vem em ingles: devolve aqui o aviso em portugues, ou '' se o erro for outro.
+// Nunca inclui a senha na resposta.
+export function senhaRecusadaPeloAuth(error) {
+  const codigo = String(error?.code || '').toLowerCase()
+  const mensagem = String(error?.message || '').toLowerCase()
+  if (codigo === 'weak_password' || /weak password|pwned|leaked|breach|easy to guess/.test(mensagem)) {
+    return 'Esta senha aparece em vazamentos conhecidos ou e facil de adivinhar. Escolha outra senha.'
+  }
+  return ''
+}
+
 export function quoteFilterValue(value) {
   return `"${String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }

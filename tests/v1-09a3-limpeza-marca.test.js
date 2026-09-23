@@ -20,7 +20,8 @@ import {
 } from '../src/lib/assinatura.js'
 import { buildEmailMessage } from '../src/lib/notifications.js'
 
-const arquivo = (caminho) => readFileSync(new URL(`../${caminho}`, import.meta.url), 'utf8')
+// Quebra de linha do Windows nao muda o conteudo: normaliza antes de comparar.
+const arquivo = (caminho) => readFileSync(new URL(`../${caminho}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const sql = arquivo('sql/2026-09-28_limpeza_seguranca_e_plano_pro.sql')
 
 test('SQL 09-28: fecha a view que entregava os condominios sem login', () => {

@@ -190,3 +190,83 @@ protege os dados é a RLS — e é exatamente por isso que o achado nº 1 era gr
    *Environment Variables*, e nunca no `.env` versionado.
 5. **Quando escolher o provedor de pagamento**, conferir a assinatura do webhook antes de
    confiar no evento — o contrato está em `docs/plano-pro-v1.10.md`.
+
+---
+
+## 7. Avisos do painel do Supabase (23/09/2026)
+
+O verificador do painel (*Advisors > Security*) apontou 40 avisos, todos de nível **WARN**
+(nenhum ERROR). Eles foram conferidos um a um. Resumo:
+
+| Aviso | Quantos | O que é | Decisão |
+| --- | :-: | --- | --- |
+| Function Search Path Mutable | 3 | função sem `search_path` fixo | corrigido no SQL `2026-09-29` |
+| Public Bucket Allows Listing | 1 | bucket de logos podia ser **listado** | corrigido no SQL `2026-09-29` |
+| Public/Signed-In Can Execute SECURITY DEFINER | 35 | funções publicadas na API | 8 corrigidas, 27 são a própria RLS (abaixo) |
+| Leaked Password Protection Disabled | 1 | senha vazada não é barrada | ligar no painel (abaixo) |
+
+### 7.1 Corrigido no SQL `2026-09-29`
+
+**Funções de gatilho fora da API.** Oito funções (`set_updated_at`, `handle_new_user`,
+`protect_profile_columns`, `enforce_document_plan_limit`, `purge_expired_avisos_trigger`,
+`suporte_primeira_mensagem`, `suporte_atualiza_chamado`, `sync_condominium_language_fields`)
+só existem para rodar dentro de um gatilho. Chamar pela API já não funcionava — o Postgres
+recusa —, mas elas apareciam na lista de funções publicadas. A permissão foi retirada.
+
+O banco confere a permissão na hora de **criar** o gatilho, não a cada vez que ele dispara,
+então nada para de funcionar. Mesmo assim, o arquivo traz um **teste dentro da própria
+transação**: monta uma tabela temporária com o gatilho real, vira um usuário comum e faz um
+update. Se o gatilho recusar, o arquivo inteiro é desfeito e o banco não muda.
+
+**`search_path` fixo** em `set_updated_at` e `sync_condominium_language_fields` (as duas mais
+antigas do projeto; as demais já nasciam com ele). Sem isso, quem conseguisse criar um schema
+na frente do `public` poderia fazer a função chamar outra coisa no lugar do que ela espera.
+
+**`get_my_role()` removida.** Não está em nenhum arquivo do projeto, nenhuma tela chama e
+nenhuma política usa — sobrou de um teste feito no painel. Se alguma política depender dela, o
+`drop` falha, ela fica e só o `search_path` é corrigido.
+
+**Bucket de logos: abrir sim, listar não.** O bucket `condominios` é público porque a logo
+precisa aparecer no boleto e no perfil sem login. Só que a política de leitura permitia
+**listar o bucket inteiro**, ou seja, descobrir todos os condomínios cadastrados pelo nome da
+pasta. Bucket público não precisa dessa política para entregar o arquivo: o endereço
+`/storage/v1/object/public/...` não passa por RLS. A política foi retirada; gravar, trocar e
+apagar continuam só com o administrador da plataforma.
+
+Duas conferências novas entraram no `npm run security-test`: a logo precisa **abrir** sem
+login, e o bucket **não** pode ser listado sem login.
+
+### 7.2 Aceito de propósito: as funções da própria RLS
+
+Os 27 avisos restantes são as funções que **as políticas de RLS usam para decidir quem vê o
+quê**: `is_platform_admin()`, `is_condominium_admin()`, `current_user_condominium_id()`,
+`same_condominium()`, `storage_path_in_my_condominium()`, `my_unit_people()`,
+`registrar_presenca()` e companhia.
+
+Por que ficam como estão:
+
+- **Não entregam dado de ninguém.** Elas respondem sobre quem está chamando. Testado no banco
+  real, sem login: `is_admin` → `false`, `is_platform_admin` → `false`, `current_user_role` →
+  `null`, `current_user_condominium_id` → `null`. Com login, cada um recebe o próprio dado.
+- **Tirar a permissão pode derrubar a RLS.** As políticas chamam essas funções em nome de quem
+  está consultando. Sem permissão de execução, uma consulta legítima pode passar a responder
+  "permissão negada" em vez de filtrar — trocar um risco inexistente por uma quebra real.
+- **O caminho definitivo é outro:** mover as funções para um schema fora da API (ex.: `private`)
+  e reapontar todas as políticas. É uma mudança grande, para fazer com calma e com o teste de
+  segurança rodando antes e depois. Fica anotado para a v1.10.
+
+Enquanto isso, o `npm run security-test` já cobre o que importa de verdade: nenhuma das 16
+tabelas responde com dado para quem não fez login, e nenhum condomínio enxerga o outro.
+
+### 7.3 Para ligar no painel: proteção contra senha vazada
+
+**Authentication > Sign In / Providers > Password > "Prevent use of leaked passwords".**
+
+O Supabase passa a comparar a senha escolhida com a base do HaveIBeenPwned (sem enviar a senha
+inteira, só um pedaço do código dela) e recusa senha que já apareceu em vazamento. Vale para
+cadastro de condomínio, cadastro de morador, troca de senha e contas de suporte.
+
+O código já foi preparado para isso: a recusa do Supabase vem em inglês, e agora todas as telas
+que definem senha respondem **"Esta senha aparece em vazamentos conhecidos ou é fácil de
+adivinhar. Escolha outra senha."**, com status 400 em vez de erro genérico. Sem essa preparação,
+o síndico veria uma mensagem em inglês ou um "não foi possível criar a conta" sem explicação.

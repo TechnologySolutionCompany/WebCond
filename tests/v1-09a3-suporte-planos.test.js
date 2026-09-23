@@ -5,7 +5,8 @@ import test from 'node:test'
 import { PLANS, planAllowsCustomLogo, PUBLIC_PLAN_LIST } from '../src/lib/condominiumPlan.js'
 import { MSG_PLANOS, whatsappPlanoUrl, whatsappUrl } from '../src/lib/contato.js'
 
-const sql = readFileSync(new URL('../sql/2026-09-27_suporte_chat_logo_condominio.sql', import.meta.url), 'utf8')
+// Quebra de linha do Windows nao muda o conteudo: normaliza antes de comparar.
+const sql = readFileSync(new URL('../sql/2026-09-27_suporte_chat_logo_condominio.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
 test('logo no boleto: so nos planos que preveem personalizacao', () => {
   assert.equal(planAllowsCustomLogo('MAX'), true)

@@ -1,4 +1,5 @@
 import {
+  senhaRecusadaPeloAuth,
   checkRateLimit,
   ensureServiceRoleConfig,
   getClientIp,
@@ -70,6 +71,8 @@ async function criarPessoaPendente(pessoa, { condominiumId, vinculo, apartamento
   const profileId = created?.user?.id
   if (createError || !profileId) {
     const duplicate = String(createError?.message || '').toLowerCase().includes('already')
+    const senhaFraca = senhaRecusadaPeloAuth(createError)
+    if (senhaFraca) return { error: `Senha do ${rotulo}: ${senhaFraca}`, status: 400 }
     return {
       error: duplicate
         ? `O e-mail do ${rotulo} ja esta em uso. Informe outro ou deixe o campo em branco.`

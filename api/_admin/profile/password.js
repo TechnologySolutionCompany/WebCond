@@ -1,4 +1,4 @@
-import { json, parseJsonBody, rejectForeignOrigin, requireAdmin, supabaseAdmin, supabaseServer } from '../../_lib/supabaseAdmin.js'
+import { json, parseJsonBody, rejectForeignOrigin, requireAdmin, senhaRecusadaPeloAuth, supabaseAdmin, supabaseServer } from '../../_lib/supabaseAdmin.js'
 import { verifyOwnPassword } from '../../_lib/passwordCheck.js'
 
 // Troca da propria senha: exige a senha atual, mesmo com a sessao aberta, para que um
@@ -21,7 +21,10 @@ export async function POST(req) {
   if (wrong) return wrong
 
   const { error } = await supabaseAdmin.auth.admin.updateUserById(auth.profile.id, { password: novaSenha })
-  if (error) return json({ error: 'Nao foi possivel alterar a senha.' }, 500)
+  if (error) {
+    const senhaFraca = senhaRecusadaPeloAuth(error)
+    return json({ error: senhaFraca || 'Nao foi possivel alterar a senha.' }, senhaFraca ? 400 : 500)
+  }
 
   // O Supabase encerra todas as sessoes quando a senha muda (bom: outro aparelho logado sai).
   // Para quem acabou de trocar nao cair junto, devolve uma sessao nova ja com a senha nova.

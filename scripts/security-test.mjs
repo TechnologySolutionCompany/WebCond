@@ -165,6 +165,16 @@ try {
     }
     check(GSP, 'nenhuma tabela do sistema responde com dados sem login', vazando.length === 0, vazando.join(', '))
 
+    // Funcao de gatilho nao e para ser chamada pela API: nem sem login, nem com login.
+    const gatilhos = ['set_updated_at', 'protect_profile_columns', 'handle_new_user', 'suporte_atualiza_chamado']
+    const expostas = []
+    for (const nome of gatilhos) {
+      const res = await semLogin(`rpc/${nome}`, { method: 'POST', body: '{}' })
+      // 404 = fora da API (o certo). 401/403 = sem permissao (tambem serve).
+      if (![401, 403, 404].includes(res.status)) expostas.push(`${nome}:${res.status}`)
+    }
+    check(GSP, 'funcao de gatilho nao aparece na API', expostas.length === 0, expostas.join(', '))
+
     // Arquivos: limite de tamanho e de tipo (bloqueia .html e .svg, que executam script).
     const { data: buckets } = await supabaseAdmin.storage.listBuckets()
     const porId = Object.fromEntries((buckets || []).map((bucket) => [bucket.id, bucket]))
@@ -829,7 +839,23 @@ try {
       check(GL, 'sindico NAO grava arquivo no bucket das logos', Boolean((await sA.storage.from('condominios').upload(`${A.id}/hack.png`, new Blob(['x'], { type: 'image/png' }), { contentType: 'image/png' })).error))
       await oA.storage.from('condominios').remove([logoPath])
       check(GL, 'morador NAO apaga a logo do condominio', rowsOf((await supabaseAdmin.storage.from('condominios').list(A.id)).data).length === 1)
-      check(GL, 'a lista da plataforma devolve o endereco da logo', Boolean(((await call('platform/condominiums/list', { token: P, method: 'GET' })).data?.condominiums || []).find((row) => row.id === A.id)?.logo_url))
+      const enderecoDaLogo = ((await call('platform/condominiums/list', { token: P, method: 'GET' })).data?.condominiums || []).find((row) => row.id === A.id)?.logo_url
+      check(GL, 'a lista da plataforma devolve o endereco da logo', Boolean(enderecoDaLogo))
+      // A logo precisa abrir sem login (entra no boleto e no perfil), mas o bucket nao pode
+      // ser listado: a listagem revelaria todos os condominios cadastrados pelo nome da pasta.
+      if (enderecoDaLogo) {
+        const semChave = await fetch(enderecoDaLogo)
+        check(GL, 'a logo abre sem login (endereco publico)', semChave.status === 200, `status ${semChave.status}`)
+      }
+      const listagemAnonima = await fetch(`${URL_}/storage/v1/object/list/condominios`, {
+        method: 'POST',
+        headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ prefix: '', limit: 100 }),
+      })
+      let itensListados = []
+      try { itensListados = await listagemAnonima.json() } catch { itensListados = [] }
+      check(GL, 'sem login ninguem lista o bucket das logos', !Array.isArray(itensListados) || itensListados.length === 0,
+        `status ${listagemAnonima.status}`)
       const removeuLogo = await call('platform/condominiums/logo', { token: P, body: { condominiumId: A.id, remover: true } })
       const semLogo = await supabaseAdmin.from('condominiums').select('metadata').eq('id', A.id).single()
       check(GL, 'admin remove a logo e o arquivo sai do storage', removeuLogo.status === 200 && !semLogo.data?.metadata?.logo_path

@@ -1,4 +1,4 @@
-import { checkRateLimit, ensureServiceRoleConfig, getClientIp, json, parseJsonBody, quoteFilterValue, rejectForeignOrigin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
+import { checkRateLimit, ensureServiceRoleConfig, getClientIp, json, parseJsonBody, quoteFilterValue, rejectForeignOrigin, senhaRecusadaPeloAuth, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
 import { PLANS, STANDARD_PLAN_NAME, STANDARD_PLAN_PRICE_CENTS } from '../../../src/lib/condominiumPlan.js'
 import { composeAddress, sanitizeAddress } from '../../../src/lib/address.js'
 
@@ -194,6 +194,8 @@ export async function POST(req) {
 
   if (createUserError) {
     await supabaseAdmin.from('condominiums').delete().eq('id', condominium.id)
+    const senhaFraca = senhaRecusadaPeloAuth(createUserError)
+    if (senhaFraca) return json({ error: senhaFraca }, 400)
     return json({ error: createUserError.message || 'Nao foi possivel criar o acesso inicial do sindico.' }, 500)
   }
 

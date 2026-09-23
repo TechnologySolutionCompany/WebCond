@@ -1,4 +1,5 @@
 import {
+  senhaRecusadaPeloAuth,
   ensureServiceRoleConfig,
   getProfileCondominiumId,
   json,
@@ -136,6 +137,9 @@ export async function POST(req) {
     if (normalizeDuplicateError(createError.message)) {
       return json({ error: 'Ja existe um usuario cadastrado com este e-mail.' }, 409)
     }
+
+    const senhaFraca = senhaRecusadaPeloAuth(createError)
+    if (senhaFraca) return json({ error: senhaFraca }, 400)
 
     return json({ error: createError.message || 'Falha ao criar usuario.' }, 500)
   }

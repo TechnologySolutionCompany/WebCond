@@ -1,4 +1,4 @@
-import { json, parseJsonBody, rejectForeignOrigin, requirePlatformAdmin, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
+import { json, parseJsonBody, rejectForeignOrigin, requirePlatformAdmin, senhaRecusadaPeloAuth, supabaseAdmin } from '../../_lib/supabaseAdmin.js'
 
 function isCondominiumAdminRole(role = '') {
   const normalized = String(role || '').trim().toLowerCase()
@@ -50,6 +50,8 @@ export async function POST(req) {
   })
 
   if (updateError) {
+    const senhaFraca = senhaRecusadaPeloAuth(updateError)
+    if (senhaFraca) return json({ error: senhaFraca }, 400)
     return json({ error: updateError.message || 'Nao foi possivel atualizar a senha do sindico.' }, 500)
   }
 

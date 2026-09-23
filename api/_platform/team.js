@@ -1,4 +1,4 @@
-import { json, parseJsonBody, rejectForeignOrigin, requirePlatformAdmin, supabaseAdmin } from '../_lib/supabaseAdmin.js'
+import { json, parseJsonBody, rejectForeignOrigin, requirePlatformAdmin, senhaRecusadaPeloAuth, supabaseAdmin } from '../_lib/supabaseAdmin.js'
 import { isCpfValid, isWhatsappValid, normalizeCpfDigits, normalizeWhatsapp } from '../_lib/personValidation.js'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -84,6 +84,8 @@ export async function POST(req) {
       user_metadata: { role: 'suporte', nome },
     })
     if (createError || !created?.user) {
+      const senhaFraca = senhaRecusadaPeloAuth(createError)
+      if (senhaFraca) return json({ error: senhaFraca }, 400)
       const duplicate = /already|registered|exists/i.test(createError?.message || '')
       return json({ error: duplicate ? 'Ja existe uma conta de suporte com este CPF.' : 'Nao foi possivel criar a conta.' }, duplicate ? 409 : 500)
     }
@@ -132,7 +134,10 @@ export async function POST(req) {
     const senha = String(body.senha || '')
     if (senha.length < MIN_PASSWORD) return json({ error: `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.` }, 400)
     const { error } = await supabaseAdmin.auth.admin.updateUserById(member.id, { password: senha })
-    if (error) return json({ error: 'Nao foi possivel trocar a senha.' }, 500)
+    if (error) {
+      const senhaFraca = senhaRecusadaPeloAuth(error)
+      return json({ error: senhaFraca || 'Nao foi possivel trocar a senha.' }, senhaFraca ? 400 : 500)
+    }
     return json({ success: true })
   }
 

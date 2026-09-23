@@ -49,6 +49,9 @@ No **SQL Editor**, execute:
       `public.condominios`, que entregava (e deixava alterar) os dados de todos os condomínios
       sem login, limpa dados vencidos e cria o espaço da assinatura. Veja
       `docs/seguranca-v1.09A3.md`.
+  11. `2026-09-29_avisos_do_painel_supabase.sql` — responde aos avisos do verificador do painel
+      do Supabase (funcoes de gatilho fora da API, search_path fixo, bucket de logos sem
+      listagem). Traz um teste dentro da propria transacao: se algo falhar, nada e aplicado.
 
 Em **Authentication > Sign In / Providers**, desative **Allow new users to sign up**. Todas as contas são
 criadas pelo backend (service role); o cadastro público do Supabase Auth não é usado pelo sistema.

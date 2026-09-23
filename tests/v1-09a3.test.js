@@ -23,8 +23,8 @@ import { getChannelConfig } from '../api/_lib/notify.js'
 
 const CONDO = '11111111-1111-1111-1111-111111111111'
 
-test('versao v1.09A3', () => {
-  assert.equal(APP_VERSION, 'v1.09A3')
+test('versao v1.09A4', () => {
+  assert.equal(APP_VERSION, 'v1.09A4')
 })
 
 test('notificacao vai para quem ve o aviso no app (mesma regra do RLS)', () => {
@@ -135,7 +135,7 @@ test('equipe de suporte: papel proprio, sem condominio, vai para o painel da pla
 })
 
 test('SQL da versao: exclusao real, papel suporte protegido e push so pelo backend', () => {
-  const sql = readFileSync(new URL('../sql/2026-09-26_avisos_equipe_notificacoes.sql', import.meta.url), 'utf8')
+  const sql = readFileSync(new URL('../sql/2026-09-26_avisos_equipe_notificacoes.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   assert.match(sql, /delete from public\.avisos where ativo = false/)
   assert.match(sql, /'platform_admin', 'suporte'/)
   assert.match(sql, /privileged constant text\[\] := array\['ADMIN', 'ADMIN_CONDOMINIUM', 'PLATFORM_ADMIN', 'SUPORTE'\]/)
