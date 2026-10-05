@@ -104,3 +104,21 @@ export async function signInWithDocument(documentNumber, password) {
 
   return loginThroughBackend(endpoint, body, `Nao foi possivel entrar com ${getCpfCnpjLabel(normalizedDocument)} e senha.`)
 }
+
+// "Esqueci a senha" (v2.10A2): para qual WhatsApp pedir a troca de senha. O servidor devolve o
+// do sindico do condominio da pessoa ou, quando nao der para saber, o suporte da TSCBr.
+export async function buscarContatoParaTrocaDeSenha(cpf) {
+  let response
+  try {
+    response = await fetchWithTimeout('/api/auth/contato-sindico', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cpf: normalizeCpfCnpj(cpf) }),
+    })
+  } catch {
+    throw new Error('Falha de conexao. Tente novamente em alguns segundos.')
+  }
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(result.error || 'Nao foi possivel buscar o contato agora.')
+  return result
+}

@@ -306,6 +306,20 @@ try {
   const { data: stillInB } = await supabaseAdmin.from('profiles').select('condominium_id').eq('id', B.ownerId).single()
   check('API', 'pessoa do B continua no B', stillInB.condominium_id === B.id)
 
+  // "Esqueci a senha" (v2.10A2): morador vai para o WhatsApp do proprio condominio; resto, TSCBr.
+  {
+    const GES = 'Esqueci a senha'
+    const contato = (document) => call('auth/contato-sindico', { ip: true, body: { cpf: document } })
+    const doMorador = await contato(A.owner.cpf)
+    check(GES, 'morador recebe o WhatsApp do proprio condominio', doMorador.status === 200 && doMorador.data?.destino === 'sindico' && doMorador.data?.whatsapp === '5511999990000', JSON.stringify(doMorador.data))
+    const desconhecido = await contato(cpf())
+    check(GES, 'CPF desconhecido recebe o suporte da TSCBr', desconhecido.status === 200 && desconhecido.data?.destino === 'suporte')
+    const { data: sindicoA } = await supabaseAdmin.from('profiles').select('cpf').eq('id', A.syndicId).single()
+    const doSindico = await contato(sindicoA?.cpf)
+    check(GES, 'sindico (nao e trocado pelo sindico) vai para o suporte', doSindico.data?.destino === 'suporte')
+    check(GES, 'resposta nao traz nome, condominio nem dados da pessoa', !/nome|condominio|E2E|Dono/i.test(JSON.stringify(doMorador.data)))
+  }
+
   // Forca bruta: tentativas seguidas continuam recusadas (rate limit nao derruba a rota)
   const brute = []
   for (let i = 0; i < 6; i += 1) brute.push((await call('auth/login-cpf', { body: { cpf: A.owner.cpf, password: `errada${i}` } })).status)

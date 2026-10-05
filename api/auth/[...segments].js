@@ -7,6 +7,7 @@ import * as cadastroEnviar from '../_auth/cadastro-enviar.js'
 import * as confirmarCadastro from '../_auth/confirmar-cadastro.js'
 import * as reenviarConfirmacao from '../_auth/reenviar-confirmacao.js'
 import * as pagamentoInfinitePay from '../_auth/pagamento-infinitepay.js'
+import * as contatoSindico from '../_auth/contato-sindico.js'
 
 export const { GET, POST } = createRouter({
   '/api/auth/login-cnpj': loginCnpj,
@@ -19,4 +20,6 @@ export const { GET, POST } = createRouter({
   '/api/auth/confirmar-cadastro': confirmarCadastro,
   '/api/auth/reenviar-confirmacao': reenviarConfirmacao,
   '/api/auth/pagamento-infinitepay': pagamentoInfinitePay,
+  // v2.10A2: "Esqueci a senha" -> WhatsApp do sindico
+  '/api/auth/contato-sindico': contatoSindico,
 })

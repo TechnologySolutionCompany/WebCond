@@ -18,13 +18,14 @@ import {
 import { CONDOMINIUM_EMAIL_PENDING_CODE, useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { getHomePathForRole } from '../lib/auth'
-import { resendSignupConfirmation, signInWithDocument, signInWithEmail } from '../lib/authApi'
+import { buscarContatoParaTrocaDeSenha, resendSignupConfirmation, signInWithDocument, signInWithEmail } from '../lib/authApi'
 import { LOGIN_MODE_INICIAL, LOGIN_MODES } from '../lib/loginEmail'
 import { formatCpf, normalizeCpf } from '../lib/cpf'
 import { formatCpfCnpj, getCpfCnpjType, normalizeCpfCnpj } from '../lib/document'
 import { registerCondominium } from '../lib/platformApi'
 import AddressFields from '../components/shared/AddressFields'
 import SiteFooter from '../components/shared/SiteFooter'
+import WhatsAppIcon from '../components/shared/WhatsAppIcon'
 import { MSG_PLANOS, whatsappUrl } from '../lib/contato'
 import { APP_VERSION } from '../lib/appVersion'
 import { TRIAL_PERIOD_DAYS } from '../lib/condominiumPlan'
@@ -58,6 +59,8 @@ export default function Landing() {
   const [cpf, setCpf] = useState('')
   const [pass, setPass] = useState('')
   const [showPass, setShowPass] = useState(false)
+  // "Esqueci a senha" (v2.10A2): so no login por CPF. Abre o pedido de troca ao sindico pelo WhatsApp.
+  const [ajudaSenha, setAjudaSenha] = useState({ aberta: false, buscando: false })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [condominiumForm, setCondominiumForm] = useState(emptyCondominiumForm)
@@ -114,6 +117,31 @@ export default function Landing() {
   const switchLoginMode = (mode) => {
     setLoginMode(mode)
     setError('')
+    setAjudaSenha({ aberta: false, buscando: false })
+  }
+
+  // Quem troca a senha do morador e o sindico (em Unidades). O servidor diz para qual WhatsApp
+  // pedir: o do condominio da pessoa ou, se nao der para saber, o suporte da TSCBr.
+  const pedirTrocaDeSenha = async () => {
+    const documento = normalizeCpfCnpj(cpf)
+    if (getCpfCnpjType(documento) !== 'cpf') {
+      setError('Digite o seu CPF acima para pedir a troca de senha.')
+      return
+    }
+    setError('')
+    setAjudaSenha((atual) => ({ ...atual, buscando: true }))
+    try {
+      const contato = await buscarContatoParaTrocaDeSenha(documento)
+      const mensagem = contato.destino === 'sindico'
+        ? `Ola, sindico(a)! Esqueci minha senha do WebCond. Pode cadastrar uma nova senha para mim? Meu CPF termina em ${documento.slice(-2)}.`
+        : 'Ola! Esqueci minha senha do WebCond e preciso de ajuda para voltar a acessar.'
+      // Navega na mesma aba: no celular abre o app do WhatsApp (janela nova apos "await" e bloqueada).
+      window.location.href = `https://wa.me/${contato.whatsapp}?text=${encodeURIComponent(mensagem)}`
+    } catch (contatoError) {
+      setError(contatoError.message || 'Nao foi possivel buscar o contato agora.')
+    } finally {
+      setAjudaSenha((atual) => ({ ...atual, buscando: false }))
+    }
   }
 
   const handleCondominiumRegister = async (event) => {
@@ -344,12 +372,12 @@ export default function Landing() {
                     />
                   </div>
                   <button type="button" style={S.switchLink} onClick={() => switchLoginMode(LOGIN_MODES.documento)}>
-                    Esqueci meu e-mail · entrar com CPF ou CNPJ
+                    Esqueci meu e-mail
                   </button>
                 </div>
               ) : (
                 <div className="form-group">
-                  <label className="form-label" style={S.label} htmlFor="login-documento">CPF ou CNPJ</label>
+                  <label className="form-label" style={S.label} htmlFor="login-documento">CPF</label>
                   <div style={S.inputShell} className="landing-input-shell">
                     <IdCard size={17} color={S.pageMuted.color} />
                     <input
@@ -359,7 +387,7 @@ export default function Landing() {
                       type="text"
                       inputMode="numeric"
                       autoComplete="username"
-                      placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                      placeholder="000.000.000-00"
                       value={formatCpfCnpj(cpf)}
                       onChange={(event) => setCpf(normalizeCpfCnpj(event.target.value))}
                       required
@@ -389,7 +417,22 @@ export default function Landing() {
                     {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
+                {loginMode === LOGIN_MODES.documento && !ajudaSenha.aberta && (
+                  <button type="button" style={S.switchLink} onClick={() => setAjudaSenha({ aberta: true, buscando: false })}>
+                    Esqueci a senha
+                  </button>
+                )}
               </div>
+
+              {loginMode === LOGIN_MODES.documento && ajudaSenha.aberta && (
+                <div style={S.ajudaSenha}>
+                  <span>A senha e trocada pelo sindico do seu condominio.</span>
+                  <button type="button" style={S.ajudaSenhaBotao} onClick={() => void pedirTrocaDeSenha()} disabled={ajudaSenha.buscando}>
+                    {ajudaSenha.buscando ? <Loader2 size={15} style={{ animation: 'spin .6s linear infinite' }} /> : <WhatsAppIcon size={16} color="#fff" />}
+                    Solicitar troca de senha ao sindico
+                  </button>
+                </div>
+              )}
 
               <button type="submit" disabled={loading} className="landing-primary-button" style={{ ...S.btnBase, ...S.primaryBtn, marginTop: 20 }}>
                 {loading ? (
@@ -1016,6 +1059,32 @@ function buildStyles(p) {
     textAlign: 'right',
     textDecoration: 'underline',
     textUnderlineOffset: 3,
+  },
+  ajudaSenha: {
+    marginTop: 12,
+    padding: '12px 14px',
+    borderRadius: 12,
+    border: `1px solid ${p.border}`,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    fontSize: 12.5,
+    color: p.muted,
+    lineHeight: 1.5,
+  },
+  ajudaSenhaBotao: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: '11px 14px',
+    borderRadius: 10,
+    border: 'none',
+    background: '#1f9d55',
+    color: '#fff',
+    fontSize: 13.5,
+    fontWeight: 600,
+    cursor: 'pointer',
   },
   condoLink: {
     marginTop: 16,

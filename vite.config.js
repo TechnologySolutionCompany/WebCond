@@ -11,6 +11,7 @@ const apiModules = {
   // v1.09A5
   '/api/auth/confirmar-cadastro': new URL('./api/_auth/confirmar-cadastro.js', import.meta.url),
   '/api/auth/reenviar-confirmacao': new URL('./api/_auth/reenviar-confirmacao.js', import.meta.url),
+  '/api/auth/contato-sindico': new URL('./api/_auth/contato-sindico.js', import.meta.url),
   '/api/auth/pagamento-infinitepay': new URL('./api/_auth/pagamento-infinitepay.js', import.meta.url),
   '/api/admin/payment-settings': new URL('./api/_admin/payment-settings.js', import.meta.url),
   '/api/admin/charges-payment-links': new URL('./api/_admin/charges/payment-links.js', import.meta.url),
