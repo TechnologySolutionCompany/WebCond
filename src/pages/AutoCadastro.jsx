@@ -38,7 +38,7 @@ function maskPhoneInput(value) {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
 }
 
-function PersonFields({ id, person, onChange, showEmail, showPassword, passwordLabel, passwordHint }) {
+function PersonFields({ id, person, onChange, showEmail, emailRequired, showPassword, passwordLabel, passwordHint }) {
   const [showPass, setShowPass] = useState(false)
   const update = (field, value) => onChange({ ...person, [field]: value })
 
@@ -83,16 +83,20 @@ function PersonFields({ id, person, onChange, showEmail, showPassword, passwordL
 
       {showEmail && (
         <div className="form-group signup-full">
-          <label className="form-label" htmlFor={`${id}-email`}>E-mail (opcional)</label>
+          <label className="form-label" htmlFor={`${id}-email`}>{emailRequired ? 'E-mail de acesso' : 'E-mail (opcional)'}</label>
           <input
             id={`${id}-email`}
             className="input"
             type="email"
+            inputMode="email"
+            autoCapitalize="none"
+            spellCheck={false}
             value={person.email}
             onChange={(event) => update('email', event.target.value)}
             placeholder="voce@exemplo.com"
-            autoComplete="off"
+            autoComplete="email"
           />
+          {emailRequired && <span className="signup-hint">E com este e-mail e a senha que voce entra no WebCond.</span>}
         </div>
       )}
 
@@ -177,14 +181,16 @@ export default function AutoCadastro() {
   }, [])
 
   const alugado = form.situacao === 'alugada'
-  // Imovel desocupado: so nome, CPF e WhatsApp do proprietario.
-  const desocupado = form.situacao === 'desocupada'
 
   const localError = useMemo(() => {
     const checkPerson = (person, rotulo, { senha }) => {
       if (person.nome.trim().length < 3) return `Informe o nome completo do ${rotulo}.`
       if (normalizeCpf(person.cpf).length !== 11) return `Informe um CPF valido para o ${rotulo}.`
       if (String(person.whatsapp).replace(/\D/g, '').length < 10) return `Informe um WhatsApp com DDD para o ${rotulo}.`
+      // Quem vai ter acesso entra pelo e-mail (v1.09A5): sem e-mail, sem conta.
+      const email = String(person.email || '').trim()
+      if (senha && !email) return `Informe o e-mail do ${rotulo}: e por ele que se entra no WebCond.`
+      if (email && !/^[^\s@;]+@[^\s@;]+\.[^\s@;.]+$/.test(email)) return `Informe um e-mail valido para o ${rotulo}.`
       if (senha && person.password.length < 6) return `A senha do ${rotulo} precisa ter pelo menos 6 caracteres.`
       if (senha && person.password !== person.confirmacao) return `As senhas do ${rotulo} nao sao iguais.`
       return ''
@@ -224,7 +230,7 @@ export default function AutoCadastro() {
           nome: form.proprietario.nome,
           cpf: form.proprietario.cpf,
           whatsapp: form.proprietario.whatsapp,
-          email: desocupado ? '' : form.proprietario.email,
+          email: form.proprietario.email,
           password: form.proprietario.password,
         },
         inquilino: alugado
@@ -339,7 +345,8 @@ export default function AutoCadastro() {
                 id="dono"
                 person={form.proprietario}
                 onChange={(person) => update('proprietario', person)}
-                showEmail={!desocupado}
+                showEmail
+                emailRequired
                 showPassword
                 passwordLabel="Senha de acesso"
               />
@@ -357,6 +364,7 @@ export default function AutoCadastro() {
                   person={form.inquilino}
                   onChange={(person) => update('inquilino', person)}
                   showEmail
+                  emailRequired={form.inquilinoAcesso}
                   showPassword={form.inquilinoAcesso}
                   passwordLabel="Senha do inquilino"
                   passwordHint="O inquilino entra com o CPF dele e esta senha. Para troca-la depois, ele pede a alteracao no perfil e o sindico envia a nova senha."

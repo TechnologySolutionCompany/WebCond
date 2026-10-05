@@ -18,7 +18,8 @@ function isPlatformAdminRole(role = '') {
   return normalized === 'platform_admin'
 }
 
-function buildSessionResponse(data, profile, condominiumId = null) {
+// Resposta de login igual para todos os jeitos de entrar (CNPJ, CPF, e-mail).
+export function buildSessionResponse(data, profile, condominiumId = null) {
   return json({
     user: {
       id: data.user.id,

@@ -8,6 +8,8 @@ import { DollarSign, CheckCircle, ExternalLink, Receipt, CalendarClock, X, Copy,
 import { getChargePaymentStatusMeta, isChargePaid } from '../../lib/chargeStatus'
 import { withTenantFields } from '../../lib/tenant'
 import { buildPaymentConfirmationTitle, isResidentPaymentConfirmation, isResidentRequestPending, parseResidentRequest } from '../../lib/residentRequests'
+import { readLastView, saveLastView } from '../../lib/lastView'
+import { checkChargePayment } from '../../lib/tenantApi'
 
 const TIPOS_LABEL = {
   condominio: 'Condominio',
@@ -57,6 +59,9 @@ export default function MoradorCobrancas() {
 
     const enriched = await enrichChargesWithPaymentUrls(data || [])
     setCobrancas(enriched)
+    // Voltou do boleto ou do app do banco: a cobranca que estava aberta abre de novo.
+    const reopenId = readLastView('morador-cobranca', profile.id)
+    if (reopenId) setSelected((current) => current || enriched.find((item) => item.id === reopenId) || null)
     setPaymentRequests((requestsData || []).filter((item) => isResidentPaymentConfirmation(item) && isResidentRequestPending(item)))
     setLoading(false)
   }, [profile?.id])
@@ -65,6 +70,35 @@ export default function MoradorCobrancas() {
     if (!profile?.id) return
     void fetchCobrancas()
   }, [fetchCobrancas, profile?.id])
+
+  useEffect(() => {
+    if (profile?.id) saveLastView('morador-cobranca', profile.id, selected?.id || '')
+  }, [selected?.id, profile?.id])
+
+  // Volta do pagamento online (InfinitePay): o endereco de retorno traz os codigos da transacao.
+  // O servidor confere direto com o banco antes de dar baixa; a tela so repassa os codigos.
+  useEffect(() => {
+    if (!profile?.id) return
+    const params = new URLSearchParams(window.location.search)
+    const orderNsu = params.get('order_nsu')
+    if (!orderNsu) return
+    const retorno = {
+      orderNsu,
+      transactionNsu: params.get('transaction_nsu') || '',
+      slug: params.get('slug') || '',
+    }
+    for (const key of ['order_nsu', 'transaction_nsu', 'slug', 'receipt_url', 'capture_method']) params.delete(key)
+    const rest = params.toString()
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`)
+
+    void checkChargePayment(retorno)
+      .then((result) => {
+        if (result?.paid) toast('Pagamento confirmado pelo banco. A cobranca ja aparece como paga.', 'success')
+        else toast('Ainda nao recebemos a confirmacao do banco. Ela aparece aqui assim que chegar.', 'info')
+        return fetchCobrancas()
+      })
+      .catch(() => toast('Nao foi possivel conferir o pagamento agora. Ele aparece aqui assim que o banco confirmar.', 'info'))
+  }, [profile?.id, fetchCobrancas, toast])
 
   const filtered = useMemo(() => cobrancas.filter((cobranca) => {
     if (filter === 'pendentes') return !isChargePaid(cobranca)
@@ -314,9 +348,14 @@ export default function MoradorCobrancas() {
                   <Copy size={14} /> Copiar PIX
                 </button>
               )}
-              {getPrimaryPaymentLink(selected) && (
+              {getPrimaryPaymentLink(selected) && !isChargePaid(selected) && (
                 <a href={getPrimaryPaymentLink(selected)} target="_blank" rel="noreferrer" className="btn btn-primary">
-                  <ExternalLink size={14} /> Abrir link de pagamento
+                  <ExternalLink size={14} /> {selected.pagamento_provedor === 'infinitepay' ? 'Pagar agora (Pix ou cartao)' : 'Abrir link de pagamento'}
+                </a>
+              )}
+              {selected.receipt_url && (
+                <a href={selected.receipt_url} target="_blank" rel="noreferrer" className="btn btn-ghost">
+                  <Receipt size={14} /> Comprovante do banco
                 </a>
               )}
               {selected.boleto_download_url && (
@@ -328,7 +367,9 @@ export default function MoradorCobrancas() {
 
             {!isChargePaid(selected) && (
               <div className="charge-detail-note" style={{ marginTop: 12 }}>
-                Depois do pagamento, confirme aqui no sistema para avisar o sindico. A baixa definitiva continua manual pela administracao do condominio.
+                {selected.pagamento_provedor === 'infinitepay'
+                  ? 'Pagando por "Pagar agora", a baixa e automatica: o banco avisa o WebCond e a cobranca muda para paga sozinha. Pagou de outro jeito? Use "Confirmar pagamento" para avisar o sindico.'
+                  : 'Depois do pagamento, confirme aqui no sistema para avisar o sindico. A baixa definitiva continua manual pela administracao do condominio.'}
               </div>
             )}
 

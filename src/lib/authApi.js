@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { getCpfCnpjLabel, getCpfCnpjType, normalizeCpfCnpj } from './document'
+import { isValidLoginEmail, normalizeLoginEmail } from './loginEmail'
 
 async function fetchWithTimeout(path, options, timeoutMs = 12000) {
   const controller = new AbortController()
@@ -15,19 +16,30 @@ async function fetchWithTimeout(path, options, timeoutMs = 12000) {
   }
 }
 
-export async function signInWithDocument(documentNumber, password) {
-  const normalizedDocument = normalizeCpfCnpj(documentNumber)
-  const documentType = getCpfCnpjType(normalizedDocument)
+// Novo e-mail de confirmacao do cadastro do condominio (v1.09A5). Usa a sessao recem-aberta:
+// so o proprio sindico pede, e o e-mail vai para o endereco que ja esta na conta dele.
+export async function resendSignupConfirmation() {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) throw new Error('Entre com seu e-mail e senha para pedir um novo link.')
 
-  if (!documentType) {
-    throw new Error('Informe um CPF ou CNPJ valido.')
+  let response
+  try {
+    response = await fetchWithTimeout('/api/auth/reenviar-confirmacao', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    }, 20000)
+  } catch {
+    throw new Error('Falha de conexao. Tente novamente em alguns segundos.')
   }
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(result.error || 'Nao foi possivel reenviar o e-mail.')
+  return result
+}
 
-  const endpoint = documentType === 'cnpj' ? '/api/auth/login-cnpj' : '/api/auth/login-cpf'
-  const body = documentType === 'cnpj'
-    ? { cnpj: normalizedDocument, password }
-    : { cpf: normalizedDocument, password }
-
+// Todos os jeitos de entrar terminam igual: o servidor confere e devolve a sessao, e o
+// navegador so a instala. A senha nunca vai direto do navegador para o Supabase.
+async function loginThroughBackend(endpoint, body, fallbackError) {
   let response
 
   try {
@@ -48,7 +60,7 @@ export async function signInWithDocument(documentNumber, password) {
 
   const result = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw new Error(result.error || `Nao foi possivel entrar com ${getCpfCnpjLabel(normalizedDocument)} e senha.`)
+    throw new Error(result.error || fallbackError)
   }
 
   const session = result.session
@@ -68,3 +80,27 @@ export async function signInWithDocument(documentNumber, password) {
   return result
 }
 
+export async function signInWithEmail(email, password) {
+  const normalizedEmail = normalizeLoginEmail(email)
+  if (!isValidLoginEmail(normalizedEmail)) {
+    throw new Error('Informe um e-mail valido.')
+  }
+
+  return loginThroughBackend('/api/auth/login-email', { email: normalizedEmail, password }, 'Nao foi possivel entrar com e-mail e senha.')
+}
+
+export async function signInWithDocument(documentNumber, password) {
+  const normalizedDocument = normalizeCpfCnpj(documentNumber)
+  const documentType = getCpfCnpjType(normalizedDocument)
+
+  if (!documentType) {
+    throw new Error('Informe um CPF ou CNPJ valido.')
+  }
+
+  const endpoint = documentType === 'cnpj' ? '/api/auth/login-cnpj' : '/api/auth/login-cpf'
+  const body = documentType === 'cnpj'
+    ? { cnpj: normalizedDocument, password }
+    : { cpf: normalizedDocument, password }
+
+  return loginThroughBackend(endpoint, body, `Nao foi possivel entrar com ${getCpfCnpjLabel(normalizedDocument)} e senha.`)
+}

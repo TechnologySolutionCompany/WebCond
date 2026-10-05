@@ -61,6 +61,8 @@ export function resolveCondominiumSettings(condominium = null) {
     address: String(condominium?.address || condominium?.endereco || DEFAULT_CONDOMINIUM_SETTINGS.address).trim(),
     pixKey: String(condominium?.pix_key || condominium?.chave_pix || DEFAULT_CONDOMINIUM_SETTINGS.pixKey).trim(),
     bankDestination: String(condominium?.bank_details || metadata.bank_destination || metadata.bankDestination || '').trim(),
+    // Cidade vai no QR Code Pix (campo obrigatorio do padrao do Banco Central).
+    city: String(metadata.address_details?.city || '').trim(),
     pixProvider,
     whatsapp,
     whatsappLabel: formatWhatsappLabel(whatsapp),

@@ -7,6 +7,20 @@ const apiModules = {
   '/api/auth/login-cnpj': new URL('./api/_auth/login-cnpj.js', import.meta.url),
   '/api/auth/cadastro-info': new URL('./api/_auth/cadastro-info.js', import.meta.url),
   '/api/auth/cadastro-enviar': new URL('./api/_auth/cadastro-enviar.js', import.meta.url),
+  '/api/auth/login-email': new URL('./api/_auth/login-email.js', import.meta.url),
+  // v1.09A5
+  '/api/auth/confirmar-cadastro': new URL('./api/_auth/confirmar-cadastro.js', import.meta.url),
+  '/api/auth/reenviar-confirmacao': new URL('./api/_auth/reenviar-confirmacao.js', import.meta.url),
+  '/api/auth/pagamento-infinitepay': new URL('./api/_auth/pagamento-infinitepay.js', import.meta.url),
+  '/api/admin/payment-settings': new URL('./api/_admin/payment-settings.js', import.meta.url),
+  '/api/admin/charges-payment-links': new URL('./api/_admin/charges/payment-links.js', import.meta.url),
+  '/api/admin/feedback': new URL('./api/_lib/feedbackSend.js', import.meta.url),
+  '/api/tenant/feedback': new URL('./api/_lib/feedbackSend.js', import.meta.url),
+  '/api/tenant/payment-check': new URL('./api/_tenant/payment-check.js', import.meta.url),
+  '/api/platform/feedbacks': new URL('./api/_platform/feedbacks.js', import.meta.url),
+  // v2.10A1
+  '/api/admin/assinatura-checkout': new URL('./api/_admin/assinatura-checkout.js', import.meta.url),
+  '/api/platform/assinatura-webhook': new URL('./api/_platform/assinatura-webhook.js', import.meta.url),
   '/api/admin/billing/render-pdf': new URL('./api/admin/billing/render-pdf.js', import.meta.url),
   '/api/admin/residents-create': new URL('./api/_admin/residents/create.js', import.meta.url),
   '/api/admin/residents-delete': new URL('./api/_admin/residents/delete.js', import.meta.url),
@@ -35,6 +49,8 @@ const apiModules = {
   '/api/tenant/charge-summary': new URL('./api/_tenant/charge-summary.js', import.meta.url),
   '/api/tenant/push-subscribe': new URL('./api/_tenant/push/subscribe.js', import.meta.url),
   '/api/tenant/push-unsubscribe': new URL('./api/_tenant/push/unsubscribe.js', import.meta.url),
+  '/api/tenant/account-email': new URL('./api/_tenant/account/email.js', import.meta.url),
+  '/api/tenant/account-password': new URL('./api/_tenant/account/password.js', import.meta.url),
 }
 
 function devApiPlugin() {

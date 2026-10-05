@@ -156,3 +156,12 @@ export function sendSupportMessage(payload) {
 export function saveCondominiumLogo(payload) {
   return callPlatformApi('/api/platform/condominiums-logo', payload, { timeoutMs: 30000 })
 }
+
+// Caixa de feedback (v1.09A5): so o administrador da plataforma.
+export function listFeedbacks(status = 'ativos') {
+  return callPlatformApi(`/api/platform/feedbacks?status=${encodeURIComponent(status)}`, undefined, { method: 'GET' })
+}
+
+export function updateFeedbackStatus(payload) {
+  return callPlatformApi('/api/platform/feedbacks', payload)
+}

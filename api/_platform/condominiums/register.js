@@ -2,6 +2,7 @@ import { checkRateLimit, ensureServiceRoleConfig, getClientIp, json, parseJsonBo
 import { recusaDeSenha } from '../../_lib/senhaVazada.js'
 import { PLANS, STANDARD_PLAN_NAME, STANDARD_PLAN_PRICE_CENTS } from '../../../src/lib/condominiumPlan.js'
 import { composeAddress, sanitizeAddress } from '../../../src/lib/address.js'
+import { emailConfigurado, enviarEmail, montarEmailBoasVindas, novoTokenDeConfirmacao } from '../../_lib/confirmacaoCadastro.js'
 
 function slugify(value = '') {
   const base = String(value || '')
@@ -182,7 +183,9 @@ export async function POST(req) {
     .single()
 
   if (createCondominiumError || !condominium?.id) {
-    return json({ error: createCondominiumError?.message || 'Nao foi possivel cadastrar o condominio.' }, 500)
+    // Rota publica: o erro cru do banco (nome de tabela, constraint) fica so no log do servidor.
+    console.error('register condominio:', createCondominiumError)
+    return json({ error: 'Nao foi possivel cadastrar o condominio. Tente de novo em instantes.' }, 500)
   }
 
   const { data: createdUser, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
@@ -200,7 +203,8 @@ export async function POST(req) {
     await supabaseAdmin.from('condominiums').delete().eq('id', condominium.id)
     const senhaFraca = senhaRecusadaPeloAuth(createUserError)
     if (senhaFraca) return json({ error: senhaFraca }, 400)
-    return json({ error: createUserError.message || 'Nao foi possivel criar o acesso inicial do sindico.' }, 500)
+    console.error('register sindico:', createUserError)
+    return json({ error: 'Nao foi possivel criar o acesso inicial do sindico. Tente de novo em instantes.' }, 500)
   }
 
   const userId = createdUser.user?.id
@@ -233,9 +237,29 @@ export async function POST(req) {
     return json({ error: 'Nao foi possivel concluir o perfil inicial do sindico.' }, 500)
   }
 
+  // v1.09A5: com e-mail configurado, o sindico confirma pelo e-mail e o acesso libera sozinho
+  // (api/_auth/confirmar-cadastro.js). Sem e-mail, ou se o envio falhar, fica pendente para a
+  // plataforma aprovar na mao, como antes. O cadastro nunca se perde por causa do e-mail.
+  let emailSent = false
+  if (emailConfigurado()) {
+    const { token, registro } = novoTokenDeConfirmacao()
+    const { error: tokenError } = await supabaseAdmin
+      .from('condominiums')
+      .update({ metadata: { ...metadata, confirmacao_email: registro } })
+      .eq('id', condominium.id)
+
+    if (!tokenError) {
+      emailSent = await enviarEmail({ to: syndicEmail, ...montarEmailBoasVindas({ nomeSindico: syndicName, nomeCondominio: name, token }) })
+      if (!emailSent) {
+        await supabaseAdmin.from('condominiums').update({ metadata }).eq('id', condominium.id)
+      }
+    }
+  }
+
   return json({
     success: true,
     condominiumId: condominium.id,
     status: 'pending',
+    emailSent,
   })
 }

@@ -23,12 +23,16 @@
     {
       "source": "/cadastro/:path*",
       "destination": "/"
+    },
+    {
+      "source": "/confirmar-cadastro",
+      "destination": "/"
     }
   ],
   "functions": {
     "api/admin/billing/render-pdf.js": {
       "maxDuration": 30,
-      "includeFiles": "{node_modules/@sparticuz/chromium/bin/**,public/logo.png}"
+      "includeFiles": "{node_modules/@sparticuz/chromium/bin/**,public/logo.png,api/_lib/fatura/**}"
     },
     "api/platform/[...segments].js": {
       "maxDuration": 60

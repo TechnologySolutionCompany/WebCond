@@ -75,6 +75,10 @@
 }
 
 html, body, #root { height: 100%; }
+/* PWA no celular (v1.09A5): a pagina nunca fica mais larga que a tela (nada de abrir "com zoom")
+   e o navegador nao aumenta a fonte sozinho ao girar o aparelho. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body { overflow-x: hidden; max-width: 100%; }
 body {
   background: var(--body-bg);
   color: var(--text);
@@ -909,3 +913,83 @@ tr:hover td { background: var(--bg-3); }
   .planos-cards { grid-template-columns: 1fr; }
   .condo-perfil-grid { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------------------------------------
+   Celular (v1.09A5): campo com fonte menor que 16px faz o iPhone dar zoom ao tocar para digitar,
+   e o zoom nao volta sozinho. Em tela de toque, todo campo tem 16px; o visual do resto nao muda.
+   ------------------------------------------------------------------ */
+@media (hover: none) and (pointer: coarse), (max-width: 640px) {
+  input, select, textarea, .input { font-size: 16px !important; }
+}
+/* Toque: sem o "piscar" azul do Android e sem atraso de duplo toque. */
+button, a, input, select, textarea, label { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+/* App instalado no iPhone com notch: o conteudo respeita a area segura. */
+@supports (padding: env(safe-area-inset-top)) {
+  .mobile-topbar { padding-top: max(10px, env(safe-area-inset-top)); }
+  .landing-root { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* ------------------------------------------------------------------
+   v1.09A5: Suporte (abas), Sobre, Feedback, Recebimento
+   ------------------------------------------------------------------ */
+.suporte-hub-panel { max-width: 720px; }
+.sobre-head { display: flex; align-items: center; gap: 14px; }
+.sobre-logo { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+.sobre-marca { font-size: 24px; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; }
+.sobre-web { color: var(--blue); }
+.sobre-cond { color: var(--green); }
+.sobre-tag { font-size: 13px; color: var(--text-muted); }
+.sobre-texto { margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.7; }
+.sobre-contato { display: flex; flex-wrap: wrap; gap: 8px; }
+.sobre-contato .btn { gap: 6px; }
+.sobre-redes { display: flex; gap: 8px; }
+.sobre-redes a { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.sobre-redes a:hover { color: var(--text); border-color: var(--text-dim); }
+.sobre-politicas { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12px; color: var(--text-muted); }
+.sobre-politicas a { text-decoration: underline; text-underline-offset: 3px; }
+.sobre-copy { font-size: 11px; color: var(--text-dim); }
+
+.feedback-intro { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+.feedback-intro svg { flex-shrink: 0; color: var(--accent); margin-top: 2px; }
+.feedback-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.feedback-stars { display: flex; gap: 4px; margin-top: 4px; }
+.feedback-stars button { background: none; border: none; padding: 4px; color: var(--text-dim); line-height: 0; }
+.feedback-stars button.ativa { color: #f5b301; }
+.feedback-stars button.ativa svg { fill: currentColor; }
+.feedback-ok { font-size: 13px; color: var(--green); background: var(--green-dim); border-radius: var(--r); padding: 10px 12px; }
+
+.recebimento-opcoes { display: flex; flex-direction: column; gap: 8px; }
+.recebimento-opcao { display: flex; gap: 10px; align-items: flex-start; text-align: left; padding: 12px 14px; border-radius: var(--r); border: 1px solid var(--border); background: var(--bg-card); color: var(--text); }
+.recebimento-opcao[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--green-dim); }
+.recebimento-opcao strong { display: block; font-size: 13px; }
+.recebimento-opcao span { display: block; font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.recebimento-aviso { font-size: 12px; line-height: 1.6; color: var(--text-muted); background: var(--surface-soft); border: 1px dashed var(--border); border-radius: var(--r); padding: 10px 12px; }
+.recebimento-toggle { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; }
+.recebimento-toggle input { margin-top: 4px; }
+
+.feedback-list { display: flex; flex-direction: column; gap: 10px; }
+.feedback-item { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.feedback-item.novo { border-left: 3px solid var(--blue); }
+.feedback-item-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 12px; color: var(--text-muted); }
+.feedback-item-head strong { color: var(--text); font-size: 13px; }
+.feedback-item-msg { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.feedback-item-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Confirmacao do cadastro pelo e-mail (v1.09A5) */
+.confirmar-page { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+.confirmar-card { width: 100%; max-width: 440px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 32px 24px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.confirmar-card h1 { font-size: 21px; margin: 4px 0 0; }
+.confirmar-card p { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 1.7; }
+.confirmar-logo { width: 56px; height: 56px; object-fit: contain; }
+.confirmar-marca { font-size: 24px; font-weight: 800; letter-spacing: -.03em; margin-bottom: 8px; }
+.confirmar-btn { margin-top: 8px; width: 100%; justify-content: center; padding: 12px 16px; }
+.confirmar-spin { animation: confirmar-giro .7s linear infinite; color: var(--text-muted); }
+@keyframes confirmar-giro { to { transform: rotate(360deg); } }
+
+/* E-mail de acesso obrigatorio (v2.10A1) */
+.email-obrigatorio { z-index: 200; }
+.email-obrigatorio .modal { display: flex; flex-direction: column; gap: 14px; }
+.email-obrigatorio .form-group { margin: 0; }
+.email-obrigatorio-icone { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--green-dim); color: var(--green); }
+.email-obrigatorio-texto { margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+.recebimento-opcao:disabled { opacity: .55; cursor: not-allowed; }

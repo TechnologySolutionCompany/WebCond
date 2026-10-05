@@ -1,7 +1,8 @@
 {
   "name": "webcond",
   "private": true,
-  "version": "1.9.4",
+  "version": "2.10.2",
+  "releaseDate": "2026-10-05",
   "type": "module",
   "engines": {
     "node": "24.x"
@@ -17,11 +18,14 @@
     "supabase:create-platform-admin": "node scripts/create-platform-admin.mjs",
     "smoke-test": "node scripts/smoke-test.mjs",
     "security-test": "node scripts/security-test.mjs",
-    "e2e-importacao": "node scripts/e2e-importacao.mjs"
+    "e2e-importacao": "node scripts/e2e-importacao.mjs",
+    "fatura-exemplo": "node scripts/gerar-fatura-exemplo.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^153.0.0",
     "@supabase/supabase-js": "^2.106.1",
+    "@vercel/speed-insights": "^2.0.0",
+    "handlebars": "^4.7.9",
     "lucide-react": "^1.7.0",
     "papaparse": "^5.5.3",
     "pdf-lib": "^1.17.1",

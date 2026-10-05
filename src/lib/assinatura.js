@@ -48,6 +48,9 @@ export function getAssinaturaConfig(env = ambiente()) {
     checkoutUrl,
     // So esta ligado quando ha provedor conhecido E endereco de checkout.
     ativo: conhecido && checkoutUrl.startsWith('https://'),
+    // v2.10A1: Asaas cria a assinatura pela API do WebCond (/api/admin/assinatura-checkout):
+    // o link de pagamento e de cada condominio, nao um endereco fixo.
+    pelaApi: provedor === 'asaas',
   }
 }
 
@@ -77,6 +80,9 @@ export function readAssinatura(metadata = {}) {
     status: String(raw.status || '').trim().toLowerCase(),
     proximaCobrancaEm: raw.proxima_cobranca_em || null,
     atualizadoEm: raw.atualizado_em || null,
+    // v2.10A1: plano contratado no provedor e o cliente (o condominio) do lado de la.
+    plano: String(raw.plano || '').trim().toUpperCase(),
+    clienteExternoId: String(raw.cliente_externo_id || '').trim(),
   }
 }
 
@@ -93,6 +99,8 @@ export function buildAssinaturaMetadata(metadata = {}, patch = {}) {
       assinatura_externa_id: patch.assinaturaExternaId ?? atual.assinaturaExternaId,
       status: patch.status ?? atual.status,
       proxima_cobranca_em: patch.proximaCobrancaEm ?? atual.proximaCobrancaEm,
+      plano: patch.plano ?? atual.plano,
+      cliente_externo_id: patch.clienteExternoId ?? atual.clienteExternoId,
       atualizado_em: new Date().toISOString(),
     },
   }
@@ -113,6 +121,6 @@ export function describeAssinatura(metadata = {}) {
   if (!assinatura.provedor) return 'Contratacao pelo WhatsApp da TSCBr.'
 
   const label = PROVEDORES[assinatura.provedor]?.label || assinatura.provedor
-  const situacao = assinatura.status === 'active' ? 'ativa' : (assinatura.status || 'sem situacao')
+  const situacao = { active: 'ativa', pendente: 'aguardando o primeiro pagamento', cancelada: 'cancelada' }[assinatura.status] || assinatura.status || 'sem situacao'
   return `Assinatura ${situacao} em ${label}.`
 }

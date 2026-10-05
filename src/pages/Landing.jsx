@@ -1,28 +1,32 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Building,
   CheckCircle,
+  Info,
   Eye,
   EyeOff,
   IdCard,
   Loader2,
   LockKeyhole,
+  Mail,
   Moon,
   ShieldCheck,
   Sun,
   X,
 } from 'lucide-react'
-import { useAuth } from '../hooks/useAuth'
+import { CONDOMINIUM_EMAIL_PENDING_CODE, useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { getHomePathForRole } from '../lib/auth'
-import { signInWithDocument } from '../lib/authApi'
+import { resendSignupConfirmation, signInWithDocument, signInWithEmail } from '../lib/authApi'
+import { LOGIN_MODE_INICIAL, LOGIN_MODES } from '../lib/loginEmail'
 import { formatCpf, normalizeCpf } from '../lib/cpf'
 import { formatCpfCnpj, getCpfCnpjType, normalizeCpfCnpj } from '../lib/document'
 import { registerCondominium } from '../lib/platformApi'
 import AddressFields from '../components/shared/AddressFields'
 import SiteFooter from '../components/shared/SiteFooter'
 import { MSG_PLANOS, whatsappUrl } from '../lib/contato'
+import { APP_VERSION } from '../lib/appVersion'
 import { TRIAL_PERIOD_DAYS } from '../lib/condominiumPlan'
 import { composeAddress, emptyAddress, sanitizeAddress } from '../lib/address'
 
@@ -47,6 +51,10 @@ export default function Landing() {
   const S = useMemo(() => buildStyles(PALETTES[themeMode] || PALETTES.dark), [themeMode])
   const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState(searchParams.get('cadastro') === 'condominio' ? 'condominio' : 'login')
+  // v2.10A1: o login SEMPRE abre no e-mail. CPF/CNPJ so para quem esqueceu o e-mail (nao fica
+  // lembrado); quem entra assim e ainda nao tem e-mail cadastra um logo em seguida.
+  const [loginMode, setLoginMode] = useState(LOGIN_MODE_INICIAL)
+  const [email, setEmail] = useState('')
   const [cpf, setCpf] = useState('')
   const [pass, setPass] = useState('')
   const [showPass, setShowPass] = useState(false)
@@ -54,7 +62,9 @@ export default function Landing() {
   const [error, setError] = useState('')
   const [condominiumForm, setCondominiumForm] = useState(emptyCondominiumForm)
   const [successMode, setSuccessMode] = useState('')
-  const { user, loading: authLoading, resolvedRole, authIssue, sessionNotice, signOut } = useAuth()
+  const [registerResult, setRegisterResult] = useState(null)
+  const { user, loading: authLoading, resolvedRole, authIssue, authIssueCode, sessionNotice, signOut } = useAuth()
+  const [resendState, setResendState] = useState({ sending: false, message: '' })
   const navigate = useNavigate()
   const hasBlockedSession = !authLoading && user && !resolvedRole && authIssue
 
@@ -82,6 +92,11 @@ export default function Landing() {
     setError('')
 
     try {
+      if (loginMode === LOGIN_MODES.email) {
+        await signInWithEmail(email, pass)
+        return
+      }
+
       const normalizedDocument = normalizeCpfCnpj(cpf)
       if (!getCpfCnpjType(normalizedDocument)) {
         setError('Informe um CPF ou CNPJ valido.')
@@ -94,6 +109,11 @@ export default function Landing() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const switchLoginMode = (mode) => {
+    setLoginMode(mode)
+    setError('')
   }
 
   const handleCondominiumRegister = async (event) => {
@@ -145,7 +165,8 @@ export default function Landing() {
     setError('')
 
     try {
-      await registerCondominium(payload)
+      const result = await registerCondominium(payload)
+      setRegisterResult({ ...result, email: payload.syndicEmail })
       setSuccessMode('condominio')
     } catch (submissionError) {
       setError(submissionError.message || 'Erro ao enviar solicitacao.')
@@ -162,7 +183,7 @@ export default function Landing() {
 
   if (successMode) {
     return (
-      <div style={S.root}>
+      <div style={S.root} className="landing-root">
         <div style={S.bg} />
         <div style={S.grid} />
         <div style={S.glowLeft} />
@@ -182,16 +203,28 @@ export default function Landing() {
             <img src="/logo.png" alt="WebCond" style={S.successLogo} />
             <CheckCircle size={48} color={S.brandGreen.color} style={{ margin: '0 auto 18px' }} />
             <div style={S.successTitle}>Condominio cadastrado!</div>
-            <div style={S.successText}>
-              O cadastro inicial foi recebido. O acesso do sindico fica em analise ate a aprovacao do condominio pela plataforma.
-            </div>
+            {registerResult?.emailSent ? (
+              <div style={S.successText}>
+                Enviamos uma mensagem para <strong style={S.pageText}>{registerResult.email}</strong>.
+                Abra o e-mail e toque em <strong style={S.pageText}>Confirmar cadastro</strong>: o acesso de
+                sindico(a) e liberado na hora, com {TRIAL_PERIOD_DAYS} dias de teste gratis.
+                <span style={{ display: 'block', marginTop: 10, fontSize: 12 }}>Nao chegou? Confira a caixa de spam ou de promocoes.</span>
+              </div>
+            ) : (
+              <div style={S.successText}>
+                O cadastro foi recebido. Assim que a plataforma liberar o condominio, voce entra com o e-mail e a
+                senha que acabou de cadastrar e ja comeca o teste gratis de {TRIAL_PERIOD_DAYS} dias.
+              </div>
+            )}
             <button
               className="landing-primary-button"
               style={{ ...S.btnBase, ...S.primaryBtn, width: '100%' }}
               onClick={() => {
                 setSuccessMode('')
+                setRegisterResult(null)
                 setTab('login')
                 setCondominiumForm(emptyCondominiumForm)
+                if (searchParams.get('cadastro')) setSearchParams({}, { replace: true })
               }}
             >
               Voltar ao login
@@ -203,35 +236,36 @@ export default function Landing() {
   }
 
   return (
-    <div style={S.root}>
+    <div style={S.root} className="landing-root">
       <div style={S.bg} />
       <div style={S.grid} />
       <div style={S.glowLeft} />
       <div style={S.glowRight} />
-      <button
-        type="button"
-        style={S.themeToggle}
-        onClick={() => setTheme(themeMode === 'light' ? 'dark' : 'light')}
-        title={themeMode === 'light' ? 'Usar tema escuro' : 'Usar tema claro'}
-        aria-label={themeMode === 'light' ? 'Usar tema escuro' : 'Usar tema claro'}
-      >
-        {themeMode === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-      </button>
+      {/* Com o cadastro aberto o botao de tema sairia por cima do "fechar" do formulario. */}
+      {tab !== 'condominio' && (
+        <button
+          type="button"
+          style={S.themeToggle}
+          onClick={() => setTheme(themeMode === 'light' ? 'dark' : 'light')}
+          title={themeMode === 'light' ? 'Usar tema escuro' : 'Usar tema claro'}
+          aria-label={themeMode === 'light' ? 'Usar tema escuro' : 'Usar tema claro'}
+        >
+          {themeMode === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+        </button>
+      )}
 
       <div style={S.center}>
         <style>{RESPONSIVE_STYLES}</style>
 
+        {/* Tela inicial enxuta (v1.09A5): no celular cabe inteira, sem rolar. O que era do rodape
+            (contato, redes, politicas) aparece na tela de cadastro e em Suporte > Sobre. */}
         <div style={S.brandArea}>
-          <img src="/logo.png" alt="WebCond" style={S.logoImage} />
-          <div style={S.brandName}>
+          <img src="/logo.png" alt="" aria-hidden="true" style={S.logoImage} />
+          <h1 style={S.brandName}>
             <span style={S.brandBlue}>Web</span>
             <span style={S.brandGreen}>Cond</span>
-          </div>
-          <div style={S.brandSubtitle}>Gestao condominial simples e completa</div>
-        </div>
-
-        <div style={S.heroText}>
-          <h1 style={S.headline}>Acesse sua area do condominio</h1>
+          </h1>
+          <div style={S.brandSubtitle}>Entre na area do seu condominio</div>
         </div>
 
         <div style={S.card} className="landing-card">
@@ -244,9 +278,35 @@ export default function Landing() {
               <div style={{ color: S.pageText.color, fontSize: 14, lineHeight: 1.7 }}>
                 Seu acesso foi autenticado, mas a plataforma ainda nao liberou o ambiente para continuar.
               </div>
-              <div style={{ color: S.pageMuted.color, fontSize: 13, lineHeight: 1.7 }}>
-                Use o aviso acima como referencia e, se necessario, entre em contato com a administracao ou com a plataforma para regularizar o acesso.
-              </div>
+              {authIssueCode === CONDOMINIUM_EMAIL_PENDING_CODE ? (
+                <>
+                  <div style={{ color: S.pageMuted.color, fontSize: 13, lineHeight: 1.7 }}>
+                    Nao achou o e-mail? Confira a caixa de spam ou de promocoes, ou peca um novo link.
+                  </div>
+                  {resendState.message && <div style={{ ...S.note, margin: 0 }}>{resendState.message}</div>}
+                  <button
+                    type="button"
+                    className="landing-primary-button"
+                    style={{ ...S.btnBase, ...S.primaryBtn }}
+                    disabled={resendState.sending}
+                    onClick={async () => {
+                      setResendState({ sending: true, message: '' })
+                      try {
+                        const result = await resendSignupConfirmation()
+                        setResendState({ sending: false, message: `Novo e-mail enviado para ${result.email}.` })
+                      } catch (resendError) {
+                        setResendState({ sending: false, message: resendError.message })
+                      }
+                    }}
+                  >
+                    <Mail size={15} /> {resendState.sending ? 'Enviando...' : 'Reenviar e-mail de confirmacao'}
+                  </button>
+                </>
+              ) : (
+                <div style={{ color: S.pageMuted.color, fontSize: 13, lineHeight: 1.7 }}>
+                  Use o aviso acima como referencia e, se necessario, entre em contato com a administracao ou com a plataforma para regularizar o acesso.
+                </div>
+              )}
               <button
                 type="button"
                 className="landing-secondary-button"
@@ -263,22 +323,53 @@ export default function Landing() {
 
           {!hasBlockedSession && (
             <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column' }}>
-              <div className="form-group">
-                <label className="form-label" style={S.label}>CPF ou CNPJ</label>
-                <div style={S.inputShell} className="landing-input-shell">
-                  <IdCard size={17} color={S.pageMuted.color} />
-                  <input
-                    className="landing-input"
-                    style={S.input}
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                    value={formatCpfCnpj(cpf)}
-                    onChange={(event) => setCpf(normalizeCpfCnpj(event.target.value))}
-                    required
-                  />
+              {loginMode === LOGIN_MODES.email ? (
+                <div className="form-group">
+                  <label className="form-label" style={S.label} htmlFor="login-email">E-mail</label>
+                  <div style={S.inputShell} className="landing-input-shell">
+                    <Mail size={17} color={S.pageMuted.color} />
+                    <input
+                      id="login-email"
+                      className="landing-input"
+                      style={S.input}
+                      type="email"
+                      inputMode="email"
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      placeholder="voce@exemplo.com"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      required
+                    />
+                  </div>
+                  <button type="button" style={S.switchLink} onClick={() => switchLoginMode(LOGIN_MODES.documento)}>
+                    Esqueci meu e-mail · entrar com CPF ou CNPJ
+                  </button>
                 </div>
-              </div>
+              ) : (
+                <div className="form-group">
+                  <label className="form-label" style={S.label} htmlFor="login-documento">CPF ou CNPJ</label>
+                  <div style={S.inputShell} className="landing-input-shell">
+                    <IdCard size={17} color={S.pageMuted.color} />
+                    <input
+                      id="login-documento"
+                      className="landing-input"
+                      style={S.input}
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="username"
+                      placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                      value={formatCpfCnpj(cpf)}
+                      onChange={(event) => setCpf(normalizeCpfCnpj(event.target.value))}
+                      required
+                    />
+                  </div>
+                  <button type="button" style={S.switchLink} onClick={() => switchLoginMode(LOGIN_MODES.email)}>
+                    Entrar com e-mail
+                  </button>
+                </div>
+              )}
 
               <div className="form-group" style={{ marginTop: 14 }}>
                 <label className="form-label" style={S.label}>Senha</label>
@@ -288,6 +379,7 @@ export default function Landing() {
                     className="landing-input"
                     style={{ ...S.input, paddingRight: 44 }}
                     type={showPass ? 'text' : 'password'}
+                    autoComplete="current-password"
                     placeholder="Digite sua senha"
                     value={pass}
                     onChange={(event) => setPass(event.target.value)}
@@ -325,12 +417,12 @@ export default function Landing() {
         </div>
 
         {!hasBlockedSession && tab === 'condominio' && (
-          <div style={S.modalOverlay} onClick={(event) => event.target === event.currentTarget && !loading && closeCondominiumModal()}>
-            <div style={S.modalCard} className="landing-card" role="dialog" aria-modal="true" aria-labelledby="condo-register-title">
+          <div style={S.modalOverlay} className="landing-modal-overlay" onClick={(event) => event.target === event.currentTarget && !loading && closeCondominiumModal()}>
+            <div style={S.modalCard} className="landing-modal-card" role="dialog" aria-modal="true" aria-labelledby="condo-register-title">
               <div style={S.modalHeader}>
                 <div>
                   <div id="condo-register-title" style={S.modalTitle}>Cadastre seu condominio</div>
-                  <div style={S.modalSub}>Preencha os dados e envie a solicitacao. A administracao da WebCond analisa e libera o acesso.</div>
+                  <div style={S.modalSub}>Preencha os dados e confirme pelo e-mail do sindico(a): o acesso e liberado na hora, com {TRIAL_PERIOD_DAYS} dias de teste gratis.</div>
                 </div>
                 <button type="button" onClick={closeCondominiumModal} disabled={loading} style={S.modalClose} aria-label="Fechar">
                   <X size={18} />
@@ -454,6 +546,10 @@ export default function Landing() {
                     className="input"
                     style={S.standardInput}
                     type="email"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    autoComplete="email"
                     placeholder="sindico@condominio.com"
                     value={condominiumForm.syndicEmail}
                     onChange={(event) => setCondominiumForm((current) => ({ ...current, syndicEmail: event.target.value }))}
@@ -501,7 +597,7 @@ export default function Landing() {
                 <div className="planos-vitrine">
                   <div className="planos-vitrine-title">Planos</div>
                   <p className="planos-vitrine-sub">
-                    Assim que a plataforma autorizar seu cadastro, voce ja tem {TRIAL_PERIOD_DAYS} dias gratis com
+                    Assim que voce confirmar o e-mail, o condominio entra em teste: {TRIAL_PERIOD_DAYS} dias gratis com
                     os recursos do plano ONE. Nada e cobrado agora: depois, se quiser, escolhe o plano dentro do
                     sistema em <strong>Meu perfil &gt; Meu plano</strong>.
                   </p>
@@ -517,7 +613,9 @@ export default function Landing() {
               </div>
 
               <p style={S.note}>
-                O ambiente do condominio sera criado em modo pendente e liberado somente depois da aprovacao do administrador da plataforma.
+                <Info size={13} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+                Voce recebe um e-mail de boas-vindas com o botao <strong>Confirmar cadastro</strong>. Confirmado, voce
+                entra com o e-mail e a senha acima e cadastra as unidades, os moradores e as cobrancas.
               </p>
 
               <button type="submit" disabled={loading} className="landing-secondary-button" style={{ ...S.btnBase, ...S.secondaryBtn, marginTop: 4 }}>
@@ -527,12 +625,16 @@ export default function Landing() {
                   </>
                 ) : (
                   <>
-                    <Building size={15} /> Solicitar novo condominio
+                    <Building size={15} /> Cadastrar condominio
                   </>
                 )}
               </button>
               <style>{'@keyframes spin{to{transform:rotate(360deg)}}'}</style>
             </form>
+            {/* Informacoes do rodape (contato, redes, politicas): ficam aqui, no cadastro, e nao na tela inicial. */}
+            <div className="landing-modal-footer">
+              <SiteFooter />
+            </div>
             </div>
           </div>
         )}
@@ -540,8 +642,10 @@ export default function Landing() {
       </div>
 
       {tab !== 'condominio' && (
-        <div style={S.footerArea}>
-          <SiteFooter />
+        <div style={S.miniFooter}>
+          <span>© TSCBr · {APP_VERSION}</span>
+          <Link to="/politicas/privacidade" style={S.miniFooterLink}>Privacidade</Link>
+          <Link to="/politicas/seguranca" style={S.miniFooterLink}>Seguranca</Link>
         </div>
       )}
     </div>
@@ -570,15 +674,24 @@ const RESPONSIVE_STYLES = `
     color: #6B7280;
   }
 
+  .landing-modal-footer { margin: 24px -28px -28px; border-top: 1px solid rgba(127,127,127,0.18); overflow: hidden; border-radius: 0 0 20px 20px; }
+  .landing-modal-footer .site-footer { margin: 0; }
+
   @media (max-width: 860px) {
     .landing-card {
-      width: min(92vw, 720px) !important;
-      padding: 24px !important;
+      padding: 22px !important;
     }
 
     .landing-condo-grid {
       grid-template-columns: 1fr !important;
     }
+  }
+
+  /* Celular: o cadastro vira uma tela inteira, sem bordas sobrando dos lados. */
+  @media (max-width: 640px) {
+    .landing-modal-overlay { padding: 0 !important; }
+    .landing-modal-card { width: 100% !important; min-height: 100dvh; border-radius: 0 !important; padding: 20px 16px 0 !important; border: none !important; }
+    .landing-modal-footer { margin: 24px -16px 0; border-radius: 0; }
   }
 `
 
@@ -633,7 +746,7 @@ const PALETTES = {
 function buildStyles(p) {
   return {
   root: {
-    minHeight: '100vh',
+    minHeight: '100dvh',
     display: 'flex',
     flexDirection: 'column',
     background: p.bg,
@@ -680,19 +793,30 @@ function buildStyles(p) {
     position: 'relative',
     zIndex: 1,
     width: '100%',
-    maxWidth: 860,
+    maxWidth: 460,
     margin: '0 auto',
-    padding: '40px 20px 48px',
+    padding: '56px 16px 24px',
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  footerArea: {
+  miniFooter: {
     position: 'relative',
     zIndex: 1,
-    marginTop: 'auto',
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: '4px 14px',
+    padding: '12px 16px 18px',
+    fontSize: 11,
+    color: p.muted,
+  },
+  miniFooterLink: {
+    color: p.muted,
+    textDecoration: 'underline',
+    textUnderlineOffset: 3,
   },
   brandBlue: { color: p.brandBlue },
   brandGreen: { color: p.accent },
@@ -719,11 +843,11 @@ function buildStyles(p) {
     flexDirection: 'column',
     alignItems: 'center',
     textAlign: 'center',
-    marginBottom: 22,
+    marginBottom: 20,
   },
   logoImage: {
-    width: 88,
-    height: 88,
+    width: 64,
+    height: 64,
     objectFit: 'contain',
     marginBottom: 14,
     filter: p.logoShadow,
@@ -731,10 +855,11 @@ function buildStyles(p) {
   brandName: {
     display: 'flex',
     gap: 2,
-    fontSize: 34,
+    fontSize: 30,
     lineHeight: 1,
     fontWeight: 800,
     letterSpacing: '-0.04em',
+    margin: 0,
   },
   brandSubtitle: {
     marginTop: 10,
@@ -742,26 +867,13 @@ function buildStyles(p) {
     fontSize: 14,
     lineHeight: 1.6,
   },
-  heroText: {
-    textAlign: 'center',
-    marginBottom: 26,
-    maxWidth: 640,
-  },
-  headline: {
-    fontSize: 34,
-    lineHeight: 1.1,
-    fontWeight: 800,
-    color: p.text,
-    margin: 0,
-    letterSpacing: '-0.04em',
-  },
   card: {
     background: p.surface,
     border: '1px solid rgba(67,160,71,0.22)',
     borderRadius: 16,
-    padding: 30,
+    padding: 24,
     width: '100%',
-    maxWidth: 720,
+    maxWidth: 420,
     boxShadow: p.shadow,
     backdropFilter: 'blur(10px)',
   },
@@ -797,7 +909,8 @@ function buildStyles(p) {
     border: 'none',
     outline: 'none',
     color: p.text,
-    fontSize: 14,
+    fontSize: 16,
+    minWidth: 0,
     minHeight: 50,
   },
   standardInput: {
@@ -890,8 +1003,23 @@ function buildStyles(p) {
     cursor: 'pointer',
     flexShrink: 0,
   },
+  // Troca entre e-mail e CPF/CNPJ, logo abaixo do campo: discreto, mas facil de achar.
+  switchLink: {
+    marginTop: 8,
+    padding: 0,
+    background: 'transparent',
+    border: 'none',
+    color: p.muted,
+    fontSize: 12,
+    cursor: 'pointer',
+    alignSelf: 'flex-end',
+    textAlign: 'right',
+    textDecoration: 'underline',
+    textUnderlineOffset: 3,
+  },
   condoLink: {
-    marginTop: 14,
+    marginTop: 16,
+    padding: '6px 4px',
     background: 'transparent',
     border: 'none',
     color: p.muted,

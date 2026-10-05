@@ -8,9 +8,11 @@ import NotificationSettings from '../shared/NotificationSettings'
 import { withTenantFields } from '../../lib/tenant'
 import { buildProfileUpdateTitle } from '../../lib/residentRequests'
 import { compareUnitNumbers, describeResidentAccess, getUnitStatusMeta } from '../../lib/units'
+import { changeMyLoginEmail, changeMyPassword } from '../../lib/tenantApi'
+import { loginEmailForDisplay } from '../../lib/loginEmail'
 
 export default function MoradorPerfil() {
-  const { profile, condominiumId } = useAuth()
+  const { profile, condominiumId, refreshProfile } = useAuth()
   const access = describeResidentAccess(profile)
   const { toast } = useToast()
   const [showRequestModal, setShowRequestModal] = useState(false)
@@ -19,10 +21,13 @@ export default function MoradorPerfil() {
   const [saving, setSaving] = useState(false)
   const [units, setUnits] = useState([])
   const [passwordForm, setPasswordForm] = useState({
+    current: '',
     password: '',
     confirmPassword: '',
     show: false,
   })
+  const [emailForm, setEmailForm] = useState({ open: false, email: '', senhaAtual: '' })
+  const loginEmail = loginEmailForDisplay(profile?.email)
 
   const fetchRequests = useCallback(async () => {
     const { data } = await supabase
@@ -101,21 +106,45 @@ export default function MoradorPerfil() {
       return
     }
 
-    setSaving(true)
-    const { error } = await supabase.auth.updateUser({ password })
-    setSaving(false)
-
-    if (error) {
-      toast(error.message || 'Nao foi possivel alterar sua senha.', 'error')
+    if (!passwordForm.current) {
+      toast('Informe a sua senha atual.', 'error')
       return
     }
 
-    setPasswordForm({
-      password: '',
-      confirmPassword: '',
-      show: false,
-    })
-    toast('Senha atualizada com sucesso.', 'success')
+    setSaving(true)
+    try {
+      const result = await changeMyPassword({ senhaAtual: passwordForm.current, novaSenha: password })
+      // A troca encerra todas as sessoes; esta continua com a sessao nova que o servidor devolveu.
+      if (result.session) await supabase.auth.setSession(result.session)
+      setPasswordForm({ current: '', password: '', confirmPassword: '', show: false })
+      toast(result.session
+        ? 'Senha alterada. Outros aparelhos conectados foram desconectados.'
+        : 'Senha alterada. Entre novamente com a nova senha.', 'success')
+    } catch (error) {
+      toast(error.message || 'Nao foi possivel alterar sua senha.', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleEmailSave = async (event) => {
+    event.preventDefault()
+    if (!emailForm.email.trim() || !emailForm.senhaAtual) {
+      toast('Informe o e-mail e a sua senha atual.', 'error')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const result = await changeMyLoginEmail({ email: emailForm.email, senhaAtual: emailForm.senhaAtual })
+      await refreshProfile()
+      setEmailForm({ open: false, email: '', senhaAtual: '' })
+      toast(result.emailAlterado ? 'E-mail de acesso salvo. Voce ja pode entrar com ele.' : 'Este ja e o seu e-mail de acesso.', 'success')
+    } catch (error) {
+      toast(error.message || 'Nao foi possivel salvar o e-mail de acesso.', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (!profile) return null
@@ -161,7 +190,6 @@ export default function MoradorPerfil() {
             <ProfileField icon={User} label="Nome completo" value={profile.nome} />
             <ProfileField icon={CreditCard} label="CPF" value={<SensitiveValue value={profile.cpf} type="cpf" />} />
             <ProfileField icon={Phone} label="WhatsApp" value={<SensitiveValue value={profile.whatsapp} type="phone" />} />
-            <ProfileField icon={Mail} label="E-mail" value={profile.email && !profile.email.endsWith('@login.webcond.local') ? <SensitiveValue value={profile.email} type="email" /> : '-'} />
           </div>
         </div>
 
@@ -191,7 +219,76 @@ export default function MoradorPerfil() {
         })}
 
         <div className="card" style={{ marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Acesso ao WebCond</div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
+            {loginEmail
+              ? 'Voce entra com este e-mail ou com o seu CPF, sempre com a mesma senha.'
+              : 'Hoje voce entra com o seu CPF. Cadastre um e-mail para entrar sem precisar digitar o CPF.'}
+          </div>
+          <div className="profile-fields">
+            <ProfileField icon={Mail} label="E-mail de acesso" value={loginEmail ? <SensitiveValue value={loginEmail} type="email" /> : 'Nenhum cadastrado'} />
+          </div>
+
+          {emailForm.open ? (
+            <form onSubmit={handleEmailSave} style={{ marginTop: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="acesso-email">{loginEmail ? 'Novo e-mail de acesso' : 'E-mail de acesso'}</label>
+                  <input
+                    id="acesso-email"
+                    className="input"
+                    type="email"
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    value={emailForm.email}
+                    onChange={(event) => setEmailForm((current) => ({ ...current, email: event.target.value }))}
+                    placeholder="voce@exemplo.com"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="acesso-senha">Sua senha atual</label>
+                  <input
+                    id="acesso-senha"
+                    className="input"
+                    type="password"
+                    autoComplete="current-password"
+                    value={emailForm.senhaAtual}
+                    onChange={(event) => setEmailForm((current) => ({ ...current, senhaAtual: event.target.value }))}
+                    placeholder="Confirma que e voce"
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setEmailForm({ open: false, email: '', senhaAtual: '' })} disabled={saving}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  <Mail size={14} /> {saving ? 'Salvando...' : 'Salvar e-mail'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setEmailForm({ open: true, email: loginEmail, senhaAtual: '' })}>
+                <Mail size={14} /> {loginEmail ? 'Alterar e-mail de acesso' : 'Cadastrar e-mail de acesso'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="card" style={{ marginBottom: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 18 }}>Senha de acesso</div>
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label className="form-label" htmlFor="senha-atual">Senha atual</label>
+            <input
+              id="senha-atual"
+              className="input"
+              type={passwordForm.show ? 'text' : 'password'}
+              autoComplete="current-password"
+              value={passwordForm.current}
+              onChange={(event) => setPasswordForm((current) => ({ ...current, current: event.target.value }))}
+              placeholder="Digite sua senha atual"
+            />
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="form-group">
               <label className="form-label">Nova senha</label>

@@ -1,5 +1,10 @@
 # Plano Pro e cobrança da assinatura — espaço pronto para a v1.10
 
+> **Atualização v2.10A1 (out/2026):** o Pro começou. `pixAutomatico` e `baixaAutomatica` estão
+> entregues (Pix BR Code e InfinitePay), a assinatura é cobrada pelo **Asaas** (seções 2.4.1 e 2.4.3
+> e 2.4.4 feitas; a tela da plataforma, 2.4.2, fica para o próximo ajuste). Validação em
+> `docs/checklist-v2.10A1.md`. O resto deste documento é o planejamento original.
+
 A v1.09 fecha aqui. A v1.10 é a versão do **Plano Pro**: geração automática do Pix no boleto,
 aviso de cobrança pelo WhatsApp e a assinatura sendo cobrada dentro do sistema.
 
@@ -38,8 +43,8 @@ hoje é só `planHasResource(nome, 'logoNoBoleto')`.
 | `notificacaoApp` | ✔ | ✔ | ✔ | ✔ |
 | `notificacaoEmail` | ✔ | ✔ | ✔ | ✔ |
 | `notificacaoWhatsapp` | | ✔ | ✔ | falta ligar a conta da Meta |
-| `pixAutomatico` | | ✔ | ✔ | **v1.10** |
-| `baixaAutomatica` | | ✔ | ✔ | **v1.10** |
+| `pixAutomatico` | | ✔ | ✔ | ✔ v2.10A1 |
+| `baixaAutomatica` | | ✔ | ✔ | ✔ v2.10A1 (InfinitePay) |
 | `logoNoBoleto` | | | ✔ | ✔ |
 | `boletoPersonalizado` | | | ✔ | v1.10+ |
 | `faturaAutomaticaWhatsapp` | | | ✔ | v1.10+ |

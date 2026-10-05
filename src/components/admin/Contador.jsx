@@ -339,8 +339,8 @@ export default function Contador() {
                 <input className="input" inputMode="tel" value={accountantForm.whatsapp} onChange={(event) => setAccountantForm({ ...accountantForm, whatsapp: event.target.value })} />
               </div>
               <div className="form-group">
-                <label className="form-label">E-mail (opcional)</label>
-                <input className="input" type="email" value={accountantForm.email} onChange={(event) => setAccountantForm({ ...accountantForm, email: event.target.value })} />
+                <label className="form-label">E-mail de acesso *</label>
+                <input className="input" type="email" inputMode="email" autoCapitalize="none" spellCheck={false} required value={accountantForm.email} onChange={(event) => setAccountantForm({ ...accountantForm, email: event.target.value })} />
               </div>
               <div className="form-group">
                 <label className="form-label">Senha de acesso *</label>

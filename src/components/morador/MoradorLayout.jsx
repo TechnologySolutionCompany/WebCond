@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { LayoutDashboard, DollarSign, Bell, FileText, User, TriangleAlert, Menu } from 'lucide-react'
+import { LayoutDashboard, DollarSign, Bell, FileText, User, TriangleAlert, Menu, LifeBuoy } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { painelLogoUrl } from '../../lib/condominiumLogo'
@@ -8,12 +8,22 @@ import { isResidentRole } from '../../lib/auth'
 import Sidebar from '../shared/Sidebar'
 import { useSidebarMenu } from '../../hooks/useSidebarMenu'
 import { useDeepLinkPage } from '../../hooks/useDeepLinkPage'
+import { initialPage, saveLastView } from '../../lib/lastView'
 import PlanAttentionBanner from '../shared/PlanAttentionBanner'
+import EmailObrigatorio from '../shared/EmailObrigatorio'
 import MoradorDashboard from './Dashboard'
 import MoradorCobrancas from './Cobrancas'
 import { MoradorAvisos, MoradorDocumentos } from './AvisosDocumentos'
 import MoradorPerfil from './Perfil'
 import MoradorOcorrencias from './Ocorrencias'
+import SuporteHub from '../shared/SuporteHub'
+import { sendTenantFeedback } from '../../lib/tenantApi'
+
+// Suporte do morador (v1.09A5): Feedback para a plataforma e Sobre. Assunto do condominio
+// continua indo para o sindico, pelas ocorrencias.
+function MoradorSuporte(props) {
+  return <SuporteHub sendFeedback={sendTenantFeedback} {...props} />
+}
 
 const nav = [
   {
@@ -30,6 +40,7 @@ const nav = [
     label: 'Conta',
     items: [
       { key: 'perfil', label: 'Meu perfil', icon: User },
+      { key: 'suporte', label: 'Suporte', icon: LifeBuoy },
     ],
   },
 ]
@@ -41,14 +52,16 @@ const pages = {
   documentos: MoradorDocumentos,
   ocorrencias: MoradorOcorrencias,
   perfil: MoradorPerfil,
+  suporte: MoradorSuporte,
 }
 
 export default function MoradorLayout() {
   const { profile } = useAuth()
   const { settings: condominiumSettings } = useCondominiumSettings(profile?.condominium_id || profile?.condominio_id || null)
-  const [activePage, setActivePage] = useState('dashboard')
+  // Reabre na ultima tela aberta (v1.09A5): voltar do boleto no navegador nao leva mais ao Inicio.
+  const [activePage, setActivePage] = useState(() => initialPage('morador', profile?.id, Object.keys(pages), 'dashboard'))
   const { mobileOpen, toggleMenu, closeMobile, layoutClassName } = useSidebarMenu()
-  const [mountedPages, setMountedPages] = useState(['dashboard'])
+  const [mountedPages, setMountedPages] = useState(() => [activePage])
   const mainContentRef = useRef(null)
   const scrollPositionsRef = useRef({})
   const currentLabel = nav.flatMap((section) => section.items).find((item) => item.key === activePage)?.label || 'Inicio'
@@ -79,9 +92,11 @@ export default function MoradorLayout() {
   }
 
   useDeepLinkPage(Object.keys(pages), handleNavigate)
+  useEffect(() => { saveLastView('morador', profile?.id, activePage) }, [activePage, profile?.id])
 
   return (
     <div className={`app-layout theme-morador ${layoutClassName}`}>
+      <EmailObrigatorio />
       <Sidebar items={nav} activeKey={activePage} onNav={handleNavigate} theme="morador" mobileOpen={mobileOpen} onClose={closeMobile} />
       <main className="main-content" ref={mainContentRef}>
         <div className="mobile-topbar">

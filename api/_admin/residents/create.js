@@ -11,6 +11,7 @@ import {
 } from '../../_lib/supabaseAdmin.js'
 import { checkUnitAvailability, loadUnitUsage } from '../../_lib/unitLimit.js'
 import { recusaDeSenha } from '../../_lib/senhaVazada.js'
+import { isEmailValid } from '../../_lib/personValidation.js'
 
 function buildInternalResidentEmail(cpf, condominiumId) {
   return `morador-${cpf}-${condominiumId}@login.webcond.local`
@@ -80,6 +81,14 @@ export async function POST(req) {
 
   if (cpf.length !== 11) {
     return json({ error: 'Informe um CPF valido com 11 digitos.' }, 400)
+  }
+
+  // E-mail e o jeito principal de entrar (v1.09A5): cadastro novo nao sai sem ele.
+  if (!String(body.email || '').trim()) {
+    return json({ error: 'Informe o e-mail de acesso: e por ele que a pessoa entra no WebCond.' }, 400)
+  }
+  if (!isEmailValid(email)) {
+    return json({ error: 'Informe um e-mail valido.' }, 400)
   }
 
   if (password.length < 6) {

@@ -23,6 +23,8 @@ const AuthContext = createContext(null)
 const PROFILE_NOT_FOUND_CODE = 'PROFILE_NOT_FOUND'
 const CONDOMINIUM_NOT_LINKED_CODE = 'CONDOMINIUM_NOT_LINKED'
 const CONDOMINIUM_PENDING_CODE = 'CONDOMINIUM_PENDING'
+// v1.09A5: cadastro feito pela tela inicial, esperando o sindico confirmar pelo e-mail.
+export const CONDOMINIUM_EMAIL_PENDING_CODE = 'CONDOMINIUM_EMAIL_PENDING'
 const CONDOMINIUM_BLOCKED_CODE = 'CONDOMINIUM_BLOCKED'
 const CONDOMINIUM_REJECTED_CODE = 'CONDOMINIUM_REJECTED'
 const CONDOMINIUM_TRIAL_EXPIRED_CODE = 'CONDOMINIUM_TRIAL_EXPIRED'
@@ -40,6 +42,10 @@ function getAuthIssueMessage(error) {
 
   if (error?.code === CONDOMINIUM_NOT_LINKED_CODE) {
     return 'Sua conta esta autenticada, mas ainda nao possui um condominio vinculado corretamente.'
+  }
+
+  if (error?.code === CONDOMINIUM_EMAIL_PENDING_CODE) {
+    return 'Falta confirmar o cadastro: abra o e-mail de boas-vindas do WebCond e toque em "Confirmar cadastro". O acesso e liberado na hora.'
   }
 
   if (error?.code === CONDOMINIUM_PENDING_CODE) {
@@ -72,6 +78,7 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [authIssue, setAuthIssue] = useState('')
+  const [authIssueCode, setAuthIssueCode] = useState('')
   const [condominiumStatus, setCondominiumStatus] = useState(null)
   const [sessionNotice, setSessionNotice] = useState('')
   const userRef = useRef(null)
@@ -118,6 +125,10 @@ export const AuthProvider = ({ children }) => {
     const accessState = getCondominiumAccessState(condominium)
 
     if (accessState.effectiveStatus === 'pending') {
+      const confirmacao = condominium.metadata?.confirmacao_email
+      if (confirmacao?.enviado_em && !confirmacao?.confirmado_em) {
+        throw createAuthError('Condominio aguardando a confirmacao do e-mail.', CONDOMINIUM_EMAIL_PENDING_CODE)
+      }
       throw createAuthError('Condominio aguardando aprovacao.', CONDOMINIUM_PENDING_CODE)
     }
 
@@ -169,6 +180,7 @@ export const AuthProvider = ({ children }) => {
       if (!nextUser) {
         setProfile(null)
         setAuthIssue('')
+        setAuthIssueCode('')
         setCondominiumStatus(null)
         setLoading(false)
         return
@@ -180,12 +192,14 @@ export const AuthProvider = ({ children }) => {
         setProfile(nextProfile)
         setCondominiumStatus(nextProfile?.condominium_status || null)
         setAuthIssue('')
+        setAuthIssueCode('')
       } catch (error) {
         if (!isActive) return
         console.error('Erro ao sincronizar perfil:', error)
         setProfile(null)
         setCondominiumStatus(null)
         setAuthIssue(getAuthIssueMessage(error))
+        setAuthIssueCode(error?.code || '')
       } finally {
         if (isActive) setLoading(false)
       }
@@ -214,6 +228,7 @@ export const AuthProvider = ({ children }) => {
         setProfile(null)
         setCondominiumStatus(null)
         setAuthIssue('Nao foi possivel recuperar sua sessao. Entre novamente.')
+        setAuthIssueCode('')
         setLoading(false)
       }
     }
@@ -297,6 +312,7 @@ export const AuthProvider = ({ children }) => {
     setProfile(null)
     setCondominiumStatus(null)
     setAuthIssue('')
+    setAuthIssueCode('')
   }, [isSyndic])
 
   const refreshProfile = useCallback(async () => {
@@ -307,12 +323,14 @@ export const AuthProvider = ({ children }) => {
       setProfile(nextProfile)
       setCondominiumStatus(nextProfile?.condominium_status || null)
       setAuthIssue('')
+      setAuthIssueCode('')
       return nextProfile
     } catch (error) {
       console.error('Erro ao atualizar perfil:', error)
       setProfile(null)
       setCondominiumStatus(null)
       setAuthIssue(getAuthIssueMessage(error))
+      setAuthIssueCode(error?.code || '')
       return null
     }
   }, [user])
@@ -325,6 +343,7 @@ export const AuthProvider = ({ children }) => {
     profile,
     loading,
     authIssue,
+    authIssueCode,
     sessionNotice,
     condominiumId,
     condominiumStatus,
@@ -333,7 +352,7 @@ export const AuthProvider = ({ children }) => {
     signIn,
     signOut,
     refreshProfile,
-  }), [user, profile, loading, authIssue, sessionNotice, condominiumId, condominiumStatus, resolvedRole, refreshProfile, signOut])
+  }), [user, profile, loading, authIssue, authIssueCode, sessionNotice, condominiumId, condominiumStatus, resolvedRole, refreshProfile, signOut])
 
   return (
     <AuthContext.Provider value={value}>

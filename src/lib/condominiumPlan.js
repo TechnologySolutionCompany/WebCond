@@ -1,4 +1,4 @@
-// Planos da plataforma. ONE e Parceria disponiveis; PRO e MAX aparecem como "Em desenvolvimento".
+// Planos da plataforma. ONE, PRO (desde a v2.10A1) e Parceria disponiveis; MAX aparece como "Em desenvolvimento".
 // Parceria: condominio parceiro, todas as funcionalidades, gratuito e sem vencimento.
 // `soon: true` em um item marca o que ainda esta por construir: a vitrine mostra "em breve"
 // em vez de prometer como pronto.
@@ -36,7 +36,7 @@ export const PLANS = {
     priceCents: 6590,
     priceLabel: 'R$ 65,90',
     documentLimit: 20,
-    available: false,
+    available: true,
     publicPlan: true,
     customLogo: false,
     summary: 'Tudo do ONE, com menos trabalho manual na hora de cobrar.',
@@ -44,10 +44,10 @@ export const PLANS = {
     features: [
       { text: 'Tudo o que o plano ONE ja faz' },
       { text: 'Ate 20 documentos por mes' },
-      { text: 'Chave Pix e QR Code gerados automaticamente no boleto, sem enviar imagem', soon: true },
+      { text: 'Chave Pix e QR Code gerados automaticamente na fatura, ja com o valor de cada unidade' },
+      { text: 'Vinculo com o banco do condominio (InfinitePay): o morador paga pelo app e o dinheiro cai direto na conta' },
+      { text: 'Baixa automatica do que ja foi pago, com o comprovante do banco' },
       { text: 'Aviso de cobranca tambem pelo WhatsApp do morador', soon: true },
-      { text: 'Vinculo com o banco do condominio: o pagamento cai direto na conta', soon: true },
-      { text: 'Baixa automatica do que ja foi pago', soon: true },
     ],
   },
   MAX: {
@@ -125,12 +125,15 @@ export const PLAN_RESOURCES = {
 
 // O que o WebCond ja faz de verdade. O resto aparece como "em breve" e nao liga nada.
 // O WhatsApp entra aqui quando a conta oficial da Meta estiver ligada (docs/notificacoes.md).
+// v2.10A1 (Plano Pro): Pix automatico na fatura e baixa automatica pelo banco.
 export const RECURSOS_ENTREGUES = new Set([
   'documentos',
   'boletoProprio',
   'notificacaoApp',
   'notificacaoEmail',
   'logoNoBoleto',
+  'pixAutomatico',
+  'baixaAutomatica',
 ])
 
 // O plano da direito ao recurso E o recurso existe. Use sempre esta funcao nas telas.
@@ -282,4 +285,20 @@ export function getCondominiumAccessState(condominium = {}, now = new Date()) {
     trialEndsAt: trialEndDate ? trialEndDate.toISOString() : null,
     subscriptionActivatedAt: metadata.subscriptionActivatedAt ? metadata.subscriptionActivatedAt.toISOString() : null,
   }
+}
+
+// Recurso liberado PARA ESTE CONDOMINIO agora (v2.10A1). Teste gratis e plano nao pago valem
+// como ONE: o plano so libera o que promete enquanto a assinatura estiver ativa.
+// Use no servidor (com a linha do condominio) e na tela (com os campos do perfil).
+export function condominiumHasResource(condominium, key, now = new Date()) {
+  const state = getCondominiumAccessState(condominium, now)
+  const plano = state.subscriptionStatus === 'active' && !state.planLocked ? state.planName : STANDARD_PLAN_NAME
+  return planHasResource(plano, key)
+}
+
+// Mesma regra a partir do perfil carregado pelo useAuth (condominium_plan_name, etc.).
+export function profileHasResource(profile, key) {
+  if (!profile) return false
+  const ativo = profile.condominium_subscription_status === 'active' && !profile.condominium_plan_locked
+  return planHasResource(ativo ? profile.condominium_plan_name : STANDARD_PLAN_NAME, key)
 }

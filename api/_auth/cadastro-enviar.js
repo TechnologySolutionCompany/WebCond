@@ -53,7 +53,9 @@ function validarPessoa(pessoa, rotulo, { exigeSenha }) {
   }
   if (!isCpfValid(pessoa.rawCpf)) return `Informe um CPF valido para o ${rotulo}.`
   if (!isWhatsappValid(pessoa.rawWhatsapp, pessoa.whatsapp)) return `Informe um WhatsApp valido com DDD para o ${rotulo}.`
-  if (pessoa.email && !isEmailValid(pessoa.email)) return `Informe um e-mail valido para o ${rotulo} ou deixe em branco.`
+  // Quem tem acesso entra pelo e-mail (v1.09A5). Inquilino sem acesso pode ficar sem.
+  if (exigeSenha && !pessoa.email) return `Informe o e-mail do ${rotulo}: e por ele que se entra no WebCond.`
+  if (pessoa.email && !isEmailValid(pessoa.email)) return `Informe um e-mail valido para o ${rotulo}.`
   if (exigeSenha && pessoa.password.length < 6) return `A senha do ${rotulo} precisa ter pelo menos 6 caracteres.`
   return ''
 }

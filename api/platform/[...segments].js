@@ -12,6 +12,8 @@ import * as supportAttachment from '../_platform/support/attachment.js'
 import * as supportMessages from '../_platform/support/messages.js'
 import * as condominiumsLogo from '../_platform/condominiums/logo.js'
 import * as team from '../_platform/team.js'
+import * as feedbacks from '../_platform/feedbacks.js'
+import * as assinaturaWebhook from '../_platform/assinatura-webhook.js'
 
 export const { GET, POST } = createRouter({
   '/api/platform/status': status,
@@ -27,4 +29,7 @@ export const { GET, POST } = createRouter({
   '/api/platform/support-messages': supportMessages,
   '/api/platform/condominiums-logo': condominiumsLogo,
   '/api/platform/team': team,
+  '/api/platform/feedbacks': feedbacks,
+  // Webhook do Asaas (publico, protegido pelo token do webhook). v2.10A1.
+  '/api/platform/assinatura-webhook': assinaturaWebhook,
 })

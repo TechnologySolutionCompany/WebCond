@@ -10,6 +10,7 @@ import {
 import { checkUnitAvailability, isMissingTableError, loadUnitUsage } from '../../_lib/unitLimit.js'
 import { findLinkCandidate, releasePerson, sanitizePerson, saveUnitPerson } from '../../_lib/residentAccounts.js'
 import { recusaDeSenha } from '../../_lib/senhaVazada.js'
+import { isEmailValid } from '../../_lib/personValidation.js'
 import { normalizeUnitNumber, UNIT_STATUS_VALUES } from '../../../src/lib/units.js'
 
 const PENDING_SQL_MESSAGE = 'Estrutura de unidades pendente no banco. Execute os arquivos da pasta sql/ no Supabase.'
@@ -93,6 +94,16 @@ export async function POST(req) {
   }
   if (responsavel === 'proprietario' && situacao !== 'desocupada' && situacao !== 'interditada' && !links.proprietario && !people.proprietario?.cpf) {
     return json({ error: 'Defina o proprietario ou escolha o inquilino como responsavel financeiro.' }, 400)
+  }
+
+  // E-mail e o jeito principal de entrar (v1.09A5): pessoa nova so entra com e-mail valido.
+  // Cadastro antigo sem e-mail continua editavel; o e-mail entra quando o sindico ou a pessoa informar.
+  for (const vinculo of ['proprietario', 'inquilino']) {
+    const person = people[vinculo]
+    if (!person?.cpf || person.linkExisting) continue
+    const novo = !links[vinculo] || String(links[vinculo].cpf || '').replace(/\D/g, '') !== person.cpf
+    if (person.email && !isEmailValid(person.email)) return json({ error: `Informe um e-mail valido para o ${ROLE_LABEL[vinculo]}.` }, 400)
+    if (novo && !person.email) return json({ error: `Informe o e-mail do ${ROLE_LABEL[vinculo]}: e por ele que a pessoa entra no WebCond.` }, 400)
   }
 
   // Senha fraca ou ja vista em vazamento nao vira acesso. Conferido antes de gravar qualquer

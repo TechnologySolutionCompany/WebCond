@@ -6,7 +6,10 @@ import { painelLogoUrl } from '../../lib/condominiumLogo'
 import { normalizeRole } from '../../lib/auth'
 import Sidebar from '../shared/Sidebar'
 import { useSidebarMenu } from '../../hooks/useSidebarMenu'
+import { useDeepLinkPage } from '../../hooks/useDeepLinkPage'
+import { initialPage, saveLastView } from '../../lib/lastView'
 import PlanUpgradeNotice from '../shared/PlanUpgradeNotice'
+import EmailObrigatorio from '../shared/EmailObrigatorio'
 import Dashboard from './Dashboard'
 import Unidades from './Unidades'
 import Cobrancas from './Cobrancas'
@@ -15,7 +18,14 @@ import Documentos from './Documentos'
 import Contador from './Contador'
 import Perfil from './Perfil'
 import Suporte from './Suporte'
+import SuporteHub from '../shared/SuporteHub'
+import { sendAdminFeedback } from '../../lib/adminApi'
 import Planos from './Planos'
+
+// Suporte (v1.09A5): Chamados + Feedback + Sobre.
+function AdminSuporte(props) {
+  return <SuporteHub chamados={Suporte} sendFeedback={sendAdminFeedback} {...props} />
+}
 
 const PAGES = {
   dashboard: Dashboard,
@@ -25,7 +35,7 @@ const PAGES = {
   documentos: Documentos,
   contador: Contador,
   perfil: Perfil,
-  suporte: Suporte,
+  suporte: AdminSuporte,
   planos: Planos,
 }
 
@@ -48,9 +58,10 @@ export default function AdminLayout() {
   const planLocked = Boolean(profile?.condominium_plan_locked)
   const [upgradeOpen, setUpgradeOpen] = useState(planLocked)
   const { settings: condominiumSettings } = useCondominiumSettings(condominiumId)
-  const [page, setPage] = useState('dashboard')
+  // Reabre na ultima tela aberta (v1.09A5): voltar do boleto no navegador nao leva mais ao Painel.
+  const [page, setPage] = useState(() => initialPage('admin', profile?.id, Object.keys(PAGES), 'dashboard'))
   const { mobileOpen, toggleMenu, closeMobile, layoutClassName } = useSidebarMenu()
-  const [mountedPages, setMountedPages] = useState(['dashboard'])
+  const [mountedPages, setMountedPages] = useState(() => [page])
   const mainContentRef = useRef(null)
   const scrollPositionsRef = useRef({})
 
@@ -80,6 +91,9 @@ export default function AdminLayout() {
     setMountedPages((current) => (current.includes(nextPage) ? current : [...current, nextPage]))
     setPage(nextPage)
   }
+
+  useEffect(() => { saveLastView('admin', profile?.id, page) }, [page, profile?.id])
+  useDeepLinkPage(Object.keys(PAGES), handleNavigate)
 
   const isAccountant = normalizeRole(resolvedRole) === 'contador'
 
@@ -133,6 +147,7 @@ export default function AdminLayout() {
 
   return (
     <div className={`app-layout ${layoutClassName}`}>
+      <EmailObrigatorio />
       <Sidebar items={nav} activeKey={page} onNav={handleNavigate} theme="admin" mobileOpen={mobileOpen} onClose={closeMobile} />
       <main className="main-content" ref={mainContentRef}>
         <div className="mobile-topbar">

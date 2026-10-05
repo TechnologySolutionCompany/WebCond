@@ -13,3 +13,6 @@ logos
 sql
 docs
 tests
+
+# Desenho da fatura: nao vai para o site
+fatura

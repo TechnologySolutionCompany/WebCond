@@ -1,6 +1,7 @@
 import { json, parseJsonBody, rejectForeignOrigin, requirePlatformAdmin, senhaRecusadaPeloAuth, supabaseAdmin } from '../_lib/supabaseAdmin.js'
 import { isCpfValid, isWhatsappValid, normalizeCpfDigits, normalizeWhatsapp } from '../_lib/personValidation.js'
 import { recusaDeSenha } from '../_lib/senhaVazada.js'
+import { isValidLoginEmail, loginEmailForDisplay, normalizeLoginEmail } from '../../src/lib/loginEmail.js'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MIN_PASSWORD = 8
@@ -9,16 +10,27 @@ const BLOCKED = '876000h'
 // Equipe de suporte: contas com acesso limitado ao painel da plataforma (chamados e status).
 // So o administrador da plataforma cria, bloqueia, troca a senha ou remove essas contas.
 // A conta de suporte nao tem condominio e nao passa por nenhuma regra de dados dos condominios.
+//
+// v2.10A2: o login da equipe e o E-MAIL (igual ao resto do sistema). O CPF ficou opcional e so
+// serve para a saida "esqueci meu e-mail". Contas antigas (criadas so com CPF) ganham e-mail pela
+// acao "email" abaixo, ou pelo aviso "Cadastre seu e-mail" na primeira entrada.
 
-function supportEmail(cpf) {
-  return `suporte-${cpf}@login.webcond.local`
+const EMAIL_EM_USO = 'Este e-mail ja tem acesso ao WebCond. Use outro e-mail para a conta de suporte.'
+
+// O Auth do Supabase responde e-mail repetido com um erro 500 generico: confere antes no perfil.
+async function emailEmUso(email, ignorarId = null) {
+  let query = supabaseAdmin.from('profiles').select('id').ilike('email', email).limit(1)
+  if (ignorarId) query = query.neq('id', ignorarId)
+  const { data, error } = await query
+  if (error) return { error: json({ error: 'Nao foi possivel validar o e-mail.' }, 500) }
+  return { emUso: Boolean(data?.length) }
 }
 
 async function loadMember(id) {
   if (!UUID.test(id)) return null
   const { data } = await supabaseAdmin
     .from('profiles')
-    .select('id, role, nome, cpf, ativo, condominium_id, condominio_id')
+    .select('id, role, nome, cpf, email, ativo, condominium_id, condominio_id')
     .eq('id', id)
     .maybeSingle()
   // Nunca mexe em quem nao e da equipe de suporte (sindico, morador, admin da plataforma).
@@ -31,7 +43,7 @@ export async function GET(req) {
 
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('id, nome, cpf, whatsapp, ativo, created_at, ultimo_acesso_em')
+    .select('id, nome, cpf, email, whatsapp, ativo, created_at, ultimo_acesso_em')
     .eq('role', 'suporte')
     .order('created_at', { ascending: true })
   if (error) return json({ error: 'Nao foi possivel carregar a equipe.' }, 500)
@@ -42,6 +54,8 @@ export async function GET(req) {
       nome: member.nome,
       // CPF mascarado: a tela so precisa reconhecer a pessoa.
       cpf: member.cpf ? `***.${member.cpf.slice(3, 6)}.***-${member.cpf.slice(9)}` : '',
+      // Vazio = conta antiga, ainda so com o identificador interno (entra pelo CPF).
+      email: loginEmailForDisplay(member.email),
       whatsapp: member.whatsapp || '',
       ativo: member.ativo !== false,
       created_at: member.created_at,
@@ -62,25 +76,34 @@ export async function POST(req) {
 
   if (acao === 'criar') {
     const nome = String(body.nome || '').trim().replace(/\s+/g, ' ')
-    const cpf = normalizeCpfDigits(body.cpf)
+    const email = normalizeLoginEmail(body.email)
+    const rawCpf = String(body.cpf || '').trim()
+    const cpf = rawCpf ? normalizeCpfDigits(rawCpf) : null
     const rawWhatsapp = String(body.whatsapp || '').trim()
     const whatsapp = normalizeWhatsapp(rawWhatsapp)
     const senha = String(body.senha || '')
 
     if (nome.length < 3 || nome.length > 120) return json({ error: 'Informe o nome completo.' }, 400)
-    if (!isCpfValid(body.cpf)) return json({ error: 'Informe um CPF valido.' }, 400)
+    if (!isValidLoginEmail(email)) return json({ error: 'Informe um e-mail valido. Ele e o login da conta.' }, 400)
+    if (rawCpf && !isCpfValid(rawCpf)) return json({ error: 'Informe um CPF valido ou deixe o campo em branco.' }, 400)
     if (rawWhatsapp && !isWhatsappValid(rawWhatsapp, whatsapp)) return json({ error: 'Informe um WhatsApp valido com DDD.' }, 400)
     if (senha.length < MIN_PASSWORD) return json({ error: `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.` }, 400)
 
     const senhaRecusada = await recusaDeSenha(senha)
     if (senhaRecusada) return json({ error: senhaRecusada }, 400)
 
-    // O CPF e o login: nao pode existir em outro acesso (sindico, morador ou outro suporte).
-    const { data: taken, error: takenError } = await supabaseAdmin.from('profiles').select('id').eq('cpf', cpf).limit(1)
-    if (takenError) return json({ error: 'Nao foi possivel validar o CPF.' }, 500)
-    if (taken?.length) return json({ error: 'Este CPF ja tem acesso ao WebCond. Use outro CPF para a conta de suporte.' }, 409)
+    // O e-mail e o login: nao pode existir em outro acesso (sindico, morador ou outro suporte).
+    const checagem = await emailEmUso(email)
+    if (checagem.error) return checagem.error
+    if (checagem.emUso) return json({ error: EMAIL_EM_USO }, 409)
 
-    const email = supportEmail(cpf)
+    // O CPF (opcional) e a saida "esqueci meu e-mail": tambem nao pode repetir.
+    if (cpf) {
+      const { data: taken, error: takenError } = await supabaseAdmin.from('profiles').select('id').eq('cpf', cpf).limit(1)
+      if (takenError) return json({ error: 'Nao foi possivel validar o CPF.' }, 500)
+      if (taken?.length) return json({ error: 'Este CPF ja tem acesso ao WebCond. Use outro CPF ou deixe em branco.' }, 409)
+    }
+
     const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password: senha,
@@ -91,7 +114,7 @@ export async function POST(req) {
       const senhaFraca = senhaRecusadaPeloAuth(createError)
       if (senhaFraca) return json({ error: senhaFraca }, 400)
       const duplicate = /already|registered|exists/i.test(createError?.message || '')
-      return json({ error: duplicate ? 'Ja existe uma conta de suporte com este CPF.' : 'Nao foi possivel criar a conta.' }, duplicate ? 409 : 500)
+      return json({ error: duplicate ? EMAIL_EM_USO : 'Nao foi possivel criar a conta.' }, duplicate ? 409 : 500)
     }
 
     const { error: profileError } = await supabaseAdmin.from('profiles').upsert({
@@ -133,6 +156,33 @@ export async function POST(req) {
 
   const member = await loadMember(String(body.id || ''))
   if (!member) return json({ error: 'Conta de suporte nao encontrada.' }, 404)
+
+  // Definir/trocar o e-mail de login de uma conta da equipe (inclusive as antigas, so com CPF).
+  // Auth e perfil mudam juntos: o login por CPF tambem depende do e-mail guardado no perfil.
+  if (acao === 'email') {
+    const email = normalizeLoginEmail(body.email)
+    if (!isValidLoginEmail(email)) return json({ error: 'Informe um e-mail valido.' }, 400)
+    if (email === normalizeLoginEmail(member.email)) return json({ success: true, email })
+
+    const checagem = await emailEmUso(email, member.id)
+    if (checagem.error) return checagem.error
+    if (checagem.emUso) return json({ error: EMAIL_EM_USO }, 409)
+
+    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(member.id, { email, email_confirm: true })
+    if (authError) {
+      const duplicate = /already|registered|exists/i.test(authError.message || '')
+      return json({ error: duplicate ? EMAIL_EM_USO : 'Nao foi possivel alterar o e-mail.' }, duplicate ? 409 : 500)
+    }
+    const { error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .update({ email, updated_at: new Date().toISOString() })
+      .eq('id', member.id)
+    if (profileError) {
+      await supabaseAdmin.auth.admin.updateUserById(member.id, { email: member.email, email_confirm: true })
+      return json({ error: profileError.code === '23505' ? EMAIL_EM_USO : 'Nao foi possivel salvar o e-mail.' }, profileError.code === '23505' ? 409 : 500)
+    }
+    return json({ success: true, email })
+  }
 
   if (acao === 'senha') {
     const senha = String(body.senha || '')

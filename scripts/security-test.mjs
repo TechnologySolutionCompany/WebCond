@@ -66,6 +66,9 @@ async function call(path, { token, body, method = 'POST', headers: extraHeaders 
 const client = (token) => createClient(URL_, ANON, { auth: { persistSession: false, autoRefreshToken: false }, global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined })
 const PASS = 'Sindico-E2E-4h7p2k'
 const PASS_RESIDENT = 'Morador-E2E-9f3m5t'
+// v2.10A1+: e-mail e obrigatorio para todo acesso. Cada pessoa de teste ganha um e-mail unico.
+let mailCounter = 0
+const mail = (tag) => `e2e-sec-${tag}-${Date.now()}-${mailCounter++}@example.com`
 const created = { condos: [], authUsers: [], files: { cobrancas: [], documentos: [], suporte: [] } }
 const rowsOf = (data) => data || []
 const leaksFrom = (data, foreignIds) => rowsOf(data).some((row) => foreignIds.includes(row.condominium_id) || foreignIds.includes(row.condominio_id) || foreignIds.includes(row.id))
@@ -74,22 +77,23 @@ const leaksFrom = (data, foreignIds) => rowsOf(data).some((row) => foreignIds.in
 // cobranca da unidade, aviso geral, aviso so para a unidade 101, ocorrencia do morador e documento publico.
 async function setupCondo(label, P) {
   const doc = cnpj()
+  const syndicEmail = `e2e-sec-${label.toLowerCase()}-${Date.now()}@example.com`
   const reg = await call('platform/condominiums/register', { body: {
     name: `E2E Seguranca ${label}`, cnpj: doc, whatsapp: '11999990000', unit_count: 5,
     address_details: { zip_code: '01001000', street: 'Rua Teste', number: '1', district: 'Centro', city: 'Sao Paulo', state: 'SP' },
-    syndic_name: `Sindico ${label}`, syndic_cpf: cpf(), syndic_email: `e2e-sec-${label.toLowerCase()}-${Date.now()}@example.com`, password: PASS,
+    syndic_name: `Sindico ${label}`, syndic_cpf: cpf(), syndic_email: syndicEmail, password: PASS,
   } })
   const id = reg.data?.condominiumId
   created.condos.push(id)
   await call('platform/condominiums/update', { token: P, body: { condominiumId: id, action: 'approve', plan: 'trial' } })
 
   const S = (await call('auth/login-cnpj', { body: { cnpj: doc, password: PASS } })).data?.session?.access_token
-  const owner = { nome: `Dono Completo Silva ${label}`, cpf: cpf(), whatsapp: '11911112222', email: '', password: PASS_RESIDENT }
-  const tenant = { nome: `Inquilina Maria Souza ${label}`, cpf: cpf(), whatsapp: '11933334444', email: '', password: PASS_RESIDENT }
+  const owner = { nome: `Dono Completo Silva ${label}`, cpf: cpf(), whatsapp: '11911112222', email: mail(`dono-${label}`), password: PASS_RESIDENT }
+  const tenant = { nome: `Inquilina Maria Souza ${label}`, cpf: cpf(), whatsapp: '11933334444', email: mail(`inquilina-${label}`), password: PASS_RESIDENT }
   const unit = await call('admin/units/save', { token: S, body: { numero: '101', situacao: 'alugada', responsavel_financeiro: 'inquilino', proprietario: owner, inquilino: tenant } })
   const unitId = unit.data?.unitId
   const accountantCpf = cpf()
-  await call('admin/residents/create', { token: S, body: { role: 'contador', nome: `Contador ${label}`, whatsapp: '11955556666', cpf: accountantCpf, password: PASS_RESIDENT, apartamento: '' } })
+  await call('admin/residents/create', { token: S, body: { role: 'contador', nome: `Contador ${label}`, whatsapp: '11955556666', email: mail(`contador-${label}`), cpf: accountantCpf, password: PASS_RESIDENT, apartamento: '' } })
 
   const [O, T, C] = await Promise.all([owner.cpf, tenant.cpf, accountantCpf].map(async (document) => (
     (await call('auth/login-cpf', { body: { cpf: document, password: PASS_RESIDENT } })).data?.session?.access_token
@@ -114,7 +118,7 @@ async function setupCondo(label, P) {
   await supabaseAdmin.storage.from('cobrancas').upload(boletoPath, new Blob([`boleto ${label}`], { type: 'application/pdf' }))
   created.files.cobrancas.push(boletoPath)
 
-  return { label, id, doc, S, O, T, C, unitId, ownerId: byCpf(owner.cpf), tenantId, syndicId, chargeId: charge?.id, occurrenceId: occurrence?.id, documentId: document?.id, documentPath, boletoPath, owner, tenant }
+  return { label, id, doc, syndicEmail, S, O, T, C, unitId, ownerId: byCpf(owner.cpf), tenantId, syndicId, chargeId: charge?.id, occurrenceId: occurrence?.id, documentId: document?.id, documentPath, boletoPath, owner, tenant }
 }
 
 try {
@@ -224,7 +228,7 @@ try {
 
     check(GSV, 'senha boa continua sendo aceita nas contas de teste', condos.every((condo) => condo.id))
 
-    const senhaFracaNoSuporte = await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Suporte Senha Fraca', cpf: cpf(), senha: 'senha123' } })
+    const senhaFracaNoSuporte = await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Suporte Senha Fraca', email: mail('suporte-fraca'), senha: 'senha123' } })
     check(GSV, 'senha obvia nao cria conta de suporte', senhaFracaNoSuporte.status === 400, JSON.stringify(senhaFracaNoSuporte.data))
   }
 
@@ -287,7 +291,7 @@ try {
     ['sindico nao le o status tecnico da plataforma', await call('platform/status', { token: A.S, method: 'GET' }), (r) => r.status === 403],
     ['morador nao usa rotas do sindico', await call('admin/units/save', { token: A.O, body: { numero: '999', situacao: 'desocupada' } }), (r) => r.status === 403],
     ['contador nao cadastra unidade', await call('admin/units/save', { token: A.C, body: { numero: '998', situacao: 'desocupada' } }), (r) => r.status === 403],
-    ['contador nao cria acessos', await call('admin/residents/create', { token: A.C, body: { role: 'morador', nome: 'x', whatsapp: '11999999999', cpf: cpf(), password: PASS, apartamento: '102' } }), (r) => r.status === 403],
+    ['contador nao cria acessos', await call('admin/residents/create', { token: A.C, body: { role: 'morador', nome: 'x', whatsapp: '11999999999', email: mail('x'), cpf: cpf(), password: PASS, apartamento: '102' } }), (r) => r.status === 403],
     ['sem login: rota do sindico recusa', await call('admin/units/save', { body: { numero: '999', situacao: 'desocupada' } }), (r) => r.status === 401],
     ['sem login: resumo do condominio recusa', await call('tenant/charge-summary', { method: 'GET' }), (r) => r.status === 401],
     ['login com senha errada recusado', await call('auth/login-cnpj', { body: { cnpj: B.doc, password: 'errada123' } }), (r) => r.status === 401],
@@ -297,7 +301,7 @@ try {
   for (const [name, response, ok] of apiCases) check('API', name, ok(response), `status ${response.status}`)
 
   // CPF de outro condominio nao vaza nome nem permite roubo de cadastro
-  const foreignCpf = await call('admin/units/save', { token: A.S, body: { numero: '102', situacao: 'ocupada', proprietario: { nome: 'Tentativa', cpf: B.owner.cpf, whatsapp: '11911112222', email: '', password: PASS_RESIDENT } } })
+  const foreignCpf = await call('admin/units/save', { token: A.S, body: { numero: '102', situacao: 'ocupada', proprietario: { nome: 'Tentativa', cpf: B.owner.cpf, whatsapp: '11911112222', email: mail('tentativa'), password: PASS_RESIDENT } } })
   check('API', 'CPF de outro condominio: recusa sem revelar o nome', foreignCpf.status === 409 && !JSON.stringify(foreignCpf.data).includes('Dono Completo Silva B'), JSON.stringify(foreignCpf.data).slice(0, 120))
   const { data: stillInB } = await supabaseAdmin.from('profiles').select('condominium_id').eq('id', B.ownerId).single()
   check('API', 'pessoa do B continua no B', stillInB.condominium_id === B.id)
@@ -434,7 +438,7 @@ try {
   const G = 'Auto-cadastro'
   class Limited extends Error {}
   const limited = (response) => Boolean(BASE_URL) && response.status === 429
-  const person = (document, extra = {}) => ({ nome: 'Novo Morador Teste', cpf: document, whatsapp: '(11) 91111-2222', email: '', password: PASS_RESIDENT, ...extra })
+  const person = (document, extra = {}) => ({ nome: 'Novo Morador Teste', cpf: document, whatsapp: '(11) 91111-2222', email: mail('autocadastro'), password: PASS_RESIDENT, ...extra })
   const signupBody = (token, over = {}) => ({ token, situacao: 'ocupada', apartamento: '202', aceite: true, proprietario: person(cpf()), inquilino: null, ...over })
   const send = async (body, options = {}) => {
     const response = await call('auth/cadastro-enviar', { ip: true, body, ...options })
@@ -611,7 +615,10 @@ try {
   check(GP, 'morador nao usa a rota de perfil do sindico', (await call('admin/profile/update', { token: A.O, body: { nome: 'Invasor' } })).status === 403)
   check(GP, 'sem login a rota de perfil recusa', (await call('admin/profile/update', { body: { nome: 'Invasor' } })).status === 401)
   const { data: syndicB } = await supabaseAdmin.from('profiles').select('email').eq('id', B.syndicId).single()
-  const stolenEmail = await call('admin/profile/update', { token: A.S, body: { nome: 'Sindico A Editado', email: syndicB.email } })
+  const semSenha = await call('admin/profile/update', { token: A.S, body: { nome: 'Sindico A Editado', email: `novo-${Date.now()}@example.com` } })
+  const { data: syndicAEmail } = await supabaseAdmin.from('profiles').select('email').eq('id', A.syndicId).single()
+  check(GP, 'trocar o e-mail de acesso sem a senha atual e recusado', semSenha.status === 422 && syndicAEmail.email === A.syndicEmail, `status ${semSenha.status}`)
+  const stolenEmail = await call('admin/profile/update', { token: A.S, body: { nome: 'Sindico A Editado', email: syndicB.email, senhaAtual: PASS } })
   check(GP, 'sindico nao assume o e-mail de login de outro sindico', stolenEmail.status === 409, `status ${stolenEmail.status}`)
   const { data: syndicBAfter } = await supabaseAdmin.from('profiles').select('email').eq('id', B.syndicId).single()
   check(GP, 'o e-mail do sindico B continua dele', syndicBAfter.email === syndicB.email)
@@ -631,6 +638,64 @@ try {
   if (restored.data?.session?.access_token) A.S = restored.data.session.access_token
   sA = client(A.S)
   check(GP, 'morador nao troca senha pela rota do sindico', (await call('admin/profile/password', { token: A.O, body: { senhaAtual: PASS_RESIDENT, novaSenha: 'Qualquer@1' } })).status === 403)
+
+  // ---------------- Login por e-mail ----------------
+  {
+    const GLE = 'Login por e-mail'
+    const loginEmail = (email, password) => call('auth/login-email', { ip: true, body: { email, password } })
+    const recusa = (r) => r.status === 401 && r.data?.error === 'E-mail ou senha incorretos.'
+
+    const entrou = await loginEmail(A.syndicEmail, PASS)
+    if (entrou.status === 429) {
+      skip(GLE, 'login por e-mail', 'limite de tentativas por IP no site publicado; rode de novo em 15 minutos')
+    } else {
+      check(GLE, 'sindico entra com e-mail e senha', entrou.status === 200 && Boolean(entrou.data?.session?.access_token), `status ${entrou.status}`)
+      check(GLE, 'e-mail com maiusculas e espacos tambem entra', (await loginEmail(`  ${A.syndicEmail.toUpperCase()} `, PASS)).status === 200)
+      const senhaErrada = await loginEmail(A.syndicEmail, 'errada-123456')
+      const naoExiste = await loginEmail(`ninguem-${Date.now()}@example.com`, PASS)
+      check(GLE, 'senha errada e recusada', recusa(senhaErrada), `status ${senhaErrada.status}`)
+      check(GLE, 'e-mail que nao existe recebe a MESMA resposta da senha errada', recusa(naoExiste) && naoExiste.data?.error === senhaErrada.data?.error)
+
+      // Desde a v2.10A1 toda conta nova tem e-mail. As contas antigas ainda so tem o identificador
+      // interno: o dono do B vira uma delas aqui, para conferir que ele nao serve de login.
+      const interno = `morador-${B.owner.cpf}-${B.id}@login.webcond.local`
+      await supabaseAdmin.auth.admin.updateUserById(B.ownerId, { email: interno, email_confirm: true })
+      await supabaseAdmin.from('profiles').update({ email: interno }).eq('id', B.ownerId)
+      const { data: dono } = await supabaseAdmin.from('profiles').select('email').eq('id', B.ownerId).single()
+      check(GLE, 'identificador interno (tem o CPF dentro) nao serve para entrar, nem com a senha certa', recusa(await loginEmail(dono.email, PASS_RESIDENT)))
+
+      // Morador sem e-mail cadastra o proprio e-mail de acesso.
+      const novoEmail = `e2e-morador-b-${Date.now()}@example.com`
+      check(GLE, 'cadastrar e-mail sem a senha atual e recusado', (await call('tenant/account/email', { token: B.O, body: { email: novoEmail } })).status === 422)
+      check(GLE, 'cadastrar e-mail com a senha atual errada e recusado', (await call('tenant/account/email', { token: B.O, body: { email: novoEmail, senhaAtual: 'errada-123456' } })).status === 422)
+      check(GLE, 'morador nao assume o e-mail de outra pessoa', (await call('tenant/account/email', { token: B.O, body: { email: A.syndicEmail, senhaAtual: PASS_RESIDENT } })).status === 409)
+      check(GLE, 'identificador interno nao vira e-mail de acesso', (await call('tenant/account/email', { token: B.O, body: { email: dono.email, senhaAtual: PASS_RESIDENT } })).status === 400)
+      const cadastrado = await call('tenant/account/email', { token: B.O, body: { email: novoEmail, senhaAtual: PASS_RESIDENT } })
+      check(GLE, 'morador cadastra o proprio e-mail de acesso com a senha atual', cadastrado.status === 200 && cadastrado.data?.emailAlterado === true, `status ${cadastrado.status}`)
+      const { data: donoDepois } = await supabaseAdmin.from('profiles').select('email').eq('id', B.ownerId).single()
+      const { data: authDono } = await supabaseAdmin.auth.admin.getUserById(B.ownerId)
+      check(GLE, 'o e-mail muda no perfil e no Auth juntos', donoDepois.email === novoEmail && authDono.user?.email === novoEmail)
+      check(GLE, 'morador entra com o e-mail novo', (await loginEmail(novoEmail, PASS_RESIDENT)).status === 200)
+      check(GLE, 'e continua entrando pelo CPF', (await call('auth/login-cpf', { ip: true, body: { cpf: B.owner.cpf, password: PASS_RESIDENT } })).status === 200)
+
+      // Segunda trava: alem do banimento no Auth, perfil inativo nao recebe sessao.
+      await supabaseAdmin.from('profiles').update({ ativo: false }).eq('id', B.ownerId)
+      const inativo = await loginEmail(novoEmail, PASS_RESIDENT)
+      await supabaseAdmin.from('profiles').update({ ativo: true }).eq('id', B.ownerId)
+      check(GLE, 'perfil desativado nao recebe sessao pelo login por e-mail', recusa(inativo), `status ${inativo.status}`)
+
+      // Troca de senha do morador: agora pelo servidor, com senha atual e recusa de senha vazada.
+      check(GLE, 'morador troca a senha sem a senha atual: recusado', (await call('tenant/account/password', { token: B.O, body: { novaSenha: 'Trocada-E2E-3x5v7z' } })).status === 422)
+      check(GLE, 'morador nao escolhe senha obvia/vazada', (await call('tenant/account/password', { token: B.O, body: { senhaAtual: PASS_RESIDENT, novaSenha: '12345678' } })).status === 400)
+      const trocou = await call('tenant/account/password', { token: B.O, body: { senhaAtual: PASS_RESIDENT, novaSenha: 'Trocada-E2E-3x5v7z' } })
+      check(GLE, 'morador troca a senha com a senha atual e recebe sessao nova', trocou.status === 200 && Boolean(trocou.data?.session?.access_token), `status ${trocou.status}`)
+      check(GLE, 'a senha antiga deixa de valer no login por e-mail', recusa(await loginEmail(novoEmail, PASS_RESIDENT)))
+      const voltou = await call('tenant/account/password', { token: trocou.data?.session?.access_token, body: { senhaAtual: 'Trocada-E2E-3x5v7z', novaSenha: PASS_RESIDENT } })
+      check(GLE, 'a sessao nova funciona (volta a senha original)', voltou.status === 200)
+      check(GLE, 'sem login as rotas da propria conta recusam', (await call('tenant/account/email', { body: { email: novoEmail } })).status === 401
+        && (await call('tenant/account/password', { body: {} })).status === 401)
+    }
+  }
 
   // ---------------- Suporte e presenca (SQL 09-25) ----------------
   const GS = 'Suporte (SQL 09-25)'
@@ -752,13 +817,17 @@ try {
     const GE = 'Equipe de suporte (SQL 09-26)'
     const supCpf = cpf()
     const SUP_PASS = 'Suporte-E2E-6b8n1q'
-    check(GE, 'sindico NAO cria conta de suporte', (await call('platform/team', { token: A.S, body: { acao: 'criar', nome: 'Invasor Teste', cpf: supCpf, senha: SUP_PASS } })).status === 403)
-    check(GE, 'senha curta e recusada', (await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Suporte Curto', cpf: cpf(), senha: '123' } })).status === 400)
-    const createdSup = await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Suporte E2E Teste', cpf: supCpf, senha: SUP_PASS } })
+    // v2.10A2: o login da equipe e o e-mail; o CPF e opcional (saida "esqueci meu e-mail").
+    const supEmail = mail('suporte')
+    check(GE, 'sindico NAO cria conta de suporte', (await call('platform/team', { token: A.S, body: { acao: 'criar', nome: 'Invasor Teste', email: mail('invasor'), cpf: supCpf, senha: SUP_PASS } })).status === 403)
+    check(GE, 'senha curta e recusada', (await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Suporte Curto', email: mail('suporte-curto'), senha: '123' } })).status === 400)
+    check(GE, 'conta de suporte sem e-mail e recusada', (await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Suporte Sem Email', cpf: cpf(), senha: SUP_PASS } })).status === 400)
+    const createdSup = await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Suporte E2E Teste', email: supEmail, cpf: supCpf, senha: SUP_PASS } })
     const supId = createdSup.data?.id
     if (supId) created.authUsers.push(supId)
     check(GE, 'admin da plataforma cria conta de suporte', createdSup.status === 200 && Boolean(supId), JSON.stringify(createdSup.data))
-    check(GE, 'CPF que ja tem acesso e recusado', (await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Outro Suporte', cpf: A.owner.cpf, senha: SUP_PASS } })).status === 409)
+    check(GE, 'CPF que ja tem acesso e recusado', (await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Outro Suporte', email: mail('outro-suporte'), cpf: A.owner.cpf, senha: SUP_PASS } })).status === 409)
+    check(GE, 'e-mail que ja tem acesso e recusado', (await call('platform/team', { token: P, body: { acao: 'criar', nome: 'Outro Suporte', email: A.syndicEmail, senha: SUP_PASS } })).status === 409)
     const team = await call('platform/team', { token: P, method: 'GET' })
     check(GE, 'lista da equipe mostra o CPF mascarado', team.status === 200 && (team.data?.membros || []).some((member) => member.id === supId && member.cpf.includes('***') && !member.cpf.includes(supCpf)))
 
@@ -767,6 +836,12 @@ try {
 
     const SU = (await call('auth/login-cpf', { ip: true, body: { cpf: supCpf, password: SUP_PASS } })).data?.session?.access_token
     check(GE, 'suporte entra com CPF e senha', Boolean(SU))
+    check(GE, 'suporte entra com e-mail e senha', Boolean((await call('auth/login-email', { ip: true, body: { email: supEmail, password: SUP_PASS } })).data?.session?.access_token))
+    const supEmail2 = mail('suporte-novo')
+    check(GE, 'admin troca o e-mail de login da conta de suporte', (await call('platform/team', { token: P, body: { acao: 'email', id: supId, email: supEmail2 } })).status === 200
+      && Boolean((await call('auth/login-email', { ip: true, body: { email: supEmail2, password: SUP_PASS } })).data?.session?.access_token))
+    check(GE, 'troca para e-mail de outra pessoa e recusada', (await call('platform/team', { token: P, body: { acao: 'email', id: supId, email: A.syndicEmail } })).status === 409)
+    check(GE, 'sindico NAO troca e-mail da equipe', (await call('platform/team', { token: A.S, body: { acao: 'email', id: supId, email: mail('invasor2') } })).status === 403)
     const supTickets = await call('platform/support/tickets?filtro=todos', { token: SU, method: 'GET' })
     const supTicket = (supTickets.data?.tickets || []).find((ticket) => ticket.id === supTicketId)
     check(GE, 'suporte ve os chamados com condominio e contato do sindico', supTickets.status === 200 && supTicket?.condominio?.nome === 'E2E Seguranca A')
@@ -789,9 +864,9 @@ try {
       ['platform/condominiums/update-syndic-password', { condominiumId: B.id, password: 'Qualquer@123' }],
       ['platform/condominiums/import', { condominiumId: B.id, rows: [] }],
       ['platform/team', null, 'GET'],
-      ['platform/team', { acao: 'criar', nome: 'Suporte Dois', cpf: cpf(), senha: SUP_PASS }],
+      ['platform/team', { acao: 'criar', nome: 'Suporte Dois', email: mail('suporte-dois'), senha: SUP_PASS }],
       ['admin/units/save', { numero: '999', situacao: 'desocupada' }],
-      ['admin/residents/create', { role: 'morador', nome: 'Invasor', cpf: cpf(), password: PASS_RESIDENT, apartamento: '101' }],
+      ['admin/residents/create', { role: 'morador', nome: 'Invasor', email: mail('invasor3'), cpf: cpf(), password: PASS_RESIDENT, apartamento: '101' }],
       ['admin/notify/send', { avisos: [fresh?.id] }],
       ['platform/condominiums/logo', { condominiumId: B.id, remover: true }],
     ]

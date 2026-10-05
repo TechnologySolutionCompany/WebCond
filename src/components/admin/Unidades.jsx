@@ -61,8 +61,8 @@ function PersonFields({ title, value, onChange, required, isExisting }) {
         <input className="input" inputMode="tel" value={value.whatsapp} onChange={(event) => update({ whatsapp: event.target.value })} placeholder="(81) 90000-0000" />
       </div>
       <div className="form-group">
-        <label className="form-label">E-mail (opcional)</label>
-        <input className="input" type="email" value={value.email} onChange={(event) => update({ email: event.target.value })} />
+        <label className="form-label">E-mail de acesso{mark}</label>
+        <input className="input" type="email" inputMode="email" autoCapitalize="none" spellCheck={false} value={value.email} onChange={(event) => update({ email: event.target.value })} placeholder="pessoa@exemplo.com" />
       </div>
       <div className="form-group">
         <label className="form-label">{isExisting ? 'Nova senha de acesso' : `Senha de acesso${mark}`}</label>

@@ -1,7 +1,15 @@
 // Conteudo das paginas legais do WebCond (Privacidade, Seguranca e Cookies).
 // Texto em linguagem simples: quem usa o sistema e sindico e morador, nao advogado.
-export const LAST_UPDATE = '20 de setembro de 2026'
-export const POLICY_VERSION = '1.0'
+//
+// A "Ultima atualizacao" e a versao do WebCond exibidas nas paginas vem do package.json
+// ("version" + "releaseDate", lidos em src/pages/Politicas.jsx via appVersion.js): toda versao
+// nova publicada atualiza a pagina sozinha. Este arquivo nao importa o package.json porque
+// tambem roda nas funcoes do servidor (cadastro-enviar/cadastro-info), que so precisam da versao do texto.
+
+// Versao do TEXTO das politicas. Diferente da versao do app: so muda quando o conteudo muda, e
+// ao mudar o ConsentGate pede o aceite de novo a todos. 1.1 (v2.10A2): login por e-mail,
+// e-mail de confirmacao (Resend), pagamentos (InfinitePay e Asaas) e "ultima tela" lembrada.
+export const POLICY_VERSION = '1.1'
 
 export const POLICIES = {
   privacidade: {
@@ -33,11 +41,11 @@ export const POLICIES = {
           { type: 'ul', items: [
             'Cadastro: nome, CPF, WhatsApp, e-mail, unidade e vinculo (proprietario ou inquilino).',
             'Condominio: nome, CNPJ ou CPF do responsavel, endereco, quantidade de unidades e dados do sindico e subsindico.',
-            'Financeiro: cobrancas, valores, vencimentos, boletos, comprovantes enviados e confirmacoes de pagamento.',
-            'Comunicacao: avisos publicados pelo sindico, documentos do condominio e ocorrencias abertas pelos moradores.',
+            'Financeiro: cobrancas, valores, vencimentos, faturas, comprovantes enviados e confirmacoes de pagamento.',
+            'Comunicacao: avisos publicados pelo sindico, documentos do condominio, ocorrencias abertas pelos moradores, chamados de suporte e feedbacks enviados.',
             'Tecnicos: data e hora de acesso e registros minimos de funcionamento do servidor.',
           ] },
-          { type: 'p', text: 'O sistema nao pede nem guarda dados de cartao, senha de banco, biometria ou localizacao.' },
+          { type: 'p', text: 'O sistema nao pede nem guarda dados de cartao, senha de banco, biometria ou localizacao. Quando o pagamento e feito online, os dados do cartao sao digitados direto na pagina da empresa de pagamento, nunca no WebCond.' },
         ],
       },
       {
@@ -45,7 +53,8 @@ export const POLICIES = {
         title: 'Para que usamos',
         blocks: [
           { type: 'ul', items: [
-            'Dar acesso ao painel e identificar quem entra.',
+            'Dar acesso ao painel e identificar quem entra (o e-mail e o login principal).',
+            'Enviar e-mails do sistema: confirmacao de cadastro, avisos e cobrancas.',
             'Emitir e acompanhar cobrancas, boletos e comprovantes.',
             'Publicar avisos e documentos para as unidades certas.',
             'Gerar relatorios e exportacoes para a prestacao de contas.',
@@ -71,7 +80,11 @@ export const POLICIES = {
         blocks: [
           { type: 'ul', items: [
             'Supabase: banco de dados, contas de acesso e armazenamento de arquivos.',
-            'Vercel: hospedagem do site e das rotas do sistema, com servidores em Sao Paulo.',
+            'Vercel: hospedagem do site e das rotas do sistema, com servidores em Sao Paulo, e medicao de desempenho das paginas (sem cookies e sem identificar quem usa).',
+            'Resend: envio dos e-mails do sistema (confirmacao de cadastro, avisos e cobrancas). Recebe so o e-mail de destino e o texto da mensagem.',
+            'Servicos de notificacao do navegador (Google, Apple, Mozilla, Microsoft): entregam as notificacoes para quem ativou. Recebem so o aviso, sem dados de cadastro.',
+            'InfinitePay: quando o condominio usa o pagamento online, recebe nome, unidade, valor e, se houver, e-mail do responsavel pela cobranca.',
+            'Asaas: quando o condominio assina um plano pago, recebe os dados do condominio e do sindico para emitir a cobranca da assinatura.',
             'Autoridades: somente mediante ordem legal.',
           ] },
           { type: 'p', text: 'Cada condominio enxerga apenas os proprios dados. Um condominio nunca acessa dados de outro.' },
@@ -149,6 +162,7 @@ export const POLICIES = {
             'Contador: apenas leitura, no painel e nos relatorios.',
             'Proprietario e inquilino: veem a propria unidade, as proprias cobrancas, avisos e documentos.',
             'Administrador da plataforma: gerencia cadastros e planos dos condominios.',
+            'Equipe de suporte da TSCBr: ve apenas os chamados de suporte e o status da plataforma; nao ve moradores, cobrancas nem documentos.',
           ] },
           { type: 'p', text: 'Ninguem muda o proprio papel nem o proprio condominio: esses campos sao bloqueados pelo banco. O sindico tambem nao consegue promover alguem a administrador.' },
         ],
@@ -160,7 +174,9 @@ export const POLICIES = {
           { type: 'ul', items: [
             'Senhas sao guardadas em formato irreversivel (hash) pelo servico de autenticacao; ninguem le a senha de ninguem, nem a equipe tecnica.',
             'Contas sao criadas somente pelo sistema; o cadastro publico direto no banco fica desativado.',
-            'Login por CPF (morador) ou CNPJ (sindico) com senha, limitado por tentativas.',
+            'Login por e-mail e senha, limitado por tentativas. Quem esqueceu o e-mail entra por CPF ou CNPJ e cadastra um e-mail logo em seguida.',
+            'Trocar e-mail ou senha exige a senha atual, mesmo com a sessao aberta.',
+            'Senhas que ja apareceram em vazamentos conhecidos sao recusadas.',
             'Quem sai da unidade perde o acesso na mesma hora, mesmo com a sessao ainda aberta.',
           ] },
         ],
@@ -171,7 +187,7 @@ export const POLICIES = {
         blocks: [
           { type: 'ul', items: [
             'Requisicoes vindas de outros sites sao recusadas.',
-            'Limite de tentativas de login por IP e por documento, contra forca bruta.',
+            'Limite de tentativas de login por IP, por e-mail e por documento, contra forca bruta.',
             'A chave com poder total sobre o banco fica somente no servidor; nunca chega ao navegador.',
             'Respostas do sistema nunca ficam em cache.',
           ] },
@@ -241,7 +257,7 @@ export const POLICIES = {
     label: 'Cookies',
     title: 'Politica de Cookies',
     intro: 'O que o WebCond guarda no seu navegador e para que serve.',
-    notice: 'O WebCond nao usa cookies de publicidade, nem rastreamento, nem ferramentas de analise de terceiros.',
+    notice: 'O WebCond nao usa cookies de publicidade nem rastreamento. A unica medicao e a de desempenho das paginas, sem cookies e sem identificar voce.',
     sections: [
       {
         id: 'oque',
@@ -259,6 +275,8 @@ export const POLICIES = {
             'Tema claro ou escuro: lembra a sua escolha.',
             'Menu lateral recolhido: lembra como voce deixou a tela.',
             'Aviso de plano dispensado: evita repetir o mesmo aviso no mesmo dia.',
+            'Ultima tela aberta: ao voltar para o app (por exemplo, depois de abrir um boleto no navegador), voce continua de onde parou. Fica separado por pessoa.',
+            'Aviso de notificacoes dispensado e aceite das politicas.',
           ] },
           { type: 'p', text: 'Todos sao essenciais ou de preferencia. Nenhum identifica voce para terceiros.' },
         ],
@@ -267,7 +285,7 @@ export const POLICIES = {
         id: 'terceiros',
         title: 'Terceiros',
         blocks: [
-          { type: 'p', text: 'A sessao de login e gerenciada pelo Supabase, que hospeda o banco e a autenticacao. A hospedagem e da Vercel. Nenhum dos dois recebe dados para publicidade.' },
+          { type: 'p', text: 'A sessao de login e gerenciada pelo Supabase, que hospeda o banco e a autenticacao. A hospedagem e da Vercel, que tambem mede o tempo de carregamento das paginas sem cookies e sem identificar quem usa. Nenhum dos dois recebe dados para publicidade.' },
         ],
       },
       {

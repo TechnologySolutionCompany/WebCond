@@ -1,5 +1,5 @@
 // v4 descarta o cache anterior: e o que faz a marca nova chegar em quem ja tinha o app aberto.
-const CACHE_NAME = 'webcond-v4'
+const CACHE_NAME = 'webcond-v5'
 // Em localhost (npm run dev) o service worker so cuida das notificacoes: nada de cache.
 const IS_LOCAL = ['localhost', '127.0.0.1'].includes(self.location.hostname)
 const STATIC_ASSETS = ['/', '/manifest.json', '/favicon.svg']
@@ -28,6 +28,8 @@ self.addEventListener('fetch', (event) => {
   if (requestUrl.origin !== self.location.origin) return
   // Respostas da API sao por usuario e mudam sempre: nunca passam pelo cache.
   if (requestUrl.pathname.startsWith('/api/')) return
+  // Scripts e metricas do Vercel (Speed Insights): sempre da rede, senao o script fica velho no cache.
+  if (requestUrl.pathname.startsWith('/_vercel/')) return
 
   if (event.request.mode === 'navigate') {
     event.respondWith(

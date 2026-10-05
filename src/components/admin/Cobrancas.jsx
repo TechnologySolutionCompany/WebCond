@@ -11,7 +11,9 @@ import { buildChargeStorageFileName, enrichChargesWithPaymentUrls } from '../../
 import { applyTenantFilter, withTenantFields } from '../../lib/tenant'
 import { getChargePaymentStatus, getChargePaymentStatusMeta, isChargePaid } from '../../lib/chargeStatus'
 import { buildPaymentConfirmationTitle, buildResidentRequestSummary, isResidentPaymentConfirmation, isResidentRequestPending, parseResidentRequest } from '../../lib/residentRequests'
-import { notifyAvisos, renderBillingPdf } from '../../lib/adminApi'
+import { createChargePaymentLinks, notifyAvisos, renderBillingPdf } from '../../lib/adminApi'
+import { montarPixCopiaECola } from '../../lib/pix'
+import { profileHasResource } from '../../lib/condominiumPlan'
 import { describeNotifyResult } from '../../lib/notifications'
 import { compareUnitNumbers } from '../../lib/units'
 
@@ -53,9 +55,17 @@ const emptyForm = {
   pix_copy_paste_code: '',
 }
 
-function buildPixPayload(valor, reference, pixKey) {
-  const amount = Number(valor || 0)
-  return `PIX|${String(pixKey || '').trim()}|${amount.toFixed(2)}|${reference}`
+// Pix "copia e cola" no padrao do Banco Central (v1.09A5). Antes era "PIX|chave|valor|ref",
+// que nenhum app de banco le. Chave invalida = '' (a fatura mostra so a chave).
+function buildPixPayload(valor, recipient, form, condominiumSettings) {
+  return montarPixCopiaECola({
+    chave: condominiumSettings.pixKey,
+    valor,
+    nome: condominiumSettings.name,
+    cidade: condominiumSettings.city,
+    txid: `${form.mes_referencia}${recipient.unidade_numero || ''}`,
+    descricao: `Unidade ${recipient.unidade_numero || ''}`,
+  })
 }
 
 function getTypeMeta(tipo) {
@@ -80,14 +90,22 @@ function buildChargeDescription(form) {
 
 function buildBreakdown(form) {
   if (form.tipo === 'condominio') {
+    // titulo/tipo/origem: como cada linha aparece na fatura nova (v1.09A5).
     return [
-      { leftTitle: BREAKDOWN_TITLES.condominio, middleTitle: 'Atualizações, reparos e manutenções das áreas comuns', value: parseCurrencyInput(form.valor_condominio) },
-      { leftTitle: BREAKDOWN_TITLES.agua, middleTitle: 'Uso da água distribuída para todo condomínio', value: parseCurrencyInput(form.valor_agua) },
-      { leftTitle: BREAKDOWN_TITLES.energia, middleTitle: 'Uso da conta de energia de áreas comuns', value: parseCurrencyInput(form.valor_energia) },
+      { leftTitle: BREAKDOWN_TITLES.condominio, middleTitle: 'Atualizações, reparos e manutenções das áreas comuns', value: parseCurrencyInput(form.valor_condominio), titulo: 'Taxa condominial', tipo: 'TAXA CONDOMINIAL', origem: 'Rateio fixo' },
+      { leftTitle: BREAKDOWN_TITLES.agua, middleTitle: 'Uso da água distribuída para todo condomínio', value: parseCurrencyInput(form.valor_agua), titulo: 'Água do condomínio', tipo: 'RATEIO', origem: 'Fatura Compesa' },
+      { leftTitle: BREAKDOWN_TITLES.energia, middleTitle: 'Uso da conta de energia de áreas comuns', value: parseCurrencyInput(form.valor_energia), titulo: 'Energia das áreas comuns', tipo: 'RATEIO', origem: 'Fatura Neoenergia' },
     ]
   }
 
-  return [{ leftTitle: form.tipo === 'multa' ? 'Multa' : 'Outro', middleTitle: buildChargeDescription(form), value: parseCurrencyInput(form.valor) }]
+  return [{
+    leftTitle: form.tipo === 'multa' ? 'Multa' : 'Outro',
+    middleTitle: buildChargeDescription(form),
+    value: parseCurrencyInput(form.valor),
+    titulo: form.tipo === 'multa' ? 'Multa' : 'Cobranca avulsa',
+    tipo: form.tipo === 'multa' ? 'MULTA' : 'AVULSA',
+    origem: '',
+  }]
 }
 
 function buildObservation(form, breakdown) {
@@ -156,6 +174,9 @@ function buildChargeMessage(charge, condominiumSettings, { resend = false } = {}
 
 async function generateChargePdfBytes({ condominiumSettings, recipient, form, total, pixQrCode, pixCopyPasteCode, paymentLink, breakdown }) {
   const payload = {
+    // Modelo novo da fatura (fatura-template.html). Se o servidor do PDF falhar, cai no modelo antigo abaixo.
+    modelo: 'fatura',
+    unidade: recipient.unidade_numero || '',
     nomeMorador: recipient.nome,
     apartamento: recipient.unidade_numero || '-',
     numero: recipient.whatsapp || condominiumSettings.whatsappLabel,
@@ -163,7 +184,7 @@ async function generateChargePdfBytes({ condominiumSettings, recipient, form, to
     valorTotal: total,
     mesReferencia: form.mes_referencia,
     dataVencimento: form.vencimento,
-    itens: breakdown.map((item) => ({ nome: item.leftTitle, descricao: item.middleTitle, valor: item.value })),
+    itens: breakdown.map((item) => ({ nome: item.leftTitle, titulo: item.titulo, descricao: item.middleTitle, tipo: item.tipo, origem: item.origem, valor: item.value })),
     qrcode_pix: pixQrCode,
     pixCopiaCola: pixCopyPasteCode,
     linkPagamento: paymentLink,
@@ -245,6 +266,7 @@ export default function Cobrancas() {
   const [residentRequests, setResidentRequests] = useState([])
   const { profile, condominiumId } = useAuth()
   const { settings: condominiumSettings } = useCondominiumSettings(condominiumId)
+  const pixAutomatico = profileHasResource(profile, 'pixAutomatico')
   const { toast } = useToast()
 
   const fetchAll = useCallback(async () => {
@@ -336,7 +358,8 @@ export default function Cobrancas() {
       mes_referencia: charge.mes_referencia || emptyForm.mes_referencia,
       vencimento: charge.vencimento || '',
       observacao: stored.observacao,
-      pagamento_link: charge.pagamento_link || '',
+      // Link da InfinitePay tem o valor antigo: no relancamento, o servidor gera outro.
+      pagamento_link: charge.pagamento_provedor === 'infinitepay' ? '' : charge.pagamento_link || '',
       pix_copy_paste_code: '',
       previousBoletoPath: charge.boleto_path || '',
     })
@@ -397,7 +420,6 @@ export default function Cobrancas() {
       const externalQrCode = String(form.qrcode_externo || '').trim()
       const manualPixCopyPasteCode = String(form.pix_copy_paste_code || '').trim()
       const paymentLink = String(form.pagamento_link || '').trim()
-      const pixKey = condominiumSettings.pixKey
 
       let pagamentoAnexoPath = ''
       if (paymentFile) {
@@ -409,9 +431,10 @@ export default function Cobrancas() {
 
       const rows = []
       for (const recipient of selected) {
-        const pixCopyPasteCode = manualPixCopyPasteCode || buildPixPayload(total, `${recipient.unidade_numero}-${form.mes_referencia}`, pixKey)
+        // Pix gerado sozinho: Plano PRO (v2.10A1). No ONE vale o codigo colado ou a imagem enviada.
+        const pixCopyPasteCode = manualPixCopyPasteCode || (pixAutomatico ? buildPixPayload(total, recipient, form, condominiumSettings) : '')
         let pixQrCode = uploadedQrCode || externalQrCode
-        if (!pixQrCode && (pixCopyPasteCode || pixKey)) {
+        if (!pixQrCode && pixCopyPasteCode) {
           pixQrCode = await QRCode.toDataURL(pixCopyPasteCode)
         }
 
@@ -448,13 +471,27 @@ export default function Cobrancas() {
         rows.push(isRelaunch ? row : withTenantFields({ ...row, created_by: profile.id }, condominiumId))
       }
 
+      let savedChargeIds = []
       if (isRelaunch) {
         const { error } = await supabase.from('cobrancas').update(rows[0]).eq('id', form.chargeId)
         if (error) throw error
         if (form.previousBoletoPath) await supabase.storage.from('cobrancas').remove([form.previousBoletoPath])
+        savedChargeIds = [form.chargeId]
       } else {
-        const { error } = await supabase.from('cobrancas').insert(rows)
+        const { data: inserted, error } = await supabase.from('cobrancas').insert(rows).select('id')
         if (error) throw error
+        savedChargeIds = (inserted || []).map((row) => row.id)
+      }
+
+      // Banco com API (InfinitePay): cada cobranca ganha o link "Pagar agora", com baixa automatica.
+      // Pix direto: o servidor responde sem fazer nada. Falha aqui nao desfaz a cobranca.
+      if (!paymentLink) {
+        void createChargePaymentLinks(savedChargeIds)
+          .then((result) => {
+            if (result?.provedor === 'infinitepay' && result.falhas) toast(`${result.falhas} link(s) de pagamento da InfinitePay nao foram gerados. Confira a InfiniteTag em Meu perfil > Recebimento.`, 'error')
+            if (result?.criados) void fetchAll()
+          })
+          .catch(() => toast('Cobranca salva, mas o link de pagamento do banco nao foi gerado.', 'info'))
       }
 
       const { data: createdNotices, error: avisoError } = await supabase
@@ -796,11 +833,11 @@ export default function Cobrancas() {
               </div>
               <div className="form-group" style={{ gridColumn: '1/-1' }}>
                 <label className="form-label">Pix copia e cola (opcional)</label>
-                <textarea className="input" rows={2} value={form.pix_copy_paste_code} onChange={(event) => setForm((current) => ({ ...current, pix_copy_paste_code: event.target.value }))} placeholder="Se ficar vazio, o sistema usa a chave Pix do condominio." />
+                <textarea className="input" rows={2} value={form.pix_copy_paste_code} onChange={(event) => setForm((current) => ({ ...current, pix_copy_paste_code: event.target.value }))} placeholder={pixAutomatico ? 'Se ficar vazio, o WebCond gera o Pix da chave do condominio com o valor certo.' : 'Cole o Pix copia e cola do seu banco. A geracao automatica e do Plano PRO.'} />
               </div>
               <div className="form-group" style={{ gridColumn: '1/-1' }}>
                 <label className="form-label">QRCode externo (opcional)</label>
-                <input className="input" value={form.qrcode_externo} onChange={(event) => setForm((current) => ({ ...current, qrcode_externo: event.target.value }))} placeholder="URL da imagem do QRCode (se vazio, sera gerado automaticamente)." />
+                <input className="input" value={form.qrcode_externo} onChange={(event) => setForm((current) => ({ ...current, qrcode_externo: event.target.value }))} placeholder={pixAutomatico ? 'URL da imagem do QRCode (se vazio, sera gerado automaticamente).' : 'URL da imagem do QRCode do seu banco.'} />
               </div>
 
               <div className="form-group">

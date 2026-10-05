@@ -7,6 +7,7 @@ import { ProtectedRoute } from './components/shared/ProtectedRoute'
 import Landing from './pages/Landing'
 import Politicas from './pages/Politicas'
 import AutoCadastro from './pages/AutoCadastro'
+import ConfirmarCadastro from './pages/ConfirmarCadastro'
 import ConsentGate from './components/shared/ConsentGate'
 import CookieBar from './components/shared/CookieBar'
 import './styles/global.css'
@@ -29,6 +30,7 @@ export default function App() {
                 <Route path="/" element={<Landing/>}/>
                 <Route path="/politicas/:slug" element={<Politicas/>}/>
                 <Route path="/cadastro/:token" element={<AutoCadastro/>}/>
+                <Route path="/confirmar-cadastro" element={<ConfirmarCadastro/>}/>
                 <Route path="/admin/*" element={
                   <ProtectedRoute requiredRole={['admin', 'contador']}><AdminLayout/></ProtectedRoute>
                 }/>

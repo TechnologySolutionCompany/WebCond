@@ -183,3 +183,24 @@ export function notifyAvisos(ids) {
 export function notifySupportTicket(id) {
   return callAdminApi('/api/admin/notify', { chamado: id }, { timeoutMs: 30000 })
 }
+
+// Recebimento (v1.09A5): banco do condominio e links "Pagar agora" das cobrancas lancadas.
+export function savePaymentSettings(payload) {
+  return callAdminApi('/api/admin/payment-settings', payload)
+}
+
+export function createChargePaymentLinks(chargeIds) {
+  const list = (chargeIds || []).filter(Boolean)
+  if (!list.length) return Promise.resolve(null)
+  return callAdminApi('/api/admin/charges-payment-links', { chargeIds: list }, { timeoutMs: 60000 })
+}
+
+// Feedback do sindico/contador para a administracao da plataforma.
+export function sendAdminFeedback(payload) {
+  return callAdminApi('/api/admin/feedback', payload)
+}
+
+// Plano Pro (v2.10A1): cria a assinatura no Asaas e devolve o link de pagamento.
+export function startPlanSubscription(plano) {
+  return callAdminApi('/api/admin/assinatura-checkout', { plano }, { timeoutMs: 30000 })
+}

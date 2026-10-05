@@ -8,8 +8,8 @@ import { changeOwnPassword, updateOwnProfile } from '../../lib/adminApi'
 import { getCondominiumAccessState, getPlan, TRIAL_PERIOD_DAYS } from '../../lib/condominiumPlan'
 import { getUserRoleLabel, normalizeRole } from '../../lib/auth'
 import { APP_VERSION } from '../../lib/appVersion'
-
-const INTERNAL_EMAIL = /@login\.webcond\.local$/i
+import { loginEmailForDisplay, normalizeLoginEmail } from '../../lib/loginEmail'
+import RecebimentoTab from './RecebimentoTab'
 const DAY_MS = 86400000
 
 function formatDate(value) {
@@ -57,22 +57,29 @@ function Row({ label, children }) {
 
 function DadosTab({ profile, refreshProfile }) {
   const { toast } = useToast()
-  const [form, setForm] = useState({ nome: '', whatsapp: '', email: '' })
+  const [form, setForm] = useState({ nome: '', whatsapp: '', email: '', senhaAtual: '' })
   const [saving, setSaving] = useState(false)
+  const emailAtual = loginEmailForDisplay(profile?.email)
+  const trocandoEmail = Boolean(normalizeLoginEmail(form.email)) && normalizeLoginEmail(form.email) !== emailAtual
 
   useEffect(() => {
     setForm({
       nome: profile?.nome || '',
       whatsapp: profile?.whatsapp || '',
-      email: INTERNAL_EMAIL.test(profile?.email || '') ? '' : profile?.email || '',
+      email: loginEmailForDisplay(profile?.email),
+      senhaAtual: '',
     })
   }, [profile?.nome, profile?.whatsapp, profile?.email])
 
   const handleSave = async (event) => {
     event.preventDefault()
+    if (trocandoEmail && !form.senhaAtual) {
+      toast('Para trocar o e-mail de acesso, informe a sua senha atual.', 'error')
+      return
+    }
     setSaving(true)
     try {
-      const result = await updateOwnProfile(form)
+      const result = await updateOwnProfile({ ...form, senhaAtual: trocandoEmail ? form.senhaAtual : '' })
       await refreshProfile()
       toast(result.emailAlterado ? 'Dados salvos. O e-mail de acesso foi atualizado.' : 'Dados salvos.', 'success')
     } catch (error) {
@@ -99,10 +106,21 @@ function DadosTab({ profile, refreshProfile }) {
         </div>
       </div>
       <div className="form-group">
-        <label className="form-label" htmlFor="perfil-email">E-mail</label>
-        <input id="perfil-email" className="input" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="voce@exemplo.com" />
-        <span className="profile-hint">O CPF so muda pelo suporte: e ele que identifica o seu acesso.</span>
+        <label className="form-label" htmlFor="perfil-email">E-mail de acesso</label>
+        <input id="perfil-email" className="input" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="voce@exemplo.com" />
+        <span className="profile-hint">
+          {emailAtual
+            ? 'Voce entra com este e-mail, ou com o seu CPF ou o CNPJ do condominio. O CPF so muda pelo suporte.'
+            : 'Cadastre um e-mail para entrar sem digitar o CPF ou o CNPJ. O CPF so muda pelo suporte.'}
+        </span>
       </div>
+      {trocandoEmail && (
+        <div className="form-group">
+          <label className="form-label" htmlFor="perfil-email-senha">Sua senha atual</label>
+          <input id="perfil-email-senha" className="input" type="password" autoComplete="current-password" value={form.senhaAtual} onChange={(event) => setForm({ ...form, senhaAtual: event.target.value })} placeholder="Confirma que e voce" />
+          <span className="profile-hint">O e-mail de acesso e uma credencial: trocar pede a senha, como na troca de senha.</span>
+        </div>
+      )}
       <div className="me-actions">
         <button type="submit" className="btn btn-primary" disabled={saving}><Save size={14} /> {saving ? 'Salvando...' : 'Salvar'}</button>
       </div>
@@ -200,25 +218,26 @@ export default function Perfil({ onNavigate }) {
   const isSyndic = normalizeRole(profile?.role) === 'admin'
   const [tab, setTab] = useState('dados')
   const [condo, setCondo] = useState(null)
+  const [condoVersion, setCondoVersion] = useState(0)
 
   useEffect(() => {
     if (!condominiumId) return
     void (async () => {
       const { data } = await supabase
         .from('condominiums')
-        .select('id, name, nome, status, metadata, created_at, updated_at')
+        .select('id, name, nome, status, metadata, pix_key, chave_pix, bank_details, created_at, updated_at')
         .eq('id', condominiumId)
         .maybeSingle()
       setCondo(data || null)
     })()
-  }, [condominiumId])
+  }, [condominiumId, condoVersion])
 
   const plan = useMemo(() => describePlan(condo ? getCondominiumAccessState(condo) : null), [condo])
 
   const tabs = [
     { key: 'dados', label: 'Dados' },
     { key: 'senha', label: 'Senha' },
-    ...(isSyndic ? [{ key: 'plano', label: 'Meu plano' }] : []),
+    ...(isSyndic ? [{ key: 'plano', label: 'Meu plano' }, { key: 'recebimento', label: 'Recebimento' }] : []),
   ]
   const initial = String(profile?.nome || '?').trim().charAt(0).toUpperCase()
 
@@ -248,6 +267,7 @@ export default function Perfil({ onNavigate }) {
       {tab === 'dados' && <DadosTab profile={profile} refreshProfile={refreshProfile} />}
       {tab === 'senha' && <SenhaTab />}
       {tab === 'plano' && isSyndic && <PlanoTab plan={plan} onNavigate={onNavigate} />}
+      {tab === 'recebimento' && isSyndic && <RecebimentoTab condo={condo} onNavigate={onNavigate} onSaved={() => setCondoVersion((value) => value + 1)} />}
 
       <div className="me-version">
         <img src="/logo.svg" alt="" aria-hidden="true" className="marca-mini marca-mini-sm" />

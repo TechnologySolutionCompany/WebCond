@@ -4,13 +4,19 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { getCondominiumAccessState, getPlan, PUBLIC_PLAN_LIST, TRIAL_PERIOD_DAYS } from '../../lib/condominiumPlan'
 import { MSG_PLANOS, whatsappPlanoUrl, whatsappUrl } from '../../lib/contato'
-import { buildCheckoutUrl } from '../../lib/assinatura'
+import { buildCheckoutUrl, describeAssinatura, getAssinaturaConfig } from '../../lib/assinatura'
+import { startPlanSubscription } from '../../lib/adminApi'
+import { useToast } from '../shared/Toast'
 
 // Tela de planos do sindico, aberta pelo botao "Melhorar meu plano" em Meu perfil.
 // Nada e cobrado aqui: o sindico escolhe e fala com a TSCBr para contratar.
 export default function Planos({ isActive = true, onNavigate }) {
   const { condominiumId, profile } = useAuth()
+  const { toast } = useToast()
   const [condo, setCondo] = useState(null)
+  const [abrindo, setAbrindo] = useState('')
+  // v2.10A1: com o Asaas ligado, o plano e contratado e pago dentro do sistema.
+  const pelaApi = getAssinaturaConfig().pelaApi
 
   useEffect(() => {
     if (!condominiumId || !isActive) return
@@ -34,7 +40,21 @@ export default function Planos({ isActive = true, onNavigate }) {
   // com a TSCBr. Assim que houver, o mesmo botao abre o checkout (src/lib/assinatura.js).
   const linkDoPlano = (plan) => buildCheckoutUrl({ plano: plan.id, condominiumId: condo?.id, condominiumName: condoName })
     || whatsappPlanoUrl(plan.label, condoName)
-  const pagamentoNoSistema = Boolean(buildCheckoutUrl({ plano: 'ONE' }))
+  const pagamentoNoSistema = pelaApi || Boolean(buildCheckoutUrl({ plano: 'ONE' }))
+
+  // Cria a assinatura e leva para a pagina de pagamento do Asaas (Pix, boleto ou cartao).
+  // Sem o Asaas configurado no servidor, cai no WhatsApp da TSCBr como antes.
+  const contratar = async (plan) => {
+    setAbrindo(plan.id)
+    try {
+      const { url } = await startPlanSubscription(plan.id)
+      window.location.assign(url)
+    } catch (error) {
+      if (error.code === 'SEM_PROVEDOR') window.open(whatsappPlanoUrl(plan.label, condoName), '_blank', 'noopener,noreferrer')
+      else toast(error.message || 'Nao foi possivel abrir o pagamento.', 'error')
+      setAbrindo('')
+    }
+  }
 
   return (
     <div className="fade-in planos-shell">
@@ -42,7 +62,9 @@ export default function Planos({ isActive = true, onNavigate }) {
         <button className="btn btn-ghost btn-sm" onClick={() => onNavigate?.('perfil')}><ArrowLeft size={14} /> Voltar ao meu perfil</button>
         <div className="page-title" style={{ marginTop: 10 }}>Planos e valores</div>
         <div className="page-subtitle">
-          Escolha com calma. Nada muda automaticamente: voce fala com a TSCBr e a gente ajusta o plano do seu condominio.
+          {pelaApi
+            ? 'Escolha o plano e pague por Pix, boleto ou cartao. O plano e liberado assim que o pagamento for confirmado.'
+            : 'Escolha com calma. Nada muda automaticamente: voce fala com a TSCBr e a gente ajusta o plano do seu condominio.'}
         </div>
       </div>
 
@@ -55,6 +77,7 @@ export default function Planos({ isActive = true, onNavigate }) {
           {isTrial
             ? `Teste gratuito de ${TRIAL_PERIOD_DAYS} dias com os recursos do ONE.`
             : `${currentPlan?.priceLabel}/mes · ${currentPlan?.documentLimit} documentos por mes`}
+          {condo?.metadata?.assinatura?.provedor ? ` · ${describeAssinatura(condo.metadata)}` : ''}
         </div>
       </div>
 
@@ -83,9 +106,13 @@ export default function Planos({ isActive = true, onNavigate }) {
 
               {atual ? (
                 <div className="plano-card-cta plano-card-cta-atual">Este e o plano do seu condominio hoje.</div>
+              ) : pelaApi && plan.available ? (
+                <button type="button" className="btn btn-primary plano-card-cta" disabled={Boolean(abrindo)} onClick={() => void contratar(plan)}>
+                  <CreditCard size={14} /> {abrindo === plan.id ? 'Abrindo o pagamento...' : `Assinar o plano ${plan.label}`}
+                </button>
               ) : (
                 <a className="btn btn-primary plano-card-cta" href={linkDoPlano(plan)} target="_blank" rel="noopener noreferrer">
-                  {pagamentoNoSistema ? <CreditCard size={14} /> : <MessageCircle size={14} />} Quero o plano {plan.label}
+                  {pagamentoNoSistema && plan.available ? <CreditCard size={14} /> : <MessageCircle size={14} />} {plan.available ? `Quero o plano ${plan.label}` : `Tenho interesse no ${plan.label}`}
                 </a>
               )}
             </div>

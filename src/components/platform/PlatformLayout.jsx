@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Building2, LayoutDashboard, LifeBuoy, Menu, Users } from 'lucide-react'
+import { Activity, Building2, LayoutDashboard, LifeBuoy, Menu, MessageSquareHeart, Users } from 'lucide-react'
 import Sidebar from '../shared/Sidebar'
+import EmailObrigatorio from '../shared/EmailObrigatorio'
 import { useSidebarMenu } from '../../hooks/useSidebarMenu'
 import { useDeepLinkPage } from '../../hooks/useDeepLinkPage'
 import { useAuth } from '../../hooks/useAuth'
@@ -10,7 +11,9 @@ import PlatformCondominiums from './PlatformCondominiums'
 import PlatformStatusPage from './PlatformStatusPage'
 import PlatformSuporte from './PlatformSuporte'
 import PlatformEquipe from './PlatformEquipe'
-import { listPlatformCondominiums, listSupportTickets } from '../../lib/platformApi'
+import PlatformFeedbacks from './PlatformFeedbacks'
+import { listFeedbacks, listPlatformCondominiums, listSupportTickets } from '../../lib/platformApi'
+import { initialPage, saveLastView } from '../../lib/lastView'
 
 const PAGES = {
   dashboard: PlatformDashboard,
@@ -18,6 +21,7 @@ const PAGES = {
   status: PlatformStatusPage,
   suporte: PlatformSuporte,
   equipe: PlatformEquipe,
+  feedbacks: PlatformFeedbacks,
 }
 
 // Equipe de suporte: so chamados e status. As outras paginas nem aparecem (e a API recusa).
@@ -27,12 +31,13 @@ const SUPPORT_PAGES = ['suporte', 'status']
 const BACKGROUND_REFRESH_MS = 60000
 
 export default function PlatformLayout() {
-  const { resolvedRole } = useAuth()
+  const { resolvedRole, profile } = useAuth()
   const isSupport = isSupportRole(resolvedRole)
   const homePage = isSupport ? 'suporte' : 'dashboard'
-  const [page, setPage] = useState(homePage)
+  // Reabre na ultima tela aberta (v1.09A5).
+  const [page, setPage] = useState(() => initialPage('platform', profile?.id, isSupport ? SUPPORT_PAGES : Object.keys(PAGES), homePage))
   const { mobileOpen, toggleMenu, closeMobile, layoutClassName } = useSidebarMenu()
-  const [mountedPages, setMountedPages] = useState([homePage])
+  const [mountedPages, setMountedPages] = useState(() => [page])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [metrics, setMetrics] = useState({
@@ -45,6 +50,7 @@ export default function PlatformLayout() {
   })
   const [condominiums, setCondominiums] = useState([])
   const [openTickets, setOpenTickets] = useState(0)
+  const [newFeedbacks, setNewFeedbacks] = useState(0)
   const mainContentRef = useRef(null)
   const scrollPositionsRef = useRef({})
 
@@ -63,9 +69,10 @@ export default function PlatformLayout() {
           { key: 'condominiums', label: 'Condominios', icon: Building2 },
           { key: 'status', label: 'Status da plataforma', icon: Activity },
           { key: 'suporte', label: 'Suporte', icon: LifeBuoy, badge: openTickets },
+          { key: 'feedbacks', label: 'Feedback', icon: MessageSquareHeart, badge: newFeedbacks },
           { key: 'equipe', label: 'Equipe de suporte', icon: Users },
         ],
-      }]), [openTickets, isSupport])
+      }]), [openTickets, newFeedbacks, isSupport])
   const allowedPages = isSupport ? SUPPORT_PAGES : Object.keys(PAGES)
 
   const loadTicketCount = useCallback(async () => {
@@ -146,11 +153,20 @@ export default function PlatformLayout() {
   }
 
   useDeepLinkPage(allowedPages, handleNavigate)
+  useEffect(() => { saveLastView('platform', profile?.id, page) }, [page, profile?.id])
+
+  // Contador de feedback novo no menu (so o admin; o suporte nao ve a caixa).
+  const handleFeedbacksChanged = useCallback((count) => setNewFeedbacks(count), [])
+  useEffect(() => {
+    if (isSupport) return
+    void listFeedbacks('novo').then((result) => setNewFeedbacks(result.novos || 0)).catch(() => {})
+  }, [isSupport])
 
   const currentLabel = nav.flatMap((section) => section.items).find((item) => item.key === page)?.label || 'Painel global'
 
   return (
     <div className={`app-layout ${layoutClassName}`}>
+      <EmailObrigatorio />
       <Sidebar items={nav} activeKey={page} onNav={handleNavigate} theme="platform" mobileOpen={mobileOpen} onClose={closeMobile} />
       <main className="main-content" ref={mainContentRef}>
         <div className="mobile-topbar">
@@ -180,6 +196,7 @@ export default function PlatformLayout() {
                   condominiums={condominiums}
                   reload={loadPlatformData}
                   onChanged={handleTicketsChanged}
+                  onFeedbacksChanged={handleFeedbacksChanged}
                 />
               </div>
             )

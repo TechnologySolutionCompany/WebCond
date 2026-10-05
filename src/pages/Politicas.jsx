@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ShieldCheck } from 'lucide-react'
-import { LAST_UPDATE, POLICIES, POLICY_LIST, POLICY_VERSION } from '../lib/politicas'
+import { POLICIES, POLICY_LIST, POLICY_VERSION } from '../lib/politicas'
+import { APP_RELEASE_DATE_LABEL, APP_VERSION } from '../lib/appVersion'
 
 // Paginas legais publicas (mesma estrutura do site oficial, nas cores do WebCond).
 export default function Politicas() {
@@ -37,7 +38,7 @@ export default function Politicas() {
         <h1>{policy.title}</h1>
         <p>{policy.intro}</p>
         <div className="policy-meta">
-          Ultima atualizacao: <strong>{LAST_UPDATE}</strong> · Versao <strong>{POLICY_VERSION}</strong>
+          Ultima atualizacao: <strong>{APP_RELEASE_DATE_LABEL}</strong> · WebCond <strong>{APP_VERSION}</strong> · Versao do texto <strong>{POLICY_VERSION}</strong>
         </div>
       </section>
 

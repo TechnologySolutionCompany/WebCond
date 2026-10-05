@@ -1,7 +1,13 @@
 import { createRoot } from 'react-dom/client'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import App from './App.jsx'
 
-createRoot(document.getElementById('root')).render(<App />)
+createRoot(document.getElementById('root')).render(
+  <>
+    <App />
+    <SpeedInsights />
+  </>,
+)
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {

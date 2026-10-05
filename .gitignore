@@ -7,3 +7,9 @@ dist/
 *.log
 SUPABASE_AUDIT.md
 .DS_Store
+fatura/saida/
+
+# Ficam so no computador local (v2.10A2): testes de validacao e desenho/dados reais da fatura.
+# O repositorio do GitHub e publico.
+tests/
+fatura/
