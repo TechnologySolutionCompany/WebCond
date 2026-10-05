@@ -29,6 +29,15 @@ export function formatReferenceLabel(reference = '') {
   return `${months[monthIndex]}/${year}`
 }
 
+// "2026-10" -> "Outubro 2026" (titulos das telas redesenhadas; a fatura continua com OUT/2026).
+export function formatReferenceLong(reference = '') {
+  const [year, month] = String(reference || '').split('-')
+  const monthIndex = Number(month) - 1
+  const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+  if (!year || Number.isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) return reference || '-'
+  return `${months[monthIndex]} ${year}`
+}
+
 export function formatDateLabel(dateValue = '') {
   if (!dateValue) return '-'
 

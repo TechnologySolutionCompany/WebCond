@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Building2, LayoutDashboard, LifeBuoy, Menu, MessageSquareHeart, Users } from 'lucide-react'
+import { Activity, Building2, LayoutDashboard, LifeBuoy, MessageSquareHeart, Users } from 'lucide-react'
 import Sidebar from '../shared/Sidebar'
+import { AppTopbar, BottomNav, initialsOf } from '../shared/AppChrome'
 import EmailObrigatorio from '../shared/EmailObrigatorio'
 import { useSidebarMenu } from '../../hooks/useSidebarMenu'
 import { useDeepLinkPage } from '../../hooks/useDeepLinkPage'
@@ -66,9 +67,13 @@ export default function PlatformLayout() {
         label: 'Plataforma',
         items: [
           { key: 'dashboard', label: 'Painel global', icon: LayoutDashboard },
-          { key: 'condominiums', label: 'Condominios', icon: Building2 },
+          { key: 'condominiums', label: 'Condomínios', icon: Building2 },
           { key: 'status', label: 'Status da plataforma', icon: Activity },
-          { key: 'suporte', label: 'Suporte', icon: LifeBuoy, badge: openTickets },
+        ],
+      }, {
+        label: 'Atendimento',
+        items: [
+          { key: 'suporte', label: 'Chamados', icon: LifeBuoy, badge: openTickets },
           { key: 'feedbacks', label: 'Feedback', icon: MessageSquareHeart, badge: newFeedbacks },
           { key: 'equipe', label: 'Equipe de suporte', icon: Users },
         ],
@@ -164,21 +169,29 @@ export default function PlatformLayout() {
 
   const currentLabel = nav.flatMap((section) => section.items).find((item) => item.key === page)?.label || 'Painel global'
 
+  // Barra inferior do celular (redesign v2.10A3): sem botao central na plataforma.
+  const tabs = isSupport
+    ? [{ key: 'suporte', label: 'Chamados', icon: LifeBuoy, badge: openTickets }, { key: 'status', label: 'Status', icon: Activity }]
+    : [
+        { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
+        { key: 'condominiums', label: 'Condomínios', icon: Building2 },
+        { key: 'suporte', label: 'Chamados', icon: LifeBuoy, badge: openTickets },
+      ]
+
   return (
     <div className={`app-layout ${layoutClassName}`}>
       <EmailObrigatorio />
       <Sidebar items={nav} activeKey={page} onNav={handleNavigate} theme="platform" mobileOpen={mobileOpen} onClose={closeMobile} />
       <main className="main-content" ref={mainContentRef}>
-        <div className="mobile-topbar">
-          <button className="btn btn-ghost btn-icon" onClick={toggleMenu} aria-label="Abrir ou recolher o menu" aria-expanded={mobileOpen || !layoutClassName}>
-            <Menu size={18} />
-          </button>
-          <img src="/logo.svg" alt="" aria-hidden="true" className="marca-mini" />
-          <div>
-            <div className="mobile-topbar-title">{isSupport ? 'WebCond Suporte' : 'WebCond Platform'}</div>
-            <div className="mobile-topbar-sub">{currentLabel}</div>
-          </div>
-        </div>
+        <AppTopbar
+          title={isSupport ? 'WebCond Suporte' : 'WebCond'}
+          crumbRoot="WebCond"
+          crumbPage={currentLabel}
+          onToggleMenu={toggleMenu}
+          menuExpanded={mobileOpen || !layoutClassName}
+          initials={initialsOf(profile?.nome)}
+          onAvatar={toggleMenu}
+        />
 
         <div className="page-content">
           {mountedPages.map((pageKey) => {
@@ -197,12 +210,16 @@ export default function PlatformLayout() {
                   reload={loadPlatformData}
                   onChanged={handleTicketsChanged}
                   onFeedbacksChanged={handleFeedbacksChanged}
+                  onNavigate={handleNavigate}
+                  openTickets={openTickets}
+                  newFeedbacks={newFeedbacks}
                 />
               </div>
             )
           })}
         </div>
       </main>
+      <BottomNav tabs={tabs} activeKey={page} onNav={handleNavigate} onMore={toggleMenu} moreActive={mobileOpen} />
     </div>
   )
 }

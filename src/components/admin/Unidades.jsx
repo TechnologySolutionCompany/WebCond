@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bell, Home, Link2, Loader2, Plus, Search, Trash2, X } from 'lucide-react'
+import { Ban, Bell, ChevronRight, DoorOpen, Home, KeyRound, LayoutGrid, Link2, List, Loader2, Plus, Search, Trash2, X } from 'lucide-react'
 import SolicitacoesCadastro from './SolicitacoesCadastro'
 import WhatsAppIcon from '../shared/WhatsAppIcon'
 import { supabase } from '../../lib/supabase'
@@ -10,8 +10,41 @@ import { useToast } from '../shared/Toast'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { applyTenantFilter } from '../../lib/tenant'
-import { buildResidentRequestSummary, filterSyndicNotifications, isResidentRequestPending } from '../../lib/residentRequests'
-import { compareUnitNumbers, getUnitStatusMeta, normalizeUnitNumber, UNIT_STATUSES } from '../../lib/units'
+import { buildResidentRequestSummary, filterSyndicNotifications, isResidentPaymentConfirmation, isResidentRequestPending, parseResidentRequest } from '../../lib/residentRequests'
+import { compareUnitNumbers, normalizeUnitNumber, UNIT_STATUSES } from '../../lib/units'
+import { getChargePaymentStatus } from '../../lib/chargeStatus'
+import { formatReferenceLong } from '../../lib/billingShared'
+
+// Situacao do pagamento da unidade no mapa (redesign v2.10A3): cor do quadradinho.
+const PAY_META = {
+  paid: { label: 'Paga', tone: 'green' },
+  informed: { label: 'Informada', tone: 'primary' },
+  open: { label: 'Em aberto', tone: 'amber' },
+  late: { label: 'Em atraso', tone: 'red' },
+  none: { label: 'Sem cobrança', tone: 'neutral' },
+}
+
+const SITUACAO_META = {
+  ocupada: { label: 'Ocupada', tone: 'neutral', Icon: Home },
+  alugada: { label: 'Alugada', tone: 'primary', Icon: KeyRound },
+  desocupada: { label: 'Desocupada', tone: 'amber', Icon: DoorOpen },
+  interditada: { label: 'Interditada', tone: 'red', Icon: Ban },
+}
+
+// Andar pelo numero: 101 -> 1, 1203 -> 12, 001/01B -> terreo. Letras (A, B...) ficam em "Outras".
+function floorOf(numero = '') {
+  const digits = String(numero).match(/^\d+/)?.[0] || ''
+  if (!digits) return { key: 9999, label: '—' }
+  if (digits.length <= 2) return { key: 0, label: 'T' }
+  const floor = Number(digits.slice(0, -2))
+  return { key: floor, label: floor === 0 ? 'T' : `${floor}º` }
+}
+
+function shortName(nome = '') {
+  const parts = String(nome).trim().split(/\s+/).filter(Boolean)
+  if (parts.length <= 1) return parts[0] || ''
+  return `${parts[0]} ${parts[parts.length - 1][0]}.`
+}
 
 const emptyPerson = { id: null, nome: '', cpf: '', whatsapp: '', email: '', password: '' }
 const emptyForm = { unitId: null, numero: '', situacao: 'ocupada', observacao: '', responsavel_financeiro: 'proprietario', proprietario: emptyPerson, inquilino: emptyPerson }
@@ -90,6 +123,8 @@ export default function Unidades({ isActive = true }) {
   const [tableMissing, setTableMissing] = useState(false)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [view, setView] = useState('mapa')
+  const [charges, setCharges] = useState([])
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
@@ -107,7 +142,7 @@ export default function Unidades({ isActive = true }) {
       supabase.from('unidade_vinculos').select('unidade_id, vinculo, profiles(id, nome, cpf, whatsapp, email, ativo)'),
       applyTenantFilter(supabase.from('ocorrencias_predio').select('*').order('created_at', { ascending: false }), condominiumId),
       supabase.from('solicitacoes_cadastro').select('id', { count: 'exact', head: true }).eq('condominium_id', condominiumId).eq('status', 'pendente'),
-      supabase.from('cobrancas').select('id'),
+      applyTenantFilter(supabase.from('cobrancas').select('id, unidade_id, unidade_numero, mes_referencia, vencimento, pago, payment_status'), condominiumId),
     ])
 
     const missing = unitsRes.error?.code === 'PGRST205' || unitsRes.error?.code === '42P01'
@@ -119,6 +154,7 @@ export default function Unidades({ isActive = true }) {
     setRequests(filterSyndicNotifications(requestsRes.data || [], {
       chargeIds: new Set((chargesRes.data || []).map((item) => item.id)),
     }))
+    setCharges(chargesRes.data || [])
     setPendingSignups(signupRes.count || 0)
     setLoading(false)
   }, [condominiumId, toast])
@@ -151,17 +187,71 @@ export default function Unidades({ isActive = true }) {
     return map
   }, [requests])
 
+  // Competencia mais recente lancada: e ela que o mapa mostra (paga / informada / em aberto).
+  const currentReference = useMemo(() => charges.reduce((latest, charge) => (
+    String(charge.mes_referencia || '') > latest ? String(charge.mes_referencia || '') : latest
+  ), ''), [charges])
+
+  const payByUnit = useMemo(() => {
+    const informedCharges = new Set(requests
+      .filter((item) => isResidentPaymentConfirmation(item) && isResidentRequestPending(item))
+      .map((item) => parseResidentRequest(item).chargeId))
+    const map = new Map()
+    for (const unit of units) {
+      const own = charges.filter((charge) => charge.unidade_id === unit.id || (!charge.unidade_id && normalizeUnitNumber(charge.unidade_numero) === normalizeUnitNumber(unit.numero)))
+      const late = own.some((charge) => getChargePaymentStatus(charge) === 'OVERDUE' && !informedCharges.has(charge.id))
+      const current = own.filter((charge) => charge.mes_referencia === currentReference)
+      let key = 'none'
+      if (late) key = 'late'
+      else if (current.length) {
+        const statuses = current.map((charge) => (informedCharges.has(charge.id) ? 'UNDER_REVIEW' : getChargePaymentStatus(charge)))
+        if (statuses.every((status) => status === 'PAID' || status === 'CANCELLED')) key = 'paid'
+        else if (statuses.some((status) => status === 'UNDER_REVIEW')) key = 'informed'
+        else key = 'open'
+      }
+      map.set(unit.id, key)
+    }
+    return map
+  }, [units, charges, requests, currentReference])
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
     const digits = query.replace(/\D/g, '')
     return units.filter((unit) => {
-      if (filterStatus && unit.situacao !== filterStatus) return false
+      if (filterStatus === 'atraso' ? payByUnit.get(unit.id) !== 'late' : filterStatus && unit.situacao !== filterStatus) return false
       if (!query) return true
       const entry = peopleByUnit.get(unit.id)
       return String(unit.numero).toLowerCase().includes(query)
         || (entry?.all || []).some((person) => String(person.nome || '').toLowerCase().includes(query) || (digits && String(person.cpf || '').includes(digits)))
     })
-  }, [units, search, filterStatus, peopleByUnit])
+  }, [units, search, filterStatus, peopleByUnit, payByUnit])
+
+  const floors = useMemo(() => {
+    const groups = new Map()
+    for (const unit of filtered) {
+      const floor = floorOf(unit.numero)
+      if (!groups.has(floor.key)) groups.set(floor.key, { ...floor, units: [] })
+      groups.get(floor.key).units.push(unit)
+    }
+    return Array.from(groups.values()).sort((a, b) => (a.key === 9999 ? 1 : b.key === 9999 ? -1 : b.key - a.key))
+  }, [filtered])
+
+  const countBy = (situacao) => units.filter((unit) => unit.situacao === situacao).length
+  const lateCount = units.filter((unit) => payByUnit.get(unit.id) === 'late').length
+  const chips = [
+    ['', `Todas · ${units.length}`],
+    ...UNIT_STATUSES.map((status) => [status.value, `${status.label}s · ${countBy(status.value)}`]),
+    ...(lateCount ? [['atraso', `Em atraso · ${lateCount}`]] : []),
+  ]
+
+  const unitInfo = (unit) => {
+    const entry = peopleByUnit.get(unit.id) || { owner: null, tenant: null, all: [] }
+    const pending = entry.all.reduce((sum, person) => sum + (pendingByPerson.get(person.id) || 0), 0)
+    const contact = unit.responsavel_financeiro === 'inquilino' && entry.tenant ? entry.tenant : entry.owner || entry.tenant
+    return { entry, pending, contact, pay: PAY_META[payByUnit.get(unit.id) || 'none'], sit: SITUACAO_META[unit.situacao] || SITUACAO_META.desocupada }
+  }
+
+  const openNotifications = (unit, entry) => setNotificationsOf({ unit, items: requests.filter((item) => entry.all.some((person) => person.id === item.created_by)) })
 
   const limitReached = unitLimit > 0 && units.length >= unitLimit
 
@@ -266,115 +356,144 @@ export default function Unidades({ isActive = true }) {
         />
       )}
 
-      <div className="page-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+      <div className="screen">
+        <div className="screen-head">
           <div>
-            <div className="page-title">Unidades</div>
-            <div className="page-subtitle">{units.length} de {unitLimit || '-'} unidades cadastradas</div>
+            <h1 className="screen-title">Unidades</h1>
+            <div className="screen-sub">{units.length} de {unitLimit || '-'} unidades cadastradas</div>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="screen-actions">
             <button className="btn btn-ghost" onClick={() => setSignupOpen(true)} disabled={tableMissing}>
-              <Link2 size={15} /> Cadastro por link
-              {pendingSignups > 0 && <span className="badge badge-orange">{pendingSignups}</span>}
+              <Link2 size={16} /> Link de autocadastro
+              {pendingSignups > 0 && <span className="nav-badge">{pendingSignups}</span>}
             </button>
             <button className="btn btn-primary" onClick={openCreate} disabled={limitReached || tableMissing} title={limitReached ? 'Limite de unidades atingido. Solicite a ampliacao a plataforma.' : undefined}>
-              <Plus size={15} /> Cadastrar unidade
+              <Plus size={17} /> Nova unidade
             </button>
           </div>
         </div>
-      </div>
 
-      {tableMissing && (
-        <div className="plan-attention-banner" role="alert">
-          <div>
-            <strong>Banco de dados pendente</strong>
-            A tabela de unidades ainda nao foi criada. Execute o arquivo <code>sql/2026-09-19_unidades_e_limite_documentos.sql</code> no Supabase.
+        {tableMissing && (
+          <div className="plan-attention-banner" role="alert">
+            <div>
+              <strong>Banco de dados pendente</strong>
+              A tabela de unidades ainda nao foi criada. Execute o arquivo <code>sql/2026-09-19_unidades_e_limite_documentos.sql</code> no Supabase.
+            </div>
+          </div>
+        )}
+
+        {limitReached && !tableMissing && (
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            Limite de {unitLimit} unidades atingido. Para ampliar, solicite a administracao da plataforma WebCond.
+          </div>
+        )}
+
+        <div className="toolbar">
+          <label className="search-box">
+            <Search size={18} />
+            <input className="input" placeholder="Buscar unidade, morador ou CPF" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Buscar unidade" />
+          </label>
+          <div className="seg" role="tablist" aria-label="Forma de ver as unidades">
+            <button type="button" role="tab" aria-selected={view === 'mapa'} className={view === 'mapa' ? 'active' : ''} onClick={() => setView('mapa')}><LayoutGrid size={16} />Mapa</button>
+            <button type="button" role="tab" aria-selected={view === 'lista'} className={view === 'lista' ? 'active' : ''} onClick={() => setView('lista')}><List size={16} />Lista</button>
           </div>
         </div>
-      )}
 
-      {limitReached && !tableMissing && (
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-          Limite de {unitLimit} unidades atingido. Para ampliar, solicite a administracao da plataforma WebCond.
+        <div className="chips" role="group" aria-label="Filtrar unidades">
+          {chips.map(([value, label]) => (
+            <button key={value || 'todas'} type="button" className={`chip${filterStatus === value ? ' active' : ''}`} onClick={() => setFilterStatus(value)}>{label}</button>
+          ))}
         </div>
-      )}
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
-          <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#8b949e' }} />
-          <input className="input" style={{ paddingLeft: 34 }} placeholder="Buscar por unidade, nome ou CPF..." value={search} onChange={(event) => setSearch(event.target.value)} />
-        </div>
-        <select className="input" style={{ width: 170 }} value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
-          <option value="">Todas as situacoes</option>
-          {UNIT_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-        </select>
-      </div>
-
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner" /></div>
-      ) : filtered.length === 0 ? (
-        <div className="empty-state">
-          <Home size={40} />
-          <p>{units.length ? 'Nenhuma unidade encontrada para os filtros.' : 'Nenhuma unidade cadastrada ainda. Clique em "Cadastrar unidade".'}</p>
-        </div>
-      ) : (
-        <div className="unit-grid">
-          {filtered.map((unit) => {
-            const entry = peopleByUnit.get(unit.id) || { owner: null, tenant: null, all: [] }
-            const status = getUnitStatusMeta(unit.situacao)
-            const pending = entry.all.reduce((sum, person) => sum + (pendingByPerson.get(person.id) || 0), 0)
-            const contact = unit.responsavel_financeiro === 'inquilino' && entry.tenant ? entry.tenant : entry.owner || entry.tenant
-
-            return (
-              <div
-                key={unit.id}
-                className="unit-card unit-card-clickable"
-                role="button"
-                tabIndex={0}
-                aria-label={`Abrir unidade ${unit.numero}`}
-                onClick={() => openEdit(unit)}
-                onKeyDown={(event) => {
-                  if (event.target !== event.currentTarget) return
-                  if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openEdit(unit) }
-                }}
-              >
-                <div className="unit-card-head">
-                  <div className="unit-number">{unit.numero}</div>
-                  <span className={`badge ${status.badge}`}>{status.label}</span>
-                </div>
-
-                <div className="unit-person">
-                  <span className="unit-person-role">Proprietario{unit.responsavel_financeiro !== 'inquilino' && ' · resp. financeiro'}</span>
-                  <span>{entry.owner?.nome || '-'}{entry.owner?.unitsCount > 1 && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}> ({entry.owner.unitsCount} unidades)</span>}</span>
-                </div>
-                {unit.situacao === 'alugada' && (
-                  <div className="unit-person">
-                    <span className="unit-person-role">Inquilino{unit.responsavel_financeiro === 'inquilino' && ' · resp. financeiro'}</span>
-                    <span>{entry.tenant?.nome || '-'}</span>
-                  </div>
-                )}
-                {unit.observacao && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{unit.observacao}</div>}
-
-                <div className="unit-actions" onClick={(event) => event.stopPropagation()}>
-                  {contact?.whatsapp && (
-                    <button className="btn btn-ghost btn-sm" onClick={() => openWhatsApp(contact.whatsapp, `Ola ${contact.nome}, aqui e a administracao do condominio (unidade ${unit.numero}).`)} aria-label={`WhatsApp da unidade ${unit.numero}`}>
-                      <WhatsAppIcon size={14} />
-                    </button>
-                  )}
-                  {pending > 0 && (
-                    <button className="btn btn-ghost btn-sm" onClick={() => setNotificationsOf({ unit, items: requests.filter((item) => entry.all.some((person) => person.id === item.created_by)) })}>
-                      <Bell size={13} color="var(--orange)" /> {pending}
-                    </button>
-                  )}
-                  <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto', color: 'var(--red)' }} onClick={() => handleDelete(unit)} disabled={deletingId === unit.id} aria-label={`Excluir unidade ${unit.numero}`}>
-                    {deletingId === unit.id ? <Loader2 size={13} className="spin-icon" /> : <Trash2 size={13} />}
-                  </button>
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner" /></div>
+        ) : filtered.length === 0 ? (
+          <div className="empty-card">
+            <Home size={36} />
+            <span>{units.length ? 'Nenhuma unidade encontrada para os filtros.' : 'Nenhuma unidade cadastrada ainda. Toque em "Nova unidade".'}</span>
+          </div>
+        ) : view === 'mapa' ? (
+          <div className="unit-map">
+            <div className="unit-map-legend">
+              <strong>{currentReference ? formatReferenceLong(currentReference) : 'Sem cobranças lançadas'}</strong>
+              <span><i style={{ background: 'var(--green-solid)' }} />Paga</span>
+              <span><i style={{ background: 'var(--primary)' }} />Informada</span>
+              <span><i style={{ background: 'var(--amber-solid)' }} />Em aberto</span>
+              <span><i style={{ background: 'var(--red-solid)' }} />Em atraso</span>
+            </div>
+            {floors.map((floor) => (
+              <div key={floor.key} className="floor-row">
+                <div className="floor-label">{floor.label}</div>
+                <div className="floor-units">
+                  {floor.units.map((unit) => {
+                    const { entry, pending, pay, sit } = unitInfo(unit)
+                    const SitIcon = sit.Icon
+                    const person = unit.situacao === 'alugada' && entry.tenant ? entry.tenant : entry.owner || entry.tenant
+                    return (
+                      <button key={unit.id} type="button" className={`unit-tile tone-${pay.tone}`} onClick={() => openEdit(unit)} title={`Unidade ${unit.numero} · ${pay.label} · ${sit.label}`} aria-label={`Abrir unidade ${unit.numero}, ${pay.label}, ${sit.label}`}>
+                        <span className="unit-tile-top">
+                          <span className="unit-tile-num">{unit.numero}</span>
+                          <span className="unit-tile-icons">
+                            {pending > 0 && <><Bell size={13} />{pending}</>}
+                            {unit.situacao !== 'ocupada' && <SitIcon size={14} />}
+                          </span>
+                        </span>
+                        <span className="unit-tile-name">{shortName(person?.nome) || sit.label}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
-            )
-          })}
-        </div>
-      )}
+            ))}
+          </div>
+        ) : (
+          <div className="list-card">
+            <div className="list-head unit-list-grid"><span>Unidade</span><span>Situação</span><span>Proprietário</span><span>Inquilino</span><span>{currentReference ? formatReferenceLong(currentReference) : 'Pagamento'}</span><span /></div>
+            {filtered.map((unit) => {
+              const { entry, pending, contact, pay, sit } = unitInfo(unit)
+              return (
+                <div
+                  key={unit.id}
+                  className="list-row list-row-click unit-list-grid"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Abrir unidade ${unit.numero}`}
+                  onClick={() => openEdit(unit)}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return
+                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openEdit(unit) }
+                  }}
+                >
+                  <span className={`unit-tag tone-${pay.tone}`}>{unit.numero}</span>
+                  <span className="list-hide-m"><span className={`pill pill-sm tone-${sit.tone}`}>{sit.label}</span></span>
+                  <span className="list-grow" style={{ minWidth: 0 }}>
+                    <span className="list-ellipsis">{entry.owner?.nome || '-'}{entry.owner?.unitsCount > 1 && <span className="list-sub" style={{ display: 'inline' }}> · {entry.owner.unitsCount} unidades</span>}</span>
+                    <span className="list-sub">{unit.responsavel_financeiro !== 'inquilino' ? 'Resp. financeiro' : 'Proprietário'}<span className="list-only-m"> · {sit.label} · {pay.label}</span></span>
+                  </span>
+                  <span className="list-hide-m" style={{ minWidth: 0 }}>
+                    <span className="list-ellipsis" style={{ color: 'var(--text-muted)' }}>{unit.situacao === 'alugada' || entry.tenant ? entry.tenant?.nome || '-' : '—'}</span>
+                    {unit.responsavel_financeiro === 'inquilino' && <span className="list-sub">Resp. financeiro</span>}
+                  </span>
+                  <span className="list-hide-m"><span className={`pill pill-sm tone-${pay.tone}`}>{pay.label}</span></span>
+                  <span className="list-actions" onClick={(event) => event.stopPropagation()}>
+                    {contact?.whatsapp && (
+                      <button type="button" className="mini-btn mini-btn-icon" onClick={() => openWhatsApp(contact.whatsapp, `Ola ${contact.nome}, aqui e a administracao do condominio (unidade ${unit.numero}).`)} aria-label={`WhatsApp da unidade ${unit.numero}`}>
+                        <WhatsAppIcon size={15} />
+                      </button>
+                    )}
+                    {pending > 0 && (
+                      <button type="button" className="mini-btn" onClick={() => openNotifications(unit, entry)} aria-label={`${pending} pedidos da unidade ${unit.numero}`}>
+                        <Bell size={14} color="var(--orange)" /> {pending}
+                      </button>
+                    )}
+                    <ChevronRight size={16} color="var(--text-dim)" className="list-hide-m" />
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       {form && (
         <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && !saving && setForm(null)}>
@@ -438,6 +557,16 @@ export default function Unidades({ isActive = true }) {
             </div>
 
             <div className="modal-footer">
+              {form.unitId && (
+                <button
+                  className="btn btn-ghost"
+                  style={{ marginRight: 'auto', color: 'var(--red)' }}
+                  onClick={() => { const unit = units.find((item) => item.id === form.unitId); if (unit) { setForm(null); void handleDelete(unit) } }}
+                  disabled={saving || deletingId === form.unitId}
+                >
+                  {deletingId === form.unitId ? <Loader2 size={14} className="spin-icon" /> : <Trash2 size={14} />} Excluir unidade
+                </button>
+              )}
               <button className="btn btn-ghost" onClick={() => setForm(null)} disabled={saving}>Cancelar</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
                 {saving ? <><Loader2 size={14} className="spin-icon" /> Salvando...</> : 'Salvar unidade'}

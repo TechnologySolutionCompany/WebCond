@@ -4,24 +4,18 @@ import { useToast } from '../shared/Toast'
 import { isNoticeCurrent, noticeDaysLeft, NOTICE_RETENTION_DAYS } from '../../lib/avisos'
 import { useAuth } from '../../hooks/useAuth'
 import { applyTenantFilter, withTenantFields } from '../../lib/tenant'
-import { Plus, Bell, X, Loader2, AlertTriangle, Info, Wrench, Megaphone, Trash2 } from 'lucide-react'
+import { Loader2, Megaphone, Send, Timer, Trash2, Users } from 'lucide-react'
 import { compareUnitNumbers } from '../../lib/units'
 import { notifyAvisos } from '../../lib/adminApi'
 import { describeNotifyResult } from '../../lib/notifications'
-
-const TIPOS = [
-  { value: 'informativo', label: 'Informativo', icon: Info, color: 'blue' },
-  { value: 'aviso', label: 'Aviso', icon: Bell, color: 'yellow' },
-  { value: 'urgente', label: 'Urgente', icon: AlertTriangle, color: 'red' },
-  { value: 'manutencao', label: 'Manutenção', icon: Wrench, color: 'orange' },
-]
+import { AVISO_TIPOS, formatNoticeDate } from '../shared/noticeMeta'
 
 const emptyForm = { titulo: '', conteudo: '', tipo: 'informativo', destinatario: 'todos', apartamento_destino: '' }
 
-export default function Avisos() {
+// Avisos do sindico (redesign v2.10A3): o formulario fica ao lado da lista de publicados.
+export default function Avisos({ isActive = true }) {
   const [avisos, setAvisos] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [unitNumbers, setUnitNumbers] = useState([])
@@ -37,7 +31,7 @@ export default function Avisos() {
     setLoading(false)
   }, [condominiumId])
 
-  useEffect(() => { void fetchAvisos() }, [fetchAvisos])
+  useEffect(() => { if (isActive) void fetchAvisos() }, [fetchAvisos, isActive])
 
   // Unidades reais do condominio para o aviso direcionado.
   useEffect(() => {
@@ -50,7 +44,11 @@ export default function Avisos() {
 
   const handleSave = async () => {
     if (!form.titulo || !form.conteudo) {
-      toast('Preencha título e conteúdo.', 'error')
+      toast('Preencha título e mensagem.', 'error')
+      return
+    }
+    if (form.destinatario === 'apartamento' && !form.apartamento_destino) {
+      toast('Escolha a unidade que recebe o aviso.', 'error')
       return
     }
 
@@ -67,7 +65,6 @@ export default function Avisos() {
     }
 
     toast('Aviso publicado!', 'success')
-    setShowModal(false)
     setForm(emptyForm)
     void fetchAvisos()
 
@@ -93,117 +90,86 @@ export default function Avisos() {
     toast('Aviso excluido.', 'success')
   }
 
-  const getTipo = (tipo) => TIPOS.find((item) => item.value === tipo) || TIPOS[0]
+  const publishLabel = form.destinatario === 'apartamento'
+    ? (form.apartamento_destino ? `Publicar para a unidade ${form.apartamento_destino}` : 'Publicar para a unidade')
+    : `Publicar para ${unitNumbers.length || 'todas as'} ${unitNumbers.length === 1 ? 'unidade' : 'unidades'}`
 
   return (
-    <div className="fade-in">
-      <div className="page-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-          <div>
-            <div className="page-title">Avisos e comunicados</div>
-            <div className="page-subtitle">Publique comunicados para os moradores. Cada aviso e apagado automaticamente {NOTICE_RETENTION_DAYS} dias apos o envio.</div>
-          </div>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-            <Plus size={15} /> Novo aviso
-          </button>
-        </div>
+    <div className="fade-in screen">
+      <div>
+        <h1 className="screen-title">Avisos e comunicados</h1>
+        <div className="screen-sub">Publique comunicados para os moradores. Cada aviso é apagado automaticamente {NOTICE_RETENTION_DAYS} dias após o envio.</div>
       </div>
 
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner" /></div>
-      ) : avisos.length === 0 ? (
-        <div className="empty-state"><Megaphone size={40} /><p>Nenhum aviso publicado ainda.</p></div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {avisos.map((aviso) => {
-            const tipo = getTipo(aviso.tipo)
-            const Icon = tipo.icon
+      <div className="compose-cols">
+        <div className="compose-card">
+          <div className="compose-title">Novo aviso</div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="aviso-titulo">Título</label>
+            <input id="aviso-titulo" className="input" value={form.titulo} onChange={(event) => setForm((current) => ({ ...current, titulo: event.target.value }))} placeholder="Ex.: Limpeza da caixa d'água" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Tipo</label>
+            <div className="choice-chips">
+              {Object.entries(AVISO_TIPOS).map(([value, meta]) => (
+                <button key={value} type="button" className={`chip${form.tipo === value ? ' active' : ''}`} onClick={() => setForm((current) => ({ ...current, tipo: value }))}>
+                  <meta.icon size={15} />{meta.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Para quem</label>
+            <div className="choice-chips">
+              <button type="button" className={`chip${form.destinatario === 'todos' ? ' active' : ''}`} onClick={() => setForm((current) => ({ ...current, destinatario: 'todos', apartamento_destino: '' }))}><Users size={15} />Todos os moradores</button>
+              <button type="button" className={`chip${form.destinatario === 'apartamento' ? ' active' : ''}`} onClick={() => setForm((current) => ({ ...current, destinatario: 'apartamento' }))}>Uma unidade</button>
+            </div>
+            {form.destinatario === 'apartamento' && (
+              <select className="input" style={{ marginTop: 8 }} value={form.apartamento_destino} onChange={(event) => setForm((current) => ({ ...current, apartamento_destino: event.target.value }))} aria-label="Unidade">
+                <option value="">Selecione a unidade</option>
+                {unitNumbers.map((numero) => (
+                  <option key={numero} value={numero}>Unidade {numero}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="aviso-conteudo">Mensagem</label>
+            <textarea id="aviso-conteudo" className="input" rows={4} value={form.conteudo} onChange={(event) => setForm((current) => ({ ...current, conteudo: event.target.value }))} placeholder="Escreva o comunicado..." />
+          </div>
+          <div className="list-sub" style={{ fontSize: 12.5, lineHeight: 1.5 }}>Os moradores recebem no app e, conforme o que cada um ligou, no celular, e-mail e WhatsApp.</div>
+          <button className="btn btn-primary pay-big-btn" onClick={handleSave} disabled={saving}>
+            {saving ? <><Loader2 size={16} className="spin-icon" /> Publicando...</> : <><Send size={17} /> {publishLabel}</>}
+          </button>
+        </div>
+
+        <div className="compose-list">
+          <div className="section-label">Publicados · {avisos.length}</div>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><div className="spinner" /></div>
+          ) : avisos.length === 0 ? (
+            <div className="empty-card"><Megaphone size={36} /><span>Nenhum aviso publicado ainda.</span></div>
+          ) : avisos.map((aviso) => {
+            const meta = AVISO_TIPOS[aviso.tipo] || AVISO_TIPOS.informativo
+            const daysLeft = noticeDaysLeft(aviso)
             return (
-              <div key={aviso.id} className="card" style={{ borderLeft: `3px solid var(--${tipo.color === 'blue' ? 'blue' : tipo.color === 'red' ? 'red' : tipo.color === 'orange' ? 'orange' : 'yellow'})` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flex: 1 }}>
-                    <div style={{ padding: 8, borderRadius: 8, background: `var(--${tipo.color}-dim, #1a2a3a)`, flexShrink: 0 }}>
-                      <Icon size={16} color={`var(--${tipo.color})`} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 600, fontSize: 15 }}>{aviso.titulo}</span>
-                        <span className={`badge badge-${tipo.color}`}>{tipo.label}</span>
-                        {aviso.destinatario !== 'todos' && (
-                          <span className="badge badge-purple">
-                            {aviso.destinatario === 'apartamento' ? `Unidade ${aviso.apartamento_destino}` : 'Individual'}
-                          </span>
-                        )}
-                      </div>
-                      <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>{aviso.conteudo}</p>
-                      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 8 }}>
-                        {new Date(aviso.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        {' · '}apagado automaticamente em {noticeDaysLeft(aviso)} {noticeDaysLeft(aviso) === 1 ? 'dia' : 'dias'}
-                      </div>
-                    </div>
-                  </div>
-                  <button className="btn btn-ghost btn-sm btn-icon" onClick={() => handleDelete(aviso)} style={{ color: '#f85149', flexShrink: 0, marginLeft: 8 }} title="Excluir aviso" aria-label="Excluir aviso">
-                    <Trash2 size={14} />
-                  </button>
+              <div key={aviso.id} className="info-card" style={{ gap: 8, padding: '16px 18px' }}>
+                <div className="info-card-top" style={{ gap: 8 }}>
+                  <span className={`pill pill-sm tone-${meta.tone}`}><meta.icon size={13} />{meta.label}</span>
+                  <span className="info-card-date">{formatNoticeDate(aviso.created_at)}</span>
+                  <button type="button" className="mini-btn mini-btn-icon mini-btn-danger" onClick={() => handleDelete(aviso)} title="Excluir aviso" aria-label={`Excluir aviso ${aviso.titulo}`}><Trash2 size={15} /></button>
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 600, overflowWrap: 'anywhere' }}>{aviso.titulo}</div>
+                <div className="info-card-text info-card-clamp" style={{ margin: 0 }}>{aviso.conteudo}</div>
+                <div className="info-card-foot" style={{ paddingTop: 4 }}>
+                  <span><Users size={13} />{aviso.destinatario === 'apartamento' ? `Unidade ${aviso.apartamento_destino}` : 'Todas as unidades'}</span>
+                  <span><Timer size={13} />Apaga em {daysLeft} {daysLeft === 1 ? 'dia' : 'dias'}</span>
                 </div>
               </div>
             )
           })}
         </div>
-      )}
-
-      {showModal && (
-        <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && setShowModal(false)}>
-          <div className="modal" style={{ maxWidth: 560 }}>
-            <div className="modal-header">
-              <div className="modal-title">Novo aviso</div>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}><X size={16} /></button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div className="form-group">
-                <label className="form-label">Título *</label>
-                <input className="input" value={form.titulo} onChange={(event) => setForm((current) => ({ ...current, titulo: event.target.value }))} placeholder="Título do aviso" />
-              </div>
-              <div className="grid-2">
-                <div className="form-group">
-                  <label className="form-label">Tipo</label>
-                  <select className="input" value={form.tipo} onChange={(event) => setForm((current) => ({ ...current, tipo: event.target.value }))}>
-                    {TIPOS.map((tipo) => <option key={tipo.value} value={tipo.value}>{tipo.label}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Destinatário</label>
-                  <select className="input" value={form.destinatario} onChange={(event) => setForm((current) => ({ ...current, destinatario: event.target.value, apartamento_destino: '' }))}>
-                    <option value="todos">Todos os moradores</option>
-                    <option value="apartamento">Apartamento específico</option>
-                  </select>
-                </div>
-              </div>
-              {form.destinatario === 'apartamento' && (
-                <div className="form-group">
-                  <label className="form-label">Apartamento</label>
-                  <select className="input" value={form.apartamento_destino} onChange={(event) => setForm((current) => ({ ...current, apartamento_destino: event.target.value }))}>
-                    <option value="">Selecione a unidade</option>
-                    {unitNumbers.map((numero) => (
-                      <option key={numero} value={numero}>Unidade {numero}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div className="form-group">
-                <label className="form-label">Conteúdo *</label>
-                <textarea className="input" rows={4} value={form.conteudo} onChange={(event) => setForm((current) => ({ ...current, conteudo: event.target.value }))} placeholder="Digite o comunicado..." />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? <><Loader2 size={14} style={{ animation: 'spin .6s linear infinite' }} /> Publicando...</> : 'Publicar aviso'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -3,13 +3,13 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { describeResidentAccess, isNoticeForProfile } from '../../lib/units'
 import { isNoticeCurrent } from '../../lib/avisos'
-import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
-import { Bell, CalendarClock, DollarSign, KeyRound, MessageSquareText } from 'lucide-react'
-import { countChargeStatuses, getChargeStatus } from '../../lib/chargeStatus'
+import { ArrowRight, Bell, ChevronRight, CircleCheck, Clock3, DoorClosed, FileText, KeyRound, QrCode, Receipt, TriangleAlert } from 'lucide-react'
+import { getChargeStatus } from '../../lib/chargeStatus'
 import { formatReferenceLabel } from '../../lib/billingShared'
-import ChargeSummaryBars from '../shared/ChargeSummaryBars'
 import PushPrompt from '../shared/PushPrompt'
+import { InstallAppCard } from '../shared/InstallApp'
 import { getTenantChargeSummary } from '../../lib/tenantApi'
+import { saveLastView } from '../../lib/lastView'
 
 const EMPTY_SUMMARY = {
   total_unidades: 0,
@@ -22,20 +22,37 @@ const EMPTY_SUMMARY = {
   inadimplente: 0,
 }
 
+const DIA_MS = 86400000
+
 function formatDate(value) {
   return value ? new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR') : '-'
 }
 
 function formatMoney(value = 0) {
-  return Number(value || 0).toLocaleString('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  })
+  return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
-export default function MoradorDashboard({ isActive = true }) {
+function hojePorExtenso() {
+  const texto = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+  return texto.charAt(0).toUpperCase() + texto.slice(1)
+}
+
+// Selo do cartao "Proxima cobranca": quanto falta para vencer, ou ha quanto venceu.
+function seloDoVencimento(cobranca) {
+  if (!cobranca?.vencimento) return { texto: 'Em aberto', tom: 'amber', Icone: Clock3 }
+  const hoje = new Date()
+  hoje.setHours(12, 0, 0, 0)
+  const dias = Math.round((new Date(`${cobranca.vencimento}T12:00:00`) - hoje) / DIA_MS)
+  if (getChargeStatus(cobranca) === 'inadimplente') return { texto: 'Em atraso', tom: 'red', Icone: TriangleAlert }
+  if (dias < 0) return { texto: `Venceu há ${-dias} ${dias === -1 ? 'dia' : 'dias'}`, tom: 'red', Icone: TriangleAlert }
+  if (dias === 0) return { texto: 'Vence hoje', tom: 'amber', Icone: Clock3 }
+  return { texto: `Vence em ${dias} ${dias === 1 ? 'dia' : 'dias'}`, tom: dias <= 5 ? 'amber' : 'neutral', Icone: Clock3 }
+}
+
+// Inicio do morador (redesign v2.10A3): cartao da proxima cobranca em destaque, o mes no
+// condominio, avisos recentes e atalhos. Os dados sao os mesmos de antes (RLS do morador).
+export default function MoradorDashboard({ isActive = true, onNavigate = () => {} }) {
   const { profile } = useAuth()
-  const { settings: condominiumSettings } = useCondominiumSettings(profile?.condominium_id || profile?.condominio_id || null)
   const [cobrancas, setCobrancas] = useState([])
   const [avisos, setAvisos] = useState([])
   const [loading, setLoading] = useState(true)
@@ -64,16 +81,23 @@ export default function MoradorDashboard({ isActive = true }) {
     })()
   }, [isActive, profile])
 
-  const statusCount = useMemo(() => countChargeStatuses(cobrancas), [cobrancas])
   const access = describeResidentAccess(profile)
   const avisosRecentes = avisos.slice(0, 3)
-  const avisosHistorico = avisos.slice(0, 6)
 
-  const totalAPagar = useMemo(() => (
+  // Em aberto, da que vence primeiro para a ultima.
+  const emAberto = useMemo(() => (
     cobrancas
       .filter((item) => getChargeStatus(item) !== 'pago')
-      .reduce((sum, item) => sum + Number(item.valor || 0), 0)
+      .sort((a, b) => String(a.vencimento || '9999').localeCompare(String(b.vencimento || '9999')))
   ), [cobrancas])
+  const proxima = emAberto[0] || null
+  const segunda = emAberto[1] || null
+
+  // Abre Minhas cobrancas ja com o painel de pagamento daquela cobranca.
+  const pagar = (cobranca) => {
+    if (cobranca?.id && profile?.id) saveLastView('morador-cobranca', profile.id, cobranca.id)
+    onNavigate('cobrancas')
+  }
 
   if (loading) {
     return (
@@ -83,140 +107,140 @@ export default function MoradorDashboard({ isActive = true }) {
     )
   }
 
+  const selo = seloDoVencimento(proxima)
+  const cobradas = tenantSummary.unidades_cobradas || 0
+  const pct = (valor) => (cobradas ? `${(valor / cobradas) * 100}%` : '0%')
+
   return (
-    <div className="fade-in">
-      <div className="page-header">
-        <div className="page-title">Ola, {profile?.nome?.split(' ')[0]}</div>
-        <div className="page-subtitle">Bem-vindo ao Sistema do {condominiumSettings.name}</div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-          <span className={`badge ${access.isOwner ? 'badge-green' : 'badge-blue'}`}>
-            <KeyRound size={10} /> Acesso de {access.isOwner ? 'proprietario' : 'inquilino'}
-          </span>
-          <span className="badge badge-purple">{access.unitsLabel}</span>
+    <div className="fade-in home">
+      <div className="home-head">
+        <div>
+          <div className="home-date">{hojePorExtenso()}</div>
+          <h1 className="page-title" style={{ marginTop: 2 }}>Olá, {profile?.nome?.split(' ')[0]}</h1>
+        </div>
+        <div className="home-chips">
+          <span className="home-chip"><KeyRound size={14} />{access.isOwner ? 'Proprietário(a)' : 'Inquilino(a)'}</span>
+          <span className="home-chip"><DoorClosed size={14} />{access.unitsLabel}</span>
         </div>
       </div>
 
-      <PushPrompt />
-
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <CalendarClock size={16} color="#58a6ff" />
-          <span style={{ fontWeight: 700, fontSize: 14 }}>Resumo financeiro do condominio</span>
-          {tenantSummary.competencia && <span className="badge badge-blue">{formatReferenceLabel(tenantSummary.competencia)}</span>}
-        </div>
-        {tenantSummary.unidades_cobradas === 0 ? (
-          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            {tenantSummary.total_unidades} unidades cadastradas. Nenhuma cobranca lancada ate o momento.
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
-              {tenantSummary.total_unidades} unidades cadastradas. Ja foram identificados {tenantSummary.pago} pagamentos,
-              {' '}{tenantSummary.em_aberto} seguem em aberto e {tenantSummary.inadimplente} estao inadimplentes.
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 16 }}>
-              {tenantSummary.proximo_vencimento && <>Vencimento em {formatDate(tenantSummary.proximo_vencimento)}. </>}
-              Sem identificacao do pagamento em ate {tenantSummary.carencia_horas}h apos o vencimento, a unidade passa para inadimplente.
-            </div>
-            <ChargeSummaryBars
-              emAberto={tenantSummary.em_aberto}
-              pago={tenantSummary.pago}
-              inadimplente={tenantSummary.inadimplente}
-              helper={`de ${tenantSummary.unidades_cobradas} unidades cobradas`}
-            />
-          </>
-        )}
-      </div>
-
-      <div className="grid-2" style={{ marginBottom: 24, alignItems: 'start' }}>
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <DollarSign size={16} color="#58a6ff" />
-            <span style={{ fontWeight: 700, fontSize: 14 }}>Minhas cobrancas</span>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
-            <MiniStat label="Em aberto" value={statusCount.em_aberto} color="#f59e0b" />
-            <MiniStat label="Inadimplente" value={statusCount.inadimplente} color="#f85149" />
-            <MiniStat label="Total a pagar" value={formatMoney(totalAPagar)} color="#58a6ff" />
-          </div>
-
-          {cobrancas.length === 0 ? (
-            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Nenhuma cobranca registrada.</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {cobrancas.slice(0, 4).map((cobranca) => (
-                <div key={cobranca.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--bg-3)' }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{cobranca.descricao || cobranca.tipo}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                    {formatReferenceLabel(cobranca.mes_referencia)} · venc. {cobranca.vencimento ? new Date(`${cobranca.vencimento}T12:00:00`).toLocaleDateString('pt-BR') : '-'}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                    Valor: <strong style={{ color: 'var(--text)' }}>{formatMoney(cobranca.valor)}</strong>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <Bell size={16} color="#58a6ff" />
-            <span style={{ fontWeight: 700, fontSize: 14 }}>Avisos recentes</span>
-          </div>
-
-          {avisosRecentes.length === 0 ? (
-            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Nenhum aviso no momento.</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {avisosRecentes.map((aviso) => (
-                <div key={aviso.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--bg-3)' }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{aviso.titulo}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.6 }}>
-                    {aviso.conteudo.length > 120 ? `${aviso.conteudo.slice(0, 120)}...` : aviso.conteudo}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <MessageSquareText size={16} color="#58a6ff" />
-          <span style={{ fontWeight: 700, fontSize: 14 }}>Historico de avisos</span>
-        </div>
-
-        {avisosHistorico.length === 0 ? (
-          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Nenhum aviso pendente para consulta.</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {avisosHistorico.map((aviso) => (
-              <div key={`history-${aviso.id}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 12 }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{aviso.titulo}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{aviso.conteudo.length > 160 ? `${aviso.conteudo.slice(0, 160)}...` : aviso.conteudo}</div>
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
-                  {new Date(aviso.created_at).toLocaleDateString('pt-BR')}
-                </div>
+      <div className="home-cols">
+        <div className="home-main">
+          <section className="hero-card">
+            <img src="/brand/wc-simbolo.svg" alt="" aria-hidden="true" className="hero-card-mark" />
+            <div className="hero-card-body">
+              <div className="hero-card-top">
+                <span className="hero-card-kicker"><Receipt size={16} />Próxima cobrança</span>
+                {proxima
+                  ? <span className={`hero-chip hero-chip-${selo.tom}`}><selo.Icone size={13} />{selo.texto}</span>
+                  : <span className="hero-chip hero-chip-green"><CircleCheck size={13} />Tudo em dia</span>}
               </div>
+
+              {proxima ? (
+                <>
+                  <div>
+                    <div className="hero-card-title">{proxima.descricao || proxima.tipo || 'Cobrança'}{proxima.mes_referencia ? ` · ${formatReferenceLabel(proxima.mes_referencia)}` : ''}</div>
+                    <div className="hero-card-amount">{formatMoney(proxima.valor)}</div>
+                    <div className="hero-card-meta">
+                      Vencimento {formatDate(proxima.vencimento)}{proxima.unidade_numero ? ` · Unidade ${proxima.unidade_numero}` : ''}
+                    </div>
+                  </div>
+                  <div className="hero-card-actions">
+                    <button type="button" className="hero-btn hero-btn-primary" onClick={() => pagar(proxima)}>
+                      <QrCode size={20} />Pagar agora
+                    </button>
+                    <button type="button" className="hero-btn" onClick={() => onNavigate('cobrancas')}>
+                      <Receipt size={18} />Ver cobranças
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <div className="hero-card-title">Nenhuma cobrança em aberto</div>
+                  <div className="hero-card-meta">Quando o síndico lançar uma cobrança, ela aparece aqui com o botão de pagar.</div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {segunda && (
+            <button type="button" className="home-row-card" onClick={() => pagar(segunda)}>
+              <span className="home-icon home-icon-primary"><Receipt size={20} /></span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span className="home-row-title">{segunda.descricao || segunda.tipo || 'Cobrança'}</span>
+                <span className="home-row-sub">Também em aberto · vence {formatDate(segunda.vencimento)}</span>
+              </span>
+              <span className="home-row-amount">{formatMoney(segunda.valor)}</span>
+              <ChevronRight size={18} color="var(--text-dim)" />
+            </button>
+          )}
+
+          <section className="home-panel">
+            <div className="home-panel-head">
+              <span className="home-panel-title">Avisos recentes</span>
+              <button type="button" className="home-link" onClick={() => onNavigate('avisos')}>Ver todos<ArrowRight size={15} /></button>
+            </div>
+            {avisosRecentes.length === 0 ? (
+              <div className="home-empty">Nenhum aviso no momento.</div>
+            ) : avisosRecentes.map((aviso) => (
+              <button key={aviso.id} type="button" className="home-notice" onClick={() => onNavigate('avisos')}>
+                <span className="home-icon home-icon-primary"><Bell size={18} /></span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span className="home-row-title home-ellipsis">{aviso.titulo}</span>
+                  <span className="home-row-sub home-ellipsis">{aviso.conteudo}</span>
+                </span>
+                <span className="home-notice-date">{new Date(aviso.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+              </button>
             ))}
+          </section>
+        </div>
+
+        <div className="home-side">
+          <InstallAppCard />
+          <PushPrompt />
+
+          <section className="home-panel home-panel-pad">
+            <div className="home-panel-head" style={{ padding: 0, marginBottom: 4 }}>
+              <span className="home-panel-title">{tenantSummary.competencia ? `${formatReferenceLabel(tenantSummary.competencia)} no condomínio` : 'Mês no condomínio'}</span>
+              <span className="home-dim">{tenantSummary.total_unidades} unidades</span>
+            </div>
+            {cobradas === 0 ? (
+              <div className="home-muted">Nenhuma cobrança lançada até o momento.</div>
+            ) : (
+              <>
+                <div className="home-muted" style={{ marginBottom: 16 }}>
+                  {tenantSummary.pago} {tenantSummary.pago === 1 ? 'unidade já pagou' : 'unidades já pagaram'}.
+                  {tenantSummary.proximo_vencimento && <> Vencimento em {formatDate(tenantSummary.proximo_vencimento).slice(0, 5)}.</>}
+                </div>
+                <div className="home-bar">
+                  <div style={{ width: pct(tenantSummary.pago), background: 'var(--green-solid)' }} />
+                  <div style={{ width: pct(tenantSummary.em_aberto), background: 'var(--amber-solid)' }} />
+                  <div style={{ width: pct(tenantSummary.inadimplente), background: 'var(--red-solid)' }} />
+                </div>
+                <div className="home-legend">
+                  <div><span><i style={{ background: 'var(--green-solid)' }} />Pagas</span><b>{tenantSummary.pago}</b></div>
+                  <div><span><i style={{ background: 'var(--amber-solid)' }} />Em aberto</span><b>{tenantSummary.em_aberto}</b></div>
+                  <div><span><i style={{ background: 'var(--red-solid)' }} />Atrasadas</span><b>{tenantSummary.inadimplente}</b></div>
+                </div>
+              </>
+            )}
+            <div className="home-note">
+              Sem identificação do pagamento em até {tenantSummary.carencia_horas}h após o vencimento, a unidade passa para inadimplente.
+            </div>
+          </section>
+
+          <div className="home-shortcuts">
+            <button type="button" className="home-shortcut" onClick={() => onNavigate('ocorrencias')}>
+              <span className="home-icon home-icon-amber"><TriangleAlert size={18} /></span>
+              <span><span className="home-row-title">Registrar ocorrência</span><span className="home-row-sub">Vai direto para o síndico</span></span>
+            </button>
+            <button type="button" className="home-shortcut" onClick={() => onNavigate('documentos')}>
+              <span className="home-icon home-icon-primary"><FileText size={18} /></span>
+              <span><span className="home-row-title">Documentos</span><span className="home-row-sub">Atas, regimento, contas</span></span>
+            </button>
           </div>
-        )}
+        </div>
       </div>
-
-    </div>
-  )
-}
-
-function MiniStat({ label, value, color }) {
-  return (
-    <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--bg-3)' }}>
-      <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color, marginTop: 6 }}>{value}</div>
     </div>
   )
 }

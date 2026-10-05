@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { LayoutDashboard, DollarSign, Bell, FileText, User, TriangleAlert, Menu, LifeBuoy } from 'lucide-react'
+import { House, Receipt, Bell, FileText, User, TriangleAlert, LifeBuoy, QrCode } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
-import { painelLogoUrl } from '../../lib/condominiumLogo'
 import { useMoradorPresence } from '../../hooks/useMoradorPresence'
 import { isResidentRole } from '../../lib/auth'
 import Sidebar from '../shared/Sidebar'
+import { AppTopbar, BottomNav, initialsOf } from '../shared/AppChrome'
 import { useSidebarMenu } from '../../hooks/useSidebarMenu'
 import { useDeepLinkPage } from '../../hooks/useDeepLinkPage'
 import { initialPage, saveLastView } from '../../lib/lastView'
@@ -27,13 +27,13 @@ function MoradorSuporte(props) {
 
 const nav = [
   {
-    label: 'Meu Espaco',
+    label: 'Meu espaço',
     items: [
-      { key: 'dashboard', label: 'Inicio', icon: LayoutDashboard },
-      { key: 'cobrancas', label: 'Minhas cobrancas', icon: DollarSign },
+      { key: 'dashboard', label: 'Início', icon: House },
+      { key: 'cobrancas', label: 'Minhas cobranças', icon: Receipt },
       { key: 'avisos', label: 'Avisos', icon: Bell },
       { key: 'documentos', label: 'Documentos', icon: FileText },
-      { key: 'ocorrencias', label: 'Ocorrencias', icon: TriangleAlert },
+      { key: 'ocorrencias', label: 'Ocorrências', icon: TriangleAlert },
     ],
   },
   {
@@ -43,6 +43,13 @@ const nav = [
       { key: 'suporte', label: 'Suporte', icon: LifeBuoy },
     ],
   },
+]
+
+// Barra inferior do celular (redesign v2.10A3): Inicio, Cobrancas, [Pagar], Avisos, Mais.
+const TABS = [
+  { key: 'dashboard', label: 'Início', icon: House },
+  { key: 'cobrancas', label: 'Cobranças', icon: Receipt },
+  { key: 'avisos', label: 'Avisos', icon: Bell },
 ]
 
 const pages = {
@@ -64,7 +71,9 @@ export default function MoradorLayout() {
   const [mountedPages, setMountedPages] = useState(() => [activePage])
   const mainContentRef = useRef(null)
   const scrollPositionsRef = useRef({})
-  const currentLabel = nav.flatMap((section) => section.items).find((item) => item.key === activePage)?.label || 'Inicio'
+  const currentLabel = nav.flatMap((section) => section.items).find((item) => item.key === activePage)?.label || 'Início'
+  // Botao principal: pagar uma cobranca (abre Minhas cobrancas).
+  const pagar = { label: 'Pagar cobrança', icon: QrCode, onClick: () => handleNavigate('cobrancas') }
 
   useMoradorPresence(profile, isResidentRole(profile?.role))
 
@@ -97,18 +106,18 @@ export default function MoradorLayout() {
   return (
     <div className={`app-layout theme-morador ${layoutClassName}`}>
       <EmailObrigatorio />
-      <Sidebar items={nav} activeKey={activePage} onNav={handleNavigate} theme="morador" mobileOpen={mobileOpen} onClose={closeMobile} />
+      <Sidebar items={nav} activeKey={activePage} onNav={handleNavigate} theme="morador" cta={pagar} mobileOpen={mobileOpen} onClose={closeMobile} />
       <main className="main-content" ref={mainContentRef}>
-        <div className="mobile-topbar">
-          <button className="btn btn-ghost btn-icon" onClick={toggleMenu} aria-label="Abrir ou recolher o menu" aria-expanded={mobileOpen || !layoutClassName}>
-            <Menu size={18} />
-          </button>
-          <img src={painelLogoUrl(condominiumSettings.logoPath)} alt="" aria-hidden="true" className="marca-mini" />
-          <div>
-            <div className="mobile-topbar-title">{condominiumSettings.name}</div>
-            <div className="mobile-topbar-sub">{currentLabel}</div>
-          </div>
-        </div>
+        <AppTopbar
+          title={condominiumSettings.name}
+          logoPath={condominiumSettings.logoPath}
+          crumbRoot={condominiumSettings.name}
+          crumbPage={currentLabel}
+          onToggleMenu={toggleMenu}
+          menuExpanded={mobileOpen || !layoutClassName}
+          initials={initialsOf(profile?.nome)}
+          onAvatar={() => handleNavigate('perfil')}
+        />
         <div className="page-content">
           {activePage === 'dashboard' && <PlanAttentionBanner audience="resident" />}
           {mountedPages.map((pageKey) => {
@@ -117,12 +126,13 @@ export default function MoradorLayout() {
 
             return (
               <div key={pageKey} style={{ display: isActive ? 'block' : 'none' }}>
-                <PageComponent isActive={isActive} />
+                <PageComponent isActive={isActive} onNavigate={handleNavigate} />
               </div>
             )
           })}
         </div>
       </main>
+      <BottomNav tabs={TABS} activeKey={activePage} onNav={handleNavigate} fab={pagar} onMore={toggleMenu} moreActive={mobileOpen} />
     </div>
   )
 }

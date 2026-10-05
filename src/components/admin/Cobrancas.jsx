@@ -4,9 +4,9 @@ import { useToast } from '../shared/Toast'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import WhatsAppIcon from '../shared/WhatsAppIcon'
-import { Plus, Search, CheckCircle, X, Loader2, DollarSign, QrCode, Upload, Paperclip, Trash2, Mail, Eye, RefreshCcw, CalendarDays, FileText, Link2 } from 'lucide-react'
+import { Plus, Search, CheckCircle, X, Loader2, DollarSign, QrCode, Upload, Paperclip, Trash2, Mail, Eye, RefreshCcw, FileText, Link2, Check, ChevronLeft, ChevronRight, CircleCheck, Clock3, Hourglass, MessageCircle, TriangleAlert, Ban } from 'lucide-react'
 import QRCode from 'qrcode'
-import { formatCurrency, formatReferenceLabel, parseCurrencyInput } from '../../lib/billingShared'
+import { formatCurrency, formatReferenceLabel, formatReferenceLong, parseCurrencyInput } from '../../lib/billingShared'
 import { buildChargeStorageFileName, enrichChargesWithPaymentUrls } from '../../lib/charges'
 import { applyTenantFilter, withTenantFields } from '../../lib/tenant'
 import { getChargePaymentStatus, getChargePaymentStatusMeta, isChargePaid } from '../../lib/chargeStatus'
@@ -16,17 +16,18 @@ import { montarPixCopiaECola } from '../../lib/pix'
 import { profileHasResource } from '../../lib/condominiumPlan'
 import { describeNotifyResult } from '../../lib/notifications'
 import { compareUnitNumbers } from '../../lib/units'
+import { safeHttpUrl } from '../../lib/safeUrl'
 
 const FILTER_TYPES = [
-  { value: 'condominio', label: 'Condominio', color: 'blue' },
-  { value: 'agua', label: 'Agua', color: 'blue' },
+  { value: 'condominio', label: 'Condomínio', color: 'blue' },
+  { value: 'agua', label: 'Água', color: 'blue' },
   { value: 'energia', label: 'Energia', color: 'orange' },
   { value: 'multa', label: 'Multa', color: 'red' },
   { value: 'outro', label: 'Outro', color: 'purple' },
 ]
 
 const CREATE_TYPES = [
-  { value: 'condominio', label: 'Condominio', color: 'blue' },
+  { value: 'condominio', label: 'Condomínio', color: 'blue' },
   { value: 'multa', label: 'Multa', color: 'red' },
   { value: 'outro', label: 'Outro', color: 'purple' },
 ]
@@ -35,6 +36,15 @@ const BREAKDOWN_TITLES = {
   condominio: 'Taxa Condominial',
   agua: 'Fatura Compesa',
   energia: 'Fatura Neoenergia',
+}
+
+// Situacao de cada cobranca na lista da competencia (redesign v2.10A3).
+const CHARGE_STATE_META = {
+  paid: { label: 'Paga', tone: 'green', Icon: CircleCheck },
+  informed: { label: 'Informada', tone: 'primary', Icon: Hourglass },
+  open: { label: 'Em aberto', tone: 'amber', Icon: Clock3 },
+  late: { label: 'Atrasada', tone: 'red', Icon: TriangleAlert },
+  cancelled: { label: 'Cancelada', tone: 'neutral', Icon: Ban },
 }
 
 const emptyForm = {
@@ -256,6 +266,7 @@ export default function Cobrancas() {
   const [loading, setLoading] = useState(true)
   const [openReference, setOpenReference] = useState(null)
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('todas')
   const [viewCharge, setViewCharge] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState(emptyForm)
@@ -281,7 +292,15 @@ export default function Cobrancas() {
       applyTenantFilter(supabase.from('ocorrencias_predio').select('*').order('created_at', { ascending: false }), condominiumId),
     ])
 
-    setCobrancas(await enrichChargesWithPaymentUrls(cobRes.data || []))
+    // Links que viram botao (boleto, anexo, pagamento) so passam se forem http(s).
+    setCobrancas((await enrichChargesWithPaymentUrls(cobRes.data || [])).map((item) => ({
+      ...item,
+      boleto_download_url: safeHttpUrl(item.boleto_download_url),
+      boleto_url: safeHttpUrl(item.boleto_url),
+      pagamento_anexo_download_url: safeHttpUrl(item.pagamento_anexo_download_url),
+      pagamento_anexo_url: safeHttpUrl(item.pagamento_anexo_url),
+      pagamento_link: safeHttpUrl(item.pagamento_link),
+    })))
     setUnits((unitsRes.data || []).sort((a, b) => compareUnitNumbers(a.numero, b.numero)))
     setLinks(linksRes.data || [])
     setResidentRequests(requestsRes.data || [])
@@ -316,17 +335,54 @@ export default function Cobrancas() {
     return Array.from(groups.values()).sort((a, b) => b.key.localeCompare(a.key))
   }, [cobrancas])
 
-  const activeReference = references.find((group) => group.key === openReference) || null
-  const referenceCharges = useMemo(() => {
+  // Competencia na tela: a escolhida, ou a mais recente. As setas andam pela lista (mais nova = indice 0).
+  const activeIndex = Math.max(0, references.findIndex((group) => group.key === openReference))
+  const activeReference = references[activeIndex] || null
+  const goToReference = (index) => {
+    const target = references[index]
+    if (!target) return
+    setOpenReference(target.key)
+    setStatusFilter('todas')
+  }
+
+  const chargeState = useCallback((charge) => {
+    const status = getChargePaymentStatus(charge)
+    if (status === 'PAID') return 'paid'
+    if (status === 'CANCELLED') return 'cancelled'
+    if (pendingPaymentByChargeId.has(charge.id) || status === 'UNDER_REVIEW') return 'informed'
+    if (status === 'OVERDUE') return 'late'
+    return 'open'
+  }, [pendingPaymentByChargeId])
+
+  const summary = useMemo(() => {
+    const result = { counts: { paid: 0, informed: 0, open: 0, late: 0, cancelled: 0 }, paidValue: 0, informedValue: 0, cancelledValue: 0 }
+    for (const charge of activeReference?.charges || []) {
+      const state = chargeState(charge)
+      result.counts[state] += 1
+      if (state === 'paid') result.paidValue += Number(charge.valor || 0)
+      if (state === 'informed') result.informedValue += Number(charge.valor || 0)
+      if (state === 'cancelled') result.cancelledValue += Number(charge.valor || 0)
+    }
+    return result
+  }, [activeReference, chargeState])
+
+  const percentOf = (value) => (activeReference?.total ? Math.min(100, (value / activeReference.total) * 100) : 0)
+
+  // "Em atraso (meses anteriores)": o que ficou sem pagar nas competencias mais antigas.
+  const lateBefore = useMemo(() => cobrancas
+    .filter((charge) => activeReference && (charge.mes_referencia || 'sem-referencia') < activeReference.key && chargeState(charge) === 'late')
+    .reduce((sum, charge) => sum + Number(charge.valor || 0), 0), [cobrancas, activeReference, chargeState])
+
+  const firstDue = (activeReference?.charges || []).map((charge) => charge.vencimento).filter(Boolean).sort()[0] || ''
+
+  const visibleCharges = useMemo(() => {
     if (!activeReference) return []
     const query = search.trim().toLowerCase()
     return activeReference.charges
+      .filter((charge) => statusFilter === 'todas' || chargeState(charge) === statusFilter)
       .filter((charge) => !query || getChargeUnit(charge).toLowerCase().includes(query) || String(charge.profiles?.nome || '').toLowerCase().includes(query))
       .sort((a, b) => compareUnitNumbers(getChargeUnit(a), getChargeUnit(b)))
-  }, [activeReference, search])
-
-  const totalPendente = cobrancas.filter((item) => !isChargePaid(item)).reduce((sum, item) => sum + Number(item.valor || 0), 0)
-  const totalPago = cobrancas.filter((item) => isChargePaid(item)).reduce((sum, item) => sum + Number(item.valor || 0), 0)
+  }, [activeReference, search, statusFilter, chargeState])
 
   const resetForm = () => {
     setShowModal(false)
@@ -396,6 +452,10 @@ export default function Cobrancas() {
     }
     if (!form.vencimento) {
       toast('Informe a data de vencimento.', 'error')
+      return
+    }
+    if (String(form.pagamento_link || '').trim() && !safeHttpUrl(form.pagamento_link)) {
+      toast('O link de pagamento precisa ser um endereco que comeca com https://', 'error')
       return
     }
     if (form.tipo === 'condominio' ? !breakdown.some((item) => item.value > 0) : parseCurrencyInput(form.valor) <= 0) {
@@ -576,131 +636,108 @@ export default function Cobrancas() {
 
   return (
     <div className="fade-in">
-      <div className="page-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+      <div className="screen">
+        <div className="screen-head">
           <div>
-            <div className="page-title">Cobrancas</div>
-            <div className="page-subtitle">Por competencia. Cada cobranca vai para o responsavel financeiro da unidade.</div>
+            <h1 className="screen-title">Cobranças</h1>
+            <div className="screen-sub">Por competência. Cada cobrança vai para o responsável financeiro da unidade.</div>
           </div>
-          <button className="btn btn-primary" onClick={openNewCharge}>
-            <Plus size={15} /> Nova cobranca
-          </button>
-        </div>
-      </div>
-
-      <div className="stats-grid" style={{ marginBottom: 20 }}>
-        <div className="stat-card">
-          <div className="label">Pendente</div>
-          <div className="value" style={{ color: '#f0883e', fontSize: 20 }}>{formatCurrency(totalPendente)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="label">Recebido</div>
-          <div className="value" style={{ color: '#3fb950', fontSize: 20 }}>{formatCurrency(totalPago)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="label">Competencias</div>
-          <div className="value" style={{ color: '#58a6ff', fontSize: 20 }}>{references.length}</div>
-        </div>
-      </div>
-
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner" /></div>
-      ) : references.length === 0 ? (
-        <div className="empty-state"><DollarSign size={40} /><p>Nenhuma cobranca lancada ainda.</p></div>
-      ) : (
-        <div className="reference-grid">
-          {references.map((group) => (
-            <button key={group.key} type="button" className="reference-card" onClick={() => { setSearch(''); setOpenReference(group.key) }}>
-              <div className="reference-card-head">
-                <CalendarDays size={16} />
-                <span className="reference-card-title">{group.key === 'sem-referencia' ? 'Sem competencia' : formatReferenceLabel(group.key)}</span>
-              </div>
-              <div className="reference-card-total">{formatCurrency(group.total)}</div>
-              <div className="reference-card-meta">{group.charges.length} unidade(s) cobrada(s)</div>
-              <div className="reference-card-badges">
-                <span className="badge badge-green">Recebido {formatCurrency(group.received)}</span>
-                {group.open > 0 && <span className="badge badge-orange">{group.open} em aberto</span>}
-                {group.overdue > 0 && <span className="badge badge-red">{group.overdue} atrasada(s)</span>}
-              </div>
+          <div className="screen-actions">
+            <button className="btn btn-primary" onClick={openNewCharge}>
+              <Plus size={17} /> Lançar cobranças
             </button>
-          ))}
-        </div>
-      )}
-
-      {activeReference && (
-        <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && setOpenReference(null)}>
-          <div className="modal" style={{ maxWidth: 1100 }} role="dialog" aria-modal="true">
-            <div className="modal-header">
-              <div>
-                <div className="modal-title">Competencia {activeReference.key === 'sem-referencia' ? '-' : formatReferenceLabel(activeReference.key)}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                  {activeReference.charges.length} unidade(s) · Total {formatCurrency(activeReference.total)} · Recebido {formatCurrency(activeReference.received)}
-                </div>
-              </div>
-              <button className="btn btn-ghost btn-icon" onClick={() => setOpenReference(null)} aria-label="Fechar"><X size={16} /></button>
-            </div>
-
-            <div style={{ position: 'relative', marginBottom: 14 }}>
-              <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#8b949e' }} />
-              <input className="input" style={{ paddingLeft: 34 }} placeholder="Buscar unidade ou responsavel..." value={search} onChange={(event) => setSearch(event.target.value)} />
-            </div>
-
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Unidade</th>
-                    <th>Responsavel financeiro</th>
-                    <th>Descricao</th>
-                    <th>Vencimento</th>
-                    <th>Valor</th>
-                    <th>Status</th>
-                    <th>Acoes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {referenceCharges.map((charge) => {
-                    const paymentRequest = pendingPaymentByChargeId.get(charge.id)
-                    const paid = isChargePaid(charge)
-                    const statusMeta = paymentRequest && !paid ? { label: 'Pagamento informado', badgeClass: 'badge-blue' } : getChargePaymentStatusMeta(charge)
-
-                    return (
-                      <tr key={charge.id}>
-                        <td className="mono" style={{ fontWeight: 700 }}>{getChargeUnit(charge)}</td>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{charge.profiles?.nome || '-'}</div>
-                          {paymentRequest && <div style={{ fontSize: 11, color: '#8b949e', marginTop: 4 }}>{buildResidentRequestSummary(paymentRequest).detail}</div>}
-                        </td>
-                        <td>
-                          <div>{charge.descricao || '-'}</div>
-                          <span className={`badge badge-${getTypeMeta(charge.tipo).color}`}>{getTypeMeta(charge.tipo).label}</span>
-                        </td>
-                        <td style={{ color: '#8b949e' }}>{formatDueDate(charge.vencimento)}</td>
-                        <td className="mono" style={{ fontWeight: 600 }}>{formatCurrency(charge.valor)}</td>
-                        <td><span className={`badge ${statusMeta.badgeClass}`}>{statusMeta.label}</span></td>
-                        <td>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            <button className="btn btn-ghost btn-sm" onClick={() => setViewCharge(charge)} title="Visualizar cobranca"><Eye size={13} /></button>
-                            {!paid && (
-                              <>
-                                <button className="btn btn-ghost btn-sm" onClick={() => openRelaunch(charge)} title="Relancar (editar e enviar novamente)"><RefreshCcw size={13} /></button>
-                                <button className="btn btn-ghost btn-sm" onClick={() => sendWhatsApp(charge)} title="Enviar pelo WhatsApp"><WhatsAppIcon size={14} /></button>
-                                <button className="btn btn-ghost btn-sm" onClick={() => sendEmail(charge)} title="Enviar por e-mail"><Mail size={13} /></button>
-                                <button className="btn btn-ghost btn-sm" onClick={() => marcarPago(charge)} title="Confirmar pagamento"><CheckCircle size={13} /></button>
-                              </>
-                            )}
-                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => excluirCobranca(charge)} title="Excluir cobranca"><Trash2 size={13} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
           </div>
         </div>
-      )}
+
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner" /></div>
+        ) : !activeReference ? (
+          <div className="empty-card"><DollarSign size={36} /><span>Nenhuma cobrança lançada ainda. Toque em "Lançar cobranças".</span></div>
+        ) : (
+          <>
+            <div className="month-card">
+              <div className="month-nav">
+                <button type="button" className="month-nav-btn" onClick={() => goToReference(activeIndex + 1)} disabled={activeIndex >= references.length - 1} aria-label="Competência anterior"><ChevronLeft size={18} /></button>
+                <div className="month-nav-title">
+                  <strong>{activeReference.key === 'sem-referencia' ? 'Sem competência' : formatReferenceLong(activeReference.key)}</strong>
+                  <span>{firstDue ? `Vencimento ${formatDueDate(firstDue)} · ` : ''}{activeReference.charges.length} {activeReference.charges.length === 1 ? 'cobrança lançada' : 'cobranças lançadas'}</span>
+                </div>
+                <button type="button" className="month-nav-btn" onClick={() => goToReference(activeIndex - 1)} disabled={activeIndex <= 0} aria-label="Próxima competência"><ChevronRight size={18} /></button>
+              </div>
+              <div className="month-bar">
+                <div style={{ width: `${percentOf(summary.paidValue)}%`, background: 'var(--green-solid)' }} />
+                <div style={{ width: `${percentOf(summary.informedValue)}%`, background: 'var(--primary)' }} />
+              </div>
+              <div className="month-stats">
+                <div><span>Lançado</span><strong>{formatCurrency(activeReference.total)}</strong></div>
+                <div><span>Recebido · {Math.round(percentOf(summary.paidValue))}%</span><strong style={{ color: 'var(--green)' }}>{formatCurrency(summary.paidValue)}</strong></div>
+                <div><span>A receber</span><strong style={{ color: 'var(--orange)' }}>{formatCurrency(activeReference.total - summary.paidValue - summary.cancelledValue)}</strong></div>
+                <div><span>Em atraso (meses anteriores)</span><strong style={{ color: 'var(--red)' }}>{formatCurrency(lateBefore)}</strong></div>
+              </div>
+            </div>
+
+            <div className="toolbar">
+              <label className="search-box">
+                <Search size={18} />
+                <input className="input" placeholder="Buscar unidade ou responsável" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Buscar cobrança" />
+              </label>
+            </div>
+
+            <div className="chips" role="group" aria-label="Filtrar cobranças">
+              {[
+                ['todas', `Todas · ${activeReference.charges.length}`],
+                ['informed', `Informadas · ${summary.counts.informed}`],
+                ['open', `Em aberto · ${summary.counts.open}`],
+                ['paid', `Pagas · ${summary.counts.paid}`],
+                ['late', `Atrasadas · ${summary.counts.late}`],
+              ].map(([value, label]) => (
+                <button key={value} type="button" className={`chip${statusFilter === value ? ' active' : ''}`} onClick={() => setStatusFilter(value)}>{label}</button>
+              ))}
+            </div>
+
+            {visibleCharges.length === 0 ? (
+              <div className="empty-card"><CheckCircle size={32} /><span>Nenhuma cobrança neste filtro.</span></div>
+            ) : (
+              <div className="list-card">
+                <div className="list-head charge-list-grid"><span>Unid.</span><span>Responsável</span><span>Cobrança</span><span>Valor</span><span>Status</span><span style={{ textAlign: 'right' }}>Ação</span></div>
+                {visibleCharges.map((charge) => {
+                  const state = chargeState(charge)
+                  const meta = CHARGE_STATE_META[state]
+                  const StateIcon = meta.Icon
+                  return (
+                    <div key={charge.id} className="list-row list-row-click charge-list-grid" role="button" tabIndex={0} aria-label={`Abrir cobrança da unidade ${getChargeUnit(charge)}`} onClick={() => setViewCharge(charge)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setViewCharge(charge) } }}>
+                      <span className="unit-tag">{getChargeUnit(charge)}</span>
+                      <span className="list-grow" style={{ minWidth: 0 }}>
+                        <span className="list-ellipsis">{charge.profiles?.nome || '-'}</span>
+                        <span className="list-sub list-ellipsis">{getTypeMeta(charge.tipo).label}<span className="list-only-m"> · {formatCurrency(charge.valor)}</span></span>
+                        <span className="list-only-m" style={{ marginTop: 4 }}><span className={`pill pill-sm tone-${meta.tone}`}>{meta.label}</span></span>
+                      </span>
+                      <span className="list-hide-m" style={{ minWidth: 0 }}>
+                        <span className="list-ellipsis">{charge.descricao || '-'}</span>
+                        <span className="list-sub">Vence {formatDueDate(charge.vencimento)}</span>
+                      </span>
+                      <span className="list-hide-m" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(charge.valor)}</span>
+                      <span className="list-hide-m"><span className={`pill tone-${meta.tone}`}><StateIcon size={13} />{meta.label}</span></span>
+                      <span className="list-actions" onClick={(event) => event.stopPropagation()}>
+                        {state === 'informed' && (
+                          <button type="button" className="mini-btn mini-btn-primary" onClick={() => marcarPago(charge)}><Check size={15} />Confirmar</button>
+                        )}
+                        {(state === 'open' || state === 'late') && (
+                          <button type="button" className="mini-btn" onClick={() => sendWhatsApp(charge)} title="Lembrar pelo WhatsApp" aria-label="Lembrar pelo WhatsApp"><MessageCircle size={15} /><span className="list-hide-m">Lembrar</span></button>
+                        )}
+                        {state === 'paid' && (
+                          <span className="list-sub" style={{ fontSize: 13 }}>{charge.data_pagamento ? `em ${formatDueDate(charge.data_pagamento)}` : 'pago'}</span>
+                        )}
+                        <button type="button" className="mini-btn mini-btn-icon list-hide-m" onClick={() => setViewCharge(charge)} title="Abrir cobrança" aria-label={`Abrir cobrança da unidade ${getChargeUnit(charge)}`}><Eye size={15} /></button>
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {viewCharge && (
         <div className="modal-overlay" style={{ zIndex: 110 }} onClick={(event) => event.target === event.currentTarget && setViewCharge(null)}>
@@ -711,7 +748,7 @@ export default function Cobrancas() {
             </div>
             <div className="charge-detail-grid">
               <div><div className="form-label">Responsavel financeiro</div><div className="charge-detail-value">{viewCharge.profiles?.nome || '-'}</div></div>
-              <div><div className="form-label">Status</div><span className={`badge ${getChargePaymentStatusMeta(viewCharge).badgeClass}`}>{getChargePaymentStatusMeta(viewCharge).label}</span></div>
+              <div><div className="form-label">Status</div><span className={`pill tone-${CHARGE_STATE_META[chargeState(viewCharge)].tone}`}>{CHARGE_STATE_META[chargeState(viewCharge)].label}</span></div>
               <div><div className="form-label">Descricao</div><div className="charge-detail-value">{viewCharge.descricao || '-'}</div></div>
               <div><div className="form-label">Valor</div><div className="charge-detail-value">{formatCurrency(viewCharge.valor)}</div></div>
               <div><div className="form-label">Vencimento</div><div className="charge-detail-value">{formatDueDate(viewCharge.vencimento)}</div></div>
@@ -729,11 +766,22 @@ export default function Cobrancas() {
                 <a className="btn btn-ghost btn-sm" href={viewCharge.pagamento_link} target="_blank" rel="noopener noreferrer"><Link2 size={13} /> Link de pagamento</a>
               )}
               {!isChargePaid(viewCharge) && (
-                <button className="btn btn-primary btn-sm" onClick={() => { const charge = viewCharge; setViewCharge(null); openRelaunch(charge) }}>
-                  <RefreshCcw size={13} /> Relancar
-                </button>
+                <>
+                  <button className="btn btn-ghost btn-sm" onClick={() => sendWhatsApp(viewCharge)}><WhatsAppIcon size={14} /> WhatsApp</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => sendEmail(viewCharge)}><Mail size={13} /> E-mail</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { const charge = viewCharge; setViewCharge(null); openRelaunch(charge) }}>
+                    <RefreshCcw size={13} /> Relançar
+                  </button>
+                  <button className="btn btn-primary btn-sm" onClick={() => { const charge = viewCharge; setViewCharge(null); void marcarPago(charge) }}>
+                    <CheckCircle size={13} /> Confirmar pagamento
+                  </button>
+                </>
               )}
+              <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => excluirCobranca(viewCharge)}><Trash2 size={13} /> Excluir</button>
             </div>
+            {pendingPaymentByChargeId.get(viewCharge.id) && !isChargePaid(viewCharge) && (
+              <div className="charge-detail-note" style={{ marginTop: 12, fontSize: 13 }}>{buildResidentRequestSummary(pendingPaymentByChargeId.get(viewCharge.id)).detail}</div>
+            )}
           </div>
         </div>
       )}

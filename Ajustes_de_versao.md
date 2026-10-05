@@ -1,41 +1,37 @@
 # Ajustes de versão — WebCond
 
-Lista do que fica para os próximos ajustes. Ao concluir um item, marque `[x]` e anote a versão.
+Lista do que fica para depois e histórico do que já foi feito em cada versão.
 
-## Próximo ajuste
+## Ajustes futuros
 
-### E-mail automático do sistema (Resend)
-
-Hoje o cadastro de condomínio novo fica **pendente** até a plataforma aprovar manualmente, porque o
-envio de e-mail não está ligado. Com o Resend configurado, o síndico recebe o e-mail
-"Bem-vindo(a)… Confirmar cadastro" e o condomínio entra sozinho no plano **TESTE**. As mesmas
-variáveis também ligam os avisos e as cobranças por e-mail para os moradores.
-
-O código já está pronto (`api/_lib/confirmacaoCadastro.js`, `api/_auth/confirmar-cadastro.js`).
-Falta só a configuração, que é feita **na Vercel** (não no Supabase):
-
-- [ ] Criar a conta em **resend.com**.
-- [ ] Verificar o domínio no Resend (**Domains → Add Domain**) e cadastrar os registros DNS
-      (MX, SPF e DKIM) onde o domínio é gerenciado. Sem domínio verificado o Resend só envia para o
-      e-mail do dono da conta.
-- [ ] Gerar a chave em **API Keys → Create API Key** (permissão *Sending access*; começa com `re_`).
-- [ ] Na Vercel → projeto **webcond** → **Settings → Environment Variables** (ambiente *Production*):
-  - `RESEND_API_KEY` = a chave `re_...`
-  - `NOTIFY_EMAIL_FROM` = `WebCond <nao-responda@SEU-DOMINIO>` (precisa ser do domínio verificado)
-  - `APP_URL` = `https://webcond.vercel.app` (endereço do botão "Confirmar cadastro")
-- [ ] **Redeploy** do último deploy (variável nova só vale depois de um deploy).
-- [ ] Testar: cadastrar um condomínio de teste com um e-mail seu → receber o e-mail → confirmar →
-      condomínio ativo no TESTE → entrar com e-mail e senha. Se não chegar, ver **Resend → Logs**.
-      Excluir o condomínio de teste depois.
-
-### Banco de dados
-
-- [ ] Rodar no Supabase o SQL `sql/2026-10-03_feedback_e_recebimento.sql` (sem ele a tela de
-      Feedback não funciona).
+- [ ] Conexão com o banco para receber os valores das assinaturas.
 
 ## Histórico
 
-### v2.10A2 — 05/10/2026 (no ar)
+### v2.10A3 — 05/10/2026
+
+- Redesign "Protótipo v3 · nova UX/UI" (pasta `redesigner-webcond`, fica só no computador):
+  - cores, fonte Outfit, cantos e sombras novos nos temas claro e escuro, em todas as telas;
+  - marca nova (`public/brand/`);
+  - menu lateral novo com botão principal ("Pagar cobrança" / "Nova cobrança");
+  - celular: cabeçalho com a marca e **barra inferior** com botão central e "Mais";
+  - login com painel da marca no computador e cartão "É síndico? Cadastrar";
+  - Início do morador com o cartão **Próxima cobrança** ("Pagar agora" já abre o pagamento);
+  - Painel do síndico com **Arrecadação**, **Precisa de você** e **Em atraso**.
+- Telas internas no formato do protótipo:
+  - Síndico › Unidades: **mapa por andar** colorido pela situação do pagamento, e lista;
+  - Síndico › Cobranças: navegação por competência (‹ mês ›), resumo, filtros e "Confirmar"/"Lembrar";
+  - Morador › Minhas cobranças: cartões "Em aberto / Pago no ano" e lista agrupada por mês;
+  - Morador › Pagar: painel com Pix (QR Code e copia e cola), link do banco, boleto e
+    "Já paguei · avisar o síndico";
+  - Avisos (morador e síndico), Documentos, Ocorrências e Meu perfil em cartões;
+  - Plataforma › Painel global e Condomínios no formato novo.
+- Botão **"Adicionar o app à tela inicial"**: no Android/Chrome/Edge instala com um toque; no
+  iPhone/iPad mostra o passo a passo (Compartilhar › Adicionar à Tela de Início). Some quando o
+  app já está instalado.
+- Banco: o SQL `sql/2026-10-03_feedback_e_recebimento.sql` já está aplicado no Supabase.
+
+### v2.10A2 — 05/10/2026
 
 - Equipe de suporte entra por e-mail (CPF opcional).
 - Políticas com data e versão automáticas (vêm do `package.json`).

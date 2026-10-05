@@ -1,33 +1,20 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { enrichDocumentsWithDownloadUrl } from '../../lib/documents'
 import { useAuth } from '../../hooks/useAuth'
 import { isNoticeForProfile } from '../../lib/units'
 import { isNoticeCurrent } from '../../lib/avisos'
-import { Bell, Info, AlertTriangle, Wrench, Megaphone, FileText, Download } from 'lucide-react'
+import { Megaphone, FileText, Download, Search } from 'lucide-react'
+import { AVISO_TIPOS, DOC_CATEGORIAS, fileExtension, formatNoticeDate } from '../shared/noticeMeta'
+import { safeHttpUrl } from '../../lib/safeUrl'
 
-const TIPOS = {
-  informativo: { label: 'Informativo', icon: Info, color: 'blue' },
-  aviso: { label: 'Aviso', icon: Bell, color: 'yellow' },
-  urgente: { label: 'Urgente', icon: AlertTriangle, color: 'red' },
-  manutencao: { label: 'Manutenção', icon: Wrench, color: 'orange' },
-}
+const NOVO_MS = 3 * 86400000
 
-const CATEGORIAS = {
-  ata: 'Ata',
-  regimento: 'Regimento',
-  contrato: 'Contrato',
-  financeiro: 'Financeiro',
-  comprovante: 'Comprovante',
-  conta: 'Conta',
-  boleto: 'Boleto',
-  outro: 'Outro',
-}
-
-export function MoradorAvisos() {
+export function MoradorAvisos({ isActive = true }) {
   const { profile } = useAuth()
   const [avisos, setAvisos] = useState([])
   const [loading, setLoading] = useState(true)
+  const [tipo, setTipo] = useState('todos')
 
   const fetchAvisos = useCallback(async () => {
     const { data } = await supabase
@@ -42,44 +29,50 @@ export function MoradorAvisos() {
   }, [profile])
 
   useEffect(() => {
-    if (!profile?.apartamento) return
+    if (!profile?.apartamento || !isActive) return
     void fetchAvisos()
-  }, [fetchAvisos, profile?.apartamento])
+  }, [fetchAvisos, profile?.apartamento, isActive])
+
+  const visiveis = useMemo(() => avisos.filter((aviso) => tipo === 'todos' || (aviso.tipo || 'informativo') === tipo), [avisos, tipo])
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner" /></div>
 
   return (
-    <div className="fade-in">
-      <div className="page-header">
-        <div className="page-title">Avisos e comunicados</div>
-        <div className="page-subtitle">Informações importantes do condomínio</div>
+    <div className="fade-in screen">
+      <div>
+        <h1 className="screen-title">Avisos e comunicados</h1>
+        <div className="screen-sub">Informações importantes do condomínio</div>
       </div>
-      {avisos.length === 0 ? (
-        <div className="empty-state"><Megaphone size={40} /><p>Nenhum aviso no momento.</p></div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {avisos.map((aviso) => {
-            const tipo = TIPOS[aviso.tipo] || TIPOS.informativo
-            const Icon = tipo.icon
 
+      <div className="chips" role="group" aria-label="Filtrar avisos">
+        {[['todos', 'Todos'], ...Object.entries(AVISO_TIPOS).map(([key, item]) => [key, item.plural])].map(([key, label]) => (
+          <button key={key} type="button" className={`chip${tipo === key ? ' active' : ''}`} onClick={() => setTipo(key)}>{label}</button>
+        ))}
+      </div>
+
+      {visiveis.length === 0 ? (
+        <div className="empty-card"><Megaphone size={36} /><span>{avisos.length ? 'Nenhum aviso deste tipo.' : 'Nenhum aviso no momento.'}</span></div>
+      ) : (
+        <div className="card-grid">
+          {visiveis.map((aviso) => {
+            const meta = AVISO_TIPOS[aviso.tipo] || AVISO_TIPOS.informativo
+            const Icon = meta.icon
+            const novo = Date.now() - new Date(aviso.created_at).getTime() < NOVO_MS
             return (
-              <div key={aviso.id} className="card" style={{ borderLeft: `3px solid var(--${tipo.color})` }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                  <div style={{ padding: 8, borderRadius: 8, background: `var(--${tipo.color}-dim, #1a2a3a)`, flexShrink: 0 }}>
-                    <Icon size={16} color={`var(--${tipo.color})`} />
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                      <span style={{ fontWeight: 600, fontSize: 15 }}>{aviso.titulo}</span>
-                      <span className={`badge badge-${tipo.color}`}>{tipo.label}</span>
-                    </div>
-                    <p style={{ color: '#8b949e', fontSize: 13, lineHeight: 1.6 }}>{aviso.conteudo}</p>
-                    <div style={{ fontSize: 11, color: '#484f58', marginTop: 8 }}>
-                      {new Date(aviso.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                    </div>
-                  </div>
+              <article key={aviso.id} className="info-card">
+                <div className="info-card-top">
+                  <span className={`info-card-icon tone-${meta.tone}`}><Icon size={18} /></span>
+                  <span className={`info-card-cat tone-${meta.tone}`} style={{ background: 'none' }}>{meta.label}</span>
+                  <span className="info-card-date">
+                    {novo && <span className="pill pill-sm" style={{ background: 'var(--primary)', color: '#fff', marginRight: 8 }}>Novo</span>}
+                    {formatNoticeDate(aviso.created_at)}
+                  </span>
                 </div>
-              </div>
+                <div>
+                  <h3 className="info-card-title">{aviso.titulo}</h3>
+                  <p className="info-card-text">{aviso.conteudo}</p>
+                </div>
+              </article>
             )
           })}
         </div>
@@ -88,55 +81,82 @@ export function MoradorAvisos() {
   )
 }
 
-export function MoradorDocumentos() {
+export function MoradorDocumentos({ isActive = true }) {
   const [docs, setDocs] = useState([])
   const [loading, setLoading] = useState(true)
+  const [categoria, setCategoria] = useState('todos')
+  const [busca, setBusca] = useState('')
 
   useEffect(() => {
-    void fetchDocumentos()
-  }, [])
+    if (!isActive) return
+    void (async () => {
+      const { data, error } = await supabase
+        .from('documentos')
+        .select('*')
+        .eq('publico', true)
+        .order('created_at', { ascending: false })
 
-  const fetchDocumentos = async () => {
-    const { data, error } = await supabase
-      .from('documentos')
-      .select('*')
-      .eq('publico', true)
-      .order('created_at', { ascending: false })
+      if (error) {
+        setDocs([])
+        setLoading(false)
+        return
+      }
 
-    if (error) {
-      setDocs([])
+      const nextDocs = await enrichDocumentsWithDownloadUrl(data || [])
+      setDocs(nextDocs)
       setLoading(false)
-      return
-    }
+    })()
+  }, [isActive])
 
-    const nextDocs = await enrichDocumentsWithDownloadUrl(data || [])
-    setDocs(nextDocs)
-    setLoading(false)
-  }
+  const categorias = useMemo(() => Array.from(new Set(docs.map((doc) => doc.categoria).filter(Boolean))), [docs])
+  const visiveis = useMemo(() => {
+    const query = busca.trim().toLowerCase()
+    return docs.filter((doc) => (categoria === 'todos' || doc.categoria === categoria)
+      && (!query || String(doc.titulo || '').toLowerCase().includes(query) || String(doc.descricao || '').toLowerCase().includes(query)))
+  }, [docs, categoria, busca])
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner" /></div>
 
   return (
-    <div className="fade-in">
-      <div className="page-header">
-        <div className="page-title">Documentos</div>
-        <div className="page-subtitle">Atas, regimentos e documentos do condomínio</div>
+    <div className="fade-in screen">
+      <div>
+        <h1 className="screen-title">Documentos</h1>
+        <div className="screen-sub">Atas, regimentos e documentos do condomínio</div>
       </div>
-      {docs.length === 0 ? (
-        <div className="empty-state"><FileText size={40} /><p>Nenhum documento disponível.</p></div>
+
+      {docs.length > 0 && (
+        <div className="toolbar">
+          <label className="search-box">
+            <Search size={18} />
+            <input className="input" placeholder="Buscar documento" value={busca} onChange={(event) => setBusca(event.target.value)} aria-label="Buscar documento" />
+          </label>
+          {categorias.length > 1 && (
+            <div className="chips" role="group" aria-label="Filtrar documentos" style={{ maxWidth: '100%' }}>
+              {[['todos', 'Todos'], ...categorias.map((key) => [key, DOC_CATEGORIAS[key] || key])].map(([key, label]) => (
+                <button key={key} type="button" className={`chip${categoria === key ? ' active' : ''}`} onClick={() => setCategoria(key)}>{label}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {visiveis.length === 0 ? (
+        <div className="empty-card"><FileText size={36} /><span>{docs.length ? 'Nenhum documento encontrado.' : 'Nenhum documento disponível.'}</span></div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px,1fr))', gap: 16 }}>
-          {docs.map((documento) => (
-            <div key={documento.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <span className="badge badge-blue" style={{ alignSelf: 'flex-start' }}>{CATEGORIAS[documento.categoria] || documento.categoria}</span>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{documento.titulo}</div>
-                {documento.descricao && <div style={{ fontSize: 12, color: '#8b949e' }}>{documento.descricao}</div>}
+        <div className="card-grid card-grid-docs">
+          {visiveis.map((documento) => (
+            <div key={documento.id} className="info-card" style={{ gap: 14, padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                <span className="doc-icon"><FileText size={20} /><b>{fileExtension(documento.arquivo_path || documento.arquivo_url)}</b></span>
+                <a href={safeHttpUrl(documento.download_url || documento.arquivo_url) || undefined} target="_blank" rel="noopener noreferrer" className="mini-btn mini-btn-icon" title="Baixar" aria-label={`Baixar ${documento.titulo}`}>
+                  <Download size={17} />
+                </a>
               </div>
-              <div style={{ fontSize: 11, color: '#484f58' }}>{new Date(documento.created_at).toLocaleDateString('pt-BR')}</div>
-              <a href={documento.download_url || documento.arquivo_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" style={{ justifyContent: 'center' }}>
-                <Download size={13} /> Baixar
-              </a>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.3, overflowWrap: 'anywhere' }}>{documento.titulo}</div>
+                {documento.descricao && <div className="info-card-text info-card-clamp" style={{ fontSize: 13, marginTop: 4 }}>{documento.descricao}</div>}
+                <div className="list-sub" style={{ fontSize: 13, marginTop: 6 }}>{DOC_CATEGORIAS[documento.categoria] || documento.categoria} · {new Date(documento.created_at).toLocaleDateString('pt-BR')}</div>
+              </div>
             </div>
           ))}
         </div>

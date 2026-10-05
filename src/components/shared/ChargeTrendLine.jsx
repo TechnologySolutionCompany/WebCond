@@ -1,7 +1,7 @@
 const SERIES = [
-  { key: 'pago', label: 'Pago', color: '#3fb950' },
-  { key: 'em_aberto', label: 'Em aberto', color: '#f59e0b' },
-  { key: 'inadimplente', label: 'Inadimplente', color: '#f85149' },
+  { key: 'pago', label: 'Pago', color: '#3DAE4A' },
+  { key: 'em_aberto', label: 'Em aberto', color: '#E59A12' },
+  { key: 'inadimplente', label: 'Inadimplente', color: '#DC4B43' },
 ]
 
 const WIDTH = 320

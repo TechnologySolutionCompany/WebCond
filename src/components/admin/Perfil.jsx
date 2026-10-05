@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowUpRight, Eye, EyeOff, KeyRound, Save } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowUpRight, Eye, EyeOff, KeyRound, LifeBuoy, LockKeyhole, LogOut, Save, ShieldCheck } from 'lucide-react'
+import { AccountLinks, ProfileHeader, ThemeCard } from '../shared/ProfileCards'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useToast } from '../shared/Toast'
@@ -7,7 +8,6 @@ import SensitiveValue from '../shared/SensitiveValue'
 import { changeOwnPassword, updateOwnProfile } from '../../lib/adminApi'
 import { getCondominiumAccessState, getPlan, TRIAL_PERIOD_DAYS } from '../../lib/condominiumPlan'
 import { getUserRoleLabel, normalizeRole } from '../../lib/auth'
-import { APP_VERSION } from '../../lib/appVersion'
 import { loginEmailForDisplay, normalizeLoginEmail } from '../../lib/loginEmail'
 import RecebimentoTab from './RecebimentoTab'
 const DAY_MS = 86400000
@@ -212,13 +212,14 @@ function PlanoTab({ plan, onNavigate }) {
   )
 }
 
-// Perfil do sindico (e do contador): uma coluna, uma aba por assunto.
+// Perfil do sindico (e do contador) no formato do prototipo (redesign v2.10A3): cartoes lado a lado.
 export default function Perfil({ onNavigate }) {
-  const { profile, condominiumId, refreshProfile } = useAuth()
+  const { profile, condominiumId, refreshProfile, signOut } = useAuth()
   const isSyndic = normalizeRole(profile?.role) === 'admin'
-  const [tab, setTab] = useState('dados')
   const [condo, setCondo] = useState(null)
   const [condoVersion, setCondoVersion] = useState(0)
+  const [senhaAberta, setSenhaAberta] = useState(false)
+  const senhaRef = useRef(null)
 
   useEffect(() => {
     if (!condominiumId) return
@@ -234,44 +235,53 @@ export default function Perfil({ onNavigate }) {
 
   const plan = useMemo(() => describePlan(condo ? getCondominiumAccessState(condo) : null), [condo])
 
-  const tabs = [
-    { key: 'dados', label: 'Dados' },
-    { key: 'senha', label: 'Senha' },
-    ...(isSyndic ? [{ key: 'plano', label: 'Meu plano' }, { key: 'recebimento', label: 'Recebimento' }] : []),
-  ]
-  const initial = String(profile?.nome || '?').trim().charAt(0).toUpperCase()
+  const abrirSenha = () => {
+    setSenhaAberta(true)
+    window.setTimeout(() => senhaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+  }
 
   return (
-    <div className="fade-in me-shell">
-      <div className="page-header">
-        <div className="page-title">Meu perfil</div>
-      </div>
+    <div className="fade-in screen">
+      <ProfileHeader nome={profile?.nome || '-'} subtitle={`${getUserRoleLabel(profile?.role)}${condo ? ` · ${condo.name || condo.nome}` : ''}`} />
 
-      <div className="me-head">
-        <div className="me-avatar" aria-hidden="true">{initial}</div>
-        <div className="me-head-text">
-          <strong>{profile?.nome || '-'}</strong>
-          <span>{getUserRoleLabel(profile?.role)}{condo ? ` · ${condo.name || condo.nome}` : ''}</span>
+      <div className="pf-grid">
+        <div className="pf-col">
+          <div className="pf-col-title">Dados pessoais</div>
+          <DadosTab profile={profile} refreshProfile={refreshProfile} />
         </div>
-        {isSyndic && plan && <span className={`badge ${plan.status.badge}`}>{plan.name}</span>}
-      </div>
 
-      <div className="condo-tabs" role="tablist">
-        {tabs.map((item) => (
-          <button key={item.key} type="button" className="condo-tab" role="tab" aria-selected={tab === item.key} onClick={() => setTab(item.key)}>
-            {item.label}
-          </button>
-        ))}
-      </div>
+        <div className="pf-col">
+          {isSyndic && (
+            <>
+              <div className="pf-col-title">Meu plano{plan && <span className={`badge ${plan.status.badge}`}>{plan.status.label}</span>}</div>
+              <PlanoTab plan={plan} onNavigate={onNavigate} />
+            </>
+          )}
+          <ThemeCard />
+        </div>
 
-      {tab === 'dados' && <DadosTab profile={profile} refreshProfile={refreshProfile} />}
-      {tab === 'senha' && <SenhaTab />}
-      {tab === 'plano' && isSyndic && <PlanoTab plan={plan} onNavigate={onNavigate} />}
-      {tab === 'recebimento' && isSyndic && <RecebimentoTab condo={condo} onNavigate={onNavigate} onSaved={() => setCondoVersion((value) => value + 1)} />}
+        {isSyndic && (
+          <div className="pf-col">
+            <div className="pf-col-title">Recebimento</div>
+            <RecebimentoTab condo={condo} onNavigate={onNavigate} onSaved={() => setCondoVersion((value) => value + 1)} />
+          </div>
+        )}
 
-      <div className="me-version">
-        <img src="/logo.svg" alt="" aria-hidden="true" className="marca-mini marca-mini-sm" />
-        WebCond · Versao do App {APP_VERSION}
+        {senhaAberta && (
+          <div className="pf-col" ref={senhaRef}>
+            <div className="pf-col-title">Trocar senha</div>
+            <SenhaTab />
+          </div>
+        )}
+
+        <AccountLinks
+          items={[
+            { label: 'Trocar senha', icon: LockKeyhole, onClick: abrirSenha },
+            { label: 'Suporte e feedback', icon: LifeBuoy, onClick: () => onNavigate?.('suporte') },
+            { label: 'Privacidade e segurança', icon: ShieldCheck, href: '/politicas/privacidade' },
+            { label: 'Sair da conta', icon: LogOut, onClick: () => void signOut(), danger: true },
+          ]}
+        />
       </div>
     </div>
   )

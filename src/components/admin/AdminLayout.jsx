@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { LayoutDashboard, Home, DollarSign, Bell, FileText, Calculator, Menu, UserCog, LifeBuoy } from 'lucide-react'
+import { LayoutDashboard, Building2, Receipt, Megaphone, FileText, Calculator, UserCog, LifeBuoy, Plus } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
-import { painelLogoUrl } from '../../lib/condominiumLogo'
 import { normalizeRole } from '../../lib/auth'
 import Sidebar from '../shared/Sidebar'
+import { AppTopbar, BottomNav, initialsOf } from '../shared/AppChrome'
 import { useSidebarMenu } from '../../hooks/useSidebarMenu'
 import { useDeepLinkPage } from '../../hooks/useDeepLinkPage'
 import { initialPage, saveLastView } from '../../lib/lastView'
@@ -102,7 +102,7 @@ export default function AdminLayout() {
       label: 'Principal',
       items: [
         { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
-        { key: 'contador', label: 'Relatorios', icon: Calculator },
+        { key: 'contador', label: 'Relatórios', icon: Calculator },
       ],
     },
     ACCOUNT_SECTION,
@@ -111,21 +111,21 @@ export default function AdminLayout() {
       label: 'Principal',
       items: [
         { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
-        { key: 'unidades', label: 'Unidades', icon: Home },
-        { key: 'cobrancas', label: 'Cobrancas', icon: DollarSign },
+        { key: 'unidades', label: 'Unidades', icon: Building2 },
+        { key: 'cobrancas', label: 'Cobranças', icon: Receipt },
       ],
     },
     {
-      label: 'Comunicacao',
+      label: 'Comunicação',
       items: [
-        { key: 'avisos', label: 'Avisos', icon: Bell },
+        { key: 'avisos', label: 'Avisos', icon: Megaphone },
         { key: 'documentos', label: 'Documentos', icon: FileText },
       ],
     },
     {
       label: 'Financeiro',
       items: [
-        { key: 'contador', label: 'Relatorios', icon: Calculator },
+        { key: 'contador', label: 'Relatórios', icon: Calculator },
       ],
     },
     ACCOUNT_SECTION,
@@ -145,21 +145,28 @@ export default function AdminLayout() {
 
   const currentLabel = nav.flatMap((section) => section.items).find((item) => item.key === page)?.label || HIDDEN_PAGE_LABELS[page] || 'Painel'
 
+  // Barra inferior do celular (redesign v2.10A3). Sindico: Painel, Unidades, [Nova cobranca],
+  // Cobrancas, Mais. Contador (so leitura): Painel e Relatorios, sem botao central.
+  const novaCobranca = isAccountant ? null : { label: 'Nova cobrança', icon: Plus, onClick: () => handleNavigate('cobrancas') }
+  const tabs = isAccountant
+    ? [{ key: 'dashboard', label: 'Painel', icon: LayoutDashboard }, { key: 'contador', label: 'Relatórios', icon: Calculator }]
+    : [{ key: 'dashboard', label: 'Painel', icon: LayoutDashboard }, { key: 'unidades', label: 'Unidades', icon: Building2 }, { key: 'cobrancas', label: 'Cobranças', icon: Receipt }]
+
   return (
     <div className={`app-layout ${layoutClassName}`}>
       <EmailObrigatorio />
-      <Sidebar items={nav} activeKey={page} onNav={handleNavigate} theme="admin" mobileOpen={mobileOpen} onClose={closeMobile} />
+      <Sidebar items={nav} activeKey={page} onNav={handleNavigate} theme="admin" cta={novaCobranca} mobileOpen={mobileOpen} onClose={closeMobile} />
       <main className="main-content" ref={mainContentRef}>
-        <div className="mobile-topbar">
-          <button className="btn btn-ghost btn-icon" onClick={toggleMenu} aria-label="Abrir ou recolher o menu" aria-expanded={mobileOpen || !layoutClassName}>
-            <Menu size={18} />
-          </button>
-          <img src={painelLogoUrl(condominiumSettings.logoPath)} alt="" aria-hidden="true" className="marca-mini" />
-          <div>
-            <div className="mobile-topbar-title">{condominiumSettings.name}</div>
-            <div className="mobile-topbar-sub">{currentLabel}</div>
-          </div>
-        </div>
+        <AppTopbar
+          title={condominiumSettings.name}
+          logoPath={condominiumSettings.logoPath}
+          crumbRoot={condominiumSettings.name}
+          crumbPage={currentLabel}
+          onToggleMenu={toggleMenu}
+          menuExpanded={mobileOpen || !layoutClassName}
+          initials={initialsOf(profile?.nome)}
+          onAvatar={() => handleNavigate('perfil')}
+        />
         <div className="page-content">
           <PlanUpgradeNotice
             profile={profile}
@@ -180,6 +187,7 @@ export default function AdminLayout() {
           })}
         </div>
       </main>
+      <BottomNav tabs={tabs} activeKey={page} onNav={handleNavigate} fab={novaCobranca} onMore={toggleMenu} moreActive={mobileOpen} />
     </div>
   )
 }

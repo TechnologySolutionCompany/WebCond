@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { InstallAppButton } from '../components/shared/InstallApp'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
+  ArrowRight,
   Building,
+  Building2,
   CheckCircle,
   Info,
   Eye,
@@ -211,11 +214,7 @@ export default function Landing() {
 
   if (successMode) {
     return (
-      <div style={S.root} className="landing-root">
-        <div style={S.bg} />
-        <div style={S.grid} />
-        <div style={S.glowLeft} />
-        <div style={S.glowRight} />
+      <div style={{ ...S.root, flexDirection: 'column' }} className="landing-root">
         <button
           type="button"
           style={S.themeToggle}
@@ -228,7 +227,7 @@ export default function Landing() {
         <div style={S.center}>
           <style>{RESPONSIVE_STYLES}</style>
           <div style={S.successCard}>
-            <img src="/logo.png" alt="WebCond" style={S.successLogo} />
+            <img src={themeMode === 'light' ? '/brand/wc-logo-slogan-claro.svg' : '/brand/wc-logo-slogan-escuro.svg'} alt="WebCond" style={S.successLogo} />
             <CheckCircle size={48} color={S.brandGreen.color} style={{ margin: '0 auto 18px' }} />
             <div style={S.successTitle}>Condominio cadastrado!</div>
             {registerResult?.emailSent ? (
@@ -265,10 +264,18 @@ export default function Landing() {
 
   return (
     <div style={S.root} className="landing-root">
-      <div style={S.bg} />
-      <div style={S.grid} />
-      <div style={S.glowLeft} />
-      <div style={S.glowRight} />
+      {/* Redesign v2.10A3: no computador, painel escuro com a marca; no celular so o formulario. */}
+      <aside className="landing-hero" style={S.hero}>
+        <img src="/brand/wc-simbolo.svg" alt="" aria-hidden="true" style={S.heroWatermark} />
+        <img src="/brand/wc-logo-slogan-escuro.svg" alt="WebCond" style={S.heroLogo} />
+        <div style={{ position: 'relative', maxWidth: 420 }}>
+          <div style={S.heroTitle}>O condomínio inteiro em um só app.</div>
+          <div style={S.heroText}>Cobranças, avisos, documentos e ocorrências para síndicos e moradores.</div>
+        </div>
+        <div style={S.heroFoot}>© TSCBr · versão {APP_VERSION}</div>
+      </aside>
+
+      <div style={S.formSide}>
       {/* Com o cadastro aberto o botao de tema sairia por cima do "fechar" do formulario. */}
       {tab !== 'condominio' && (
         <button
@@ -288,12 +295,14 @@ export default function Landing() {
         {/* Tela inicial enxuta (v1.09A5): no celular cabe inteira, sem rolar. O que era do rodape
             (contato, redes, politicas) aparece na tela de cadastro e em Suporte > Sobre. */}
         <div style={S.brandArea}>
-          <img src="/logo.png" alt="" aria-hidden="true" style={S.logoImage} />
-          <h1 style={S.brandName}>
-            <span style={S.brandBlue}>Web</span>
-            <span style={S.brandGreen}>Cond</span>
-          </h1>
-          <div style={S.brandSubtitle}>Entre na area do seu condominio</div>
+          <img
+            className="landing-form-logo"
+            src={themeMode === 'light' ? '/brand/wc-logo-slogan-claro.svg' : '/brand/wc-logo-slogan-escuro.svg'}
+            alt="WebCond"
+            style={S.logoImage}
+          />
+          <h1 style={S.brandName}>Entrar</h1>
+          <div style={S.brandSubtitle}>Entre na área do seu condomínio</div>
         </div>
 
         <div style={S.card} className="landing-card">
@@ -439,19 +448,26 @@ export default function Landing() {
                   <>
                     <Loader2 size={15} style={{ animation: 'spin .6s linear infinite' }} /> Entrando...
                   </>
-                ) : 'Entrar'}
+                ) : <>Entrar <ArrowRight size={18} /></>}
               </button>
 
-              <button
-                type="button"
-                style={S.condoLink}
-                onClick={() => {
-                  setTab('condominio')
-                  setError('')
-                }}
-              >
-                E sindico? Cadastre seu condominio
-              </button>
+              <div style={S.condoCard}>
+                <span style={S.condoCardIcon}><Building2 size={18} /></span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: S.pageText.color }}>É síndico?</div>
+                  <div style={{ fontSize: 13, color: S.pageMuted.color }}>Cadastre o condomínio e teste {TRIAL_PERIOD_DAYS} dias grátis</div>
+                </div>
+                <button
+                  type="button"
+                  style={S.condoLink}
+                  onClick={() => {
+                    setTab('condominio')
+                    setError('')
+                  }}
+                >
+                  Cadastrar <ArrowRight size={15} />
+                </button>
+              </div>
 
               <style>{'@keyframes spin{to{transform:rotate(360deg)}}'}</style>
             </form>
@@ -688,43 +704,44 @@ export default function Landing() {
         <div style={S.miniFooter}>
           <span>© TSCBr · {APP_VERSION}</span>
           <Link to="/politicas/privacidade" style={S.miniFooterLink}>Privacidade</Link>
-          <Link to="/politicas/seguranca" style={S.miniFooterLink}>Seguranca</Link>
+          <Link to="/politicas/seguranca" style={S.miniFooterLink}>Segurança</Link>
+          <Link to="/politicas/cookies" style={S.miniFooterLink}>Cookies</Link>
+          <InstallAppButton className="landing-install" label="Instalar o app" />
         </div>
       )}
+      </div>
     </div>
   )
 }
 
 const RESPONSIVE_STYLES = `
-  .landing-primary-button:hover {
-    background: #2e7d32;
-    border-color: #2e7d32;
-    transform: translateY(-1px);
-  }
-
+  .landing-primary-button:hover,
   .landing-secondary-button:hover {
-    background: #0b3b84;
-    border-color: #0b3b84;
-    transform: translateY(-1px);
+    background: #1B52A8 !important;
+    border-color: #1B52A8 !important;
   }
 
   .landing-input-shell:focus-within {
-    border-color: rgba(67,160,71,0.85) !important;
-    box-shadow: 0 0 0 4px rgba(67,160,71,0.12);
+    border-color: #2160C4 !important;
+    box-shadow: 0 0 0 4px rgba(33,96,196,0.16);
   }
 
   .landing-input::placeholder {
-    color: #6B7280;
+    color: #8794A6;
+  }
+
+  /* Painel da marca so no computador; la o logo ja aparece, entao o do formulario some. */
+  @media (max-width: 900px) {
+    .landing-hero { display: none !important; }
+  }
+  @media (min-width: 901px) {
+    .landing-form-logo { display: none !important; }
   }
 
   .landing-modal-footer { margin: 24px -28px -28px; border-top: 1px solid rgba(127,127,127,0.18); overflow: hidden; border-radius: 0 0 20px 20px; }
   .landing-modal-footer .site-footer { margin: 0; }
 
   @media (max-width: 860px) {
-    .landing-card {
-      padding: 22px !important;
-    }
-
     .landing-condo-grid {
       grid-template-columns: 1fr !important;
     }
@@ -740,48 +757,48 @@ const RESPONSIVE_STYLES = `
 
 const PALETTES = {
   dark: {
-    bg: '#0B1117',
-    text: '#F2F4F7',
-    muted: '#9CA3AF',
-    surface: '#111821',
-    accent: '#3DAE4A',
+    bg: '#0A101B',
+    text: '#EEF2F8',
+    muted: '#AFC0D3',
+    dim: '#7184A0',
+    surface: '#111A28',
+    surface2: '#162030',
+    accent: '#2160C4',
+    green: '#66CD72',
+    greenTint: 'rgba(61,174,74,.15)',
     brandBlue: '#2160C4',
-    border: 'rgba(255,255,255,0.08)',
-    borderStrong: 'rgba(255,255,255,0.12)',
-    overlay: 'rgba(3, 7, 12, 0.72)',
-    errorBg: 'rgba(127,29,29,0.38)',
-    errorBorder: 'rgba(248,81,73,0.55)',
-    errorText: '#FCA5A5',
-    glowTop: 'rgba(33,96,196,0.16)',
-    glowBlue: 'rgba(33,96,196,0.12)',
-    glowGreen: 'rgba(61,174,74,0.12)',
-    grid: 'rgba(255,255,255,0.03)',
-    shadow: '0 28px 70px rgba(0,0,0,0.34)',
-    shadowStrong: '0 24px 60px rgba(0,0,0,0.45)',
-    logoShadow: 'drop-shadow(0 16px 30px rgba(0,0,0,0.35))',
-    accentShadow: '0 18px 34px rgba(61,174,74,0.22)',
+    primaryText: '#82AEF5',
+    border: '#1E2A3D',
+    borderStrong: '#2A3950',
+    overlay: 'rgba(2,6,12,.62)',
+    errorBg: 'rgba(255,120,110,.13)',
+    errorBorder: 'rgba(255,135,127,.45)',
+    errorText: '#FF877F',
+    shadow: 'none',
+    shadowStrong: '0 30px 80px rgba(0,0,0,.55)',
+    accentShadow: 'none',
   },
   light: {
-    bg: '#f4f7fb',
-    text: '#0f172a',
-    muted: '#475569',
-    surface: '#ffffff',
-    accent: '#15803d',
-    brandBlue: '#1B52A8',
-    border: 'rgba(15,23,42,0.10)',
-    borderStrong: 'rgba(15,23,42,0.16)',
-    overlay: 'rgba(15,23,42,0.45)',
-    errorBg: '#fee2e2',
-    errorBorder: 'rgba(185,28,28,0.45)',
-    errorText: '#b91c1c',
-    glowTop: 'rgba(37,99,235,0.10)',
-    glowBlue: 'rgba(37,99,235,0.10)',
-    glowGreen: 'rgba(21,128,61,0.10)',
-    grid: 'rgba(15,23,42,0.04)',
-    shadow: '0 24px 50px rgba(15,23,42,0.10)',
-    shadowStrong: '0 24px 60px rgba(15,23,42,0.18)',
-    logoShadow: 'drop-shadow(0 14px 26px rgba(15,23,42,0.15))',
-    accentShadow: '0 16px 30px rgba(21,128,61,0.18)',
+    bg: '#F3F5F9',
+    text: '#0E1624',
+    muted: '#5B6878',
+    dim: '#8794A6',
+    surface: '#FFFFFF',
+    surface2: '#F1F4F8',
+    accent: '#2160C4',
+    green: '#23813A',
+    greenTint: '#E7F5E9',
+    brandBlue: '#2160C4',
+    primaryText: '#1D58B8',
+    border: '#E4E9F0',
+    borderStrong: '#D3DBE6',
+    overlay: 'rgba(14,22,36,.42)',
+    errorBg: '#FCEBEA',
+    errorBorder: 'rgba(176,48,42,.35)',
+    errorText: '#B0302A',
+    shadow: 'none',
+    shadowStrong: '0 30px 80px rgba(14,22,36,.22)',
+    accentShadow: 'none',
   },
 }
 
@@ -791,54 +808,43 @@ function buildStyles(p) {
   root: {
     minHeight: '100dvh',
     display: 'flex',
-    flexDirection: 'column',
     background: p.bg,
     position: 'relative',
     overflow: 'hidden',
+    fontFamily: "'Outfit', system-ui, sans-serif",
+    color: p.text,
   },
-  bg: {
-    position: 'absolute',
-    inset: 0,
-    background: `radial-gradient(circle at top, ${p.glowTop}, transparent 42%)`,
-    pointerEvents: 'none',
+  hero: {
+    position: 'relative',
+    overflow: 'hidden',
+    flex: '0 0 46%',
+    background: '#0E1624',
+    color: '#fff',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    padding: '48px 56px',
   },
-  grid: {
-    position: 'absolute',
-    inset: 0,
-    backgroundImage: `linear-gradient(${p.grid} 1px,transparent 1px),linear-gradient(90deg,${p.grid} 1px,transparent 1px)`,
-    backgroundSize: '42px 42px',
-    pointerEvents: 'none',
-    maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.88), rgba(0,0,0,0.2))',
-  },
-  glowLeft: {
-    position: 'absolute',
-    width: 420,
-    height: 420,
-    borderRadius: '50%',
-    background: p.glowBlue,
-    filter: 'blur(80px)',
-    top: -120,
-    left: -120,
-    pointerEvents: 'none',
-  },
-  glowRight: {
-    position: 'absolute',
-    width: 320,
-    height: 320,
-    borderRadius: '50%',
-    background: p.glowGreen,
-    filter: 'blur(80px)',
-    bottom: -80,
-    right: -80,
-    pointerEvents: 'none',
+  heroWatermark: { position: 'absolute', right: -120, bottom: -110, width: 620, opacity: 0.16, pointerEvents: 'none' },
+  heroLogo: { position: 'relative', width: 300, display: 'block' },
+  heroTitle: { fontSize: 40, fontWeight: 600, letterSpacing: '-0.03em', lineHeight: 1.1, textWrap: 'balance' },
+  heroText: { fontSize: 17, color: '#AFC0D3', marginTop: 14, lineHeight: 1.5 },
+  heroFoot: { position: 'relative', fontSize: 13, color: '#AFC0D3' },
+  formSide: {
+    position: 'relative',
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    overflowY: 'auto',
   },
   center: {
     position: 'relative',
     zIndex: 1,
     width: '100%',
-    maxWidth: 460,
+    maxWidth: 448,
     margin: '0 auto',
-    padding: '56px 16px 24px',
+    padding: '64px 24px 24px',
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
@@ -853,16 +859,15 @@ function buildStyles(p) {
     justifyContent: 'center',
     gap: '4px 14px',
     padding: '12px 16px 18px',
-    fontSize: 11,
-    color: p.muted,
+    fontSize: 12,
+    color: p.dim,
   },
   miniFooterLink: {
-    color: p.muted,
-    textDecoration: 'underline',
-    textUnderlineOffset: 3,
+    color: p.dim,
+    textDecoration: 'none',
   },
   brandBlue: { color: p.brandBlue },
-  brandGreen: { color: p.accent },
+  brandGreen: { color: p.green },
   pageText: { color: p.text },
   pageMuted: { color: p.muted },
   themeToggle: {
@@ -870,8 +875,8 @@ function buildStyles(p) {
     top: 18,
     right: 18,
     zIndex: 2,
-    width: 40,
-    height: 40,
+    width: 42,
+    height: 42,
     borderRadius: 12,
     border: `1px solid ${p.border}`,
     background: p.surface,
@@ -882,43 +887,36 @@ function buildStyles(p) {
     cursor: 'pointer',
   },
   brandArea: {
+    width: '100%',
+    maxWidth: 400,
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
-    textAlign: 'center',
-    marginBottom: 20,
+    alignItems: 'flex-start',
+    marginBottom: 22,
   },
   logoImage: {
-    width: 64,
-    height: 64,
-    objectFit: 'contain',
-    marginBottom: 14,
-    filter: p.logoShadow,
+    width: 250,
+    maxWidth: '100%',
+    display: 'block',
+    margin: '0 auto 28px',
   },
   brandName: {
-    display: 'flex',
-    gap: 2,
     fontSize: 30,
-    lineHeight: 1,
-    fontWeight: 800,
-    letterSpacing: '-0.04em',
+    lineHeight: 1.15,
+    fontWeight: 600,
+    letterSpacing: '-0.025em',
     margin: 0,
+    color: p.text,
   },
   brandSubtitle: {
-    marginTop: 10,
+    marginTop: 4,
     color: p.muted,
-    fontSize: 14,
-    lineHeight: 1.6,
+    fontSize: 15,
+    lineHeight: 1.5,
   },
   card: {
-    background: p.surface,
-    border: '1px solid rgba(67,160,71,0.22)',
-    borderRadius: 16,
-    padding: 24,
     width: '100%',
-    maxWidth: 420,
-    boxShadow: p.shadow,
-    backdropFilter: 'blur(10px)',
+    maxWidth: 400,
   },
   err: {
     background: p.errorBg,
@@ -930,21 +928,24 @@ function buildStyles(p) {
     marginBottom: 18,
   },
   label: {
-    color: p.text,
-    fontSize: 12,
-    marginBottom: 8,
+    color: p.muted,
+    fontSize: 13,
+    fontWeight: 500,
+    textTransform: 'none',
+    letterSpacing: 0,
+    marginBottom: 6,
     display: 'block',
   },
   inputShell: {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    minHeight: 52,
+    minHeight: 54,
     borderRadius: 14,
-    border: '1px solid rgba(255,255,255,0.08)',
-    background: 'rgba(255,255,255,0.03)',
-    padding: '0 14px',
-    transition: 'all .18s ease',
+    border: `1px solid ${p.borderStrong}`,
+    background: p.surface,
+    padding: '0 8px 0 16px',
+    transition: 'border-color .15s ease, box-shadow .15s ease',
   },
   input: {
     flex: 1,
@@ -958,8 +959,8 @@ function buildStyles(p) {
   },
   standardInput: {
     minHeight: 48,
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(255,255,255,0.08)',
+    background: p.surface,
+    border: `1px solid ${p.borderStrong}`,
     color: p.text,
     borderRadius: 12,
   },
@@ -968,23 +969,24 @@ function buildStyles(p) {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    padding: '13px 20px',
-    borderRadius: 12,
+    minHeight: 54,
+    padding: '0 20px',
+    borderRadius: 14,
     border: '1px solid',
-    fontSize: 14,
-    fontWeight: 700,
+    fontSize: 16,
+    fontWeight: 600,
     cursor: 'pointer',
     transition: 'all .18s ease',
   },
   primaryBtn: {
     background: p.accent,
     borderColor: p.accent,
-    color: p.text,
+    color: '#fff',
   },
   secondaryBtn: {
     background: p.brandBlue,
     borderColor: p.brandBlue,
-    color: p.text,
+    color: '#fff',
   },
   eye: {
     background: 'none',
@@ -1048,22 +1050,22 @@ function buildStyles(p) {
   },
   // Troca entre e-mail e CPF/CNPJ, logo abaixo do campo: discreto, mas facil de achar.
   switchLink: {
-    marginTop: 8,
-    padding: 0,
+    marginTop: 6,
+    padding: '4px 0',
     background: 'transparent',
     border: 'none',
-    color: p.muted,
-    fontSize: 12,
+    color: p.primaryText,
+    fontSize: 13,
+    fontWeight: 500,
     cursor: 'pointer',
     alignSelf: 'flex-end',
     textAlign: 'right',
-    textDecoration: 'underline',
-    textUnderlineOffset: 3,
   },
   ajudaSenha: {
     marginTop: 12,
     padding: '12px 14px',
-    borderRadius: 12,
+    borderRadius: 14,
+    background: p.surface2,
     border: `1px solid ${p.border}`,
     display: 'flex',
     flexDirection: 'column',
@@ -1086,15 +1088,39 @@ function buildStyles(p) {
     fontWeight: 600,
     cursor: 'pointer',
   },
+  condoCard: {
+    marginTop: 22,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '14px 16px',
+    borderRadius: 16,
+    border: `1px dashed ${p.borderStrong}`,
+  },
+  condoCardIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    background: p.greenTint,
+    color: p.green,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
   condoLink: {
-    marginTop: 16,
-    padding: '6px 4px',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+    padding: 0,
     background: 'transparent',
     border: 'none',
-    color: p.muted,
-    fontSize: 13,
+    color: p.primaryText,
+    fontSize: 14,
+    fontWeight: 600,
     cursor: 'pointer',
-    alignSelf: 'center',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
   },
   condominiumGrid: {
     display: 'grid',
@@ -1125,14 +1151,14 @@ function buildStyles(p) {
     boxShadow: p.shadow,
   },
   successLogo: {
-    width: 72,
-    height: 72,
-    objectFit: 'contain',
-    marginBottom: 20,
+    width: 220,
+    maxWidth: '100%',
+    display: 'block',
+    margin: '0 auto 22px',
   },
   successTitle: {
     fontSize: 22,
-    fontWeight: 800,
+    fontWeight: 600,
     color: p.text,
     marginBottom: 10,
   },

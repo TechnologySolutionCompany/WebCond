@@ -9,8 +9,8 @@ export function ProtectedRoute({ children, requiredRole }) {
   if (loading) {
     return (
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0d1117', gap: 16 }}>
-        <div style={{ width: 32, height: 32, border: '3px solid #30363d', borderTopColor: '#3fb950', borderRadius: '50%', animation: 'spin .6s linear infinite' }} />
-        <div style={{ color: '#8b949e', fontSize: 13 }}>Carregando...</div>
+        <div style={{ width: 32, height: 32, border: '3px solid #2A3950', borderTopColor: '#3DAE4A', borderRadius: '50%', animation: 'spin .6s linear infinite' }} />
+        <div style={{ color: '#8794A6', fontSize: 13 }}>Carregando...</div>
         <style>{'@keyframes spin{to{transform:rotate(360deg)}}'}</style>
       </div>
     )

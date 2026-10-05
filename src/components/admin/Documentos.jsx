@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { buildStorageFileName, enrichDocumentsWithDownloadUrl, extractStoragePathFromUrl } from '../../lib/documents'
 import { useToast } from '../shared/Toast'
 import { useAuth } from '../../hooks/useAuth'
 import { applyTenantFilter, withTenantFields } from '../../lib/tenant'
-import { Plus, FileText, X, Loader2, Download, Trash2, Upload } from 'lucide-react'
+import { FileText, X, Loader2, Download, Trash2, Upload, Search } from 'lucide-react'
+import { fileExtension } from '../shared/noticeMeta'
+import { safeHttpUrl } from '../../lib/safeUrl'
 
 const CATEGORIAS = [
   { value: 'ata', label: 'Ata de reunião', color: 'blue' },
@@ -24,6 +26,8 @@ export default function Documentos() {
   const [form, setForm] = useState({ titulo: '', descricao: '', categoria: 'ata', publico: true })
   const [file, setFile] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [busca, setBusca] = useState('')
+  const [categoria, setCategoria] = useState('todos')
   const { profile, condominiumId } = useAuth()
   const { toast } = useToast()
   const documentLimit = profile?.condominium_document_limit || 10
@@ -96,61 +100,77 @@ export default function Documentos() {
 
   const getCat = (cat) => CATEGORIAS.find((item) => item.value === cat) || CATEGORIAS[CATEGORIAS.length - 1]
 
+  const categoriasUsadas = useMemo(() => Array.from(new Set(docs.map((doc) => doc.categoria).filter(Boolean))), [docs])
+  const visiveis = useMemo(() => {
+    const query = busca.trim().toLowerCase()
+    return docs.filter((doc) => (categoria === 'todos' || doc.categoria === categoria)
+      && (!query || String(doc.titulo || '').toLowerCase().includes(query) || String(doc.descricao || '').toLowerCase().includes(query)))
+  }, [docs, categoria, busca])
+
   return (
     <div className="fade-in">
-      <div className="page-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+      <div className="screen">
+        <div className="screen-head">
           <div>
-            <div className="page-title">Documentos</div>
-            <div className="page-subtitle">Atas, regimentos, contratos, comprovantes e arquivos importantes · {docs.length} de {documentLimit} documentos do plano</div>
+            <h1 className="screen-title">Documentos</h1>
+            <div className="screen-sub">Atas, regimentos, contratos e comprovantes · {docs.length} de {documentLimit} documentos do plano</div>
           </div>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)} disabled={limitReached} title={limitReached ? 'Limite de documentos do plano atingido' : undefined}>
-            <Plus size={15} /> Adicionar documento
-          </button>
+          <div className="screen-actions">
+            <button className="btn btn-primary" onClick={() => setShowModal(true)} disabled={limitReached} title={limitReached ? 'Limite de documentos do plano atingido' : undefined}>
+              <Upload size={17} /> Enviar documento
+            </button>
+          </div>
         </div>
-      </div>
 
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner" /></div>
-      ) : docs.length === 0 ? (
-        <div className="empty-state"><FileText size={40} /><p>Nenhum documento publicado ainda.</p></div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12 }}>
-          {docs.map((doc) => {
-            const cat = getCat(doc.categoria)
-            return (
-              <div key={doc.id} className="card doc-card">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className={`badge badge-${cat.color}`}>{cat.label}</span>
-                  {!doc.publico && <span className="badge badge-orange">Restrito</span>}
-                  <button
-                    className="btn btn-ghost btn-sm btn-icon"
-                    onClick={() => handleDelete(doc)}
-                    style={{ color: 'var(--red)', marginLeft: 'auto' }}
-                    aria-label={`Excluir ${doc.titulo}`}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-                <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.4 }}>{doc.titulo}</div>
-                {doc.descricao && <div className="doc-card-desc">{doc.descricao}</div>}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{new Date(doc.created_at).toLocaleDateString('pt-BR')}</span>
-                  <a
-                    href={doc.download_url || doc.arquivo_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-ghost btn-sm"
-                    style={{ marginLeft: 'auto' }}
-                  >
-                    <Download size={13} /> Baixar
-                  </a>
-                </div>
+        {docs.length > 0 && (
+          <div className="toolbar">
+            <label className="search-box">
+              <Search size={18} />
+              <input className="input" placeholder="Buscar documento" value={busca} onChange={(event) => setBusca(event.target.value)} aria-label="Buscar documento" />
+            </label>
+            {categoriasUsadas.length > 1 && (
+              <div className="chips" role="group" aria-label="Filtrar documentos" style={{ maxWidth: '100%' }}>
+                {[['todos', 'Todos'], ...categoriasUsadas.map((key) => [key, getCat(key).label])].map(([key, label]) => (
+                  <button key={key} type="button" className={`chip${categoria === key ? ' active' : ''}`} onClick={() => setCategoria(key)}>{label}</button>
+                ))}
               </div>
-            )
-          })}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner" /></div>
+        ) : visiveis.length === 0 ? (
+          <div className="empty-card"><FileText size={36} /><span>{docs.length ? 'Nenhum documento encontrado.' : 'Nenhum documento publicado ainda.'}</span></div>
+        ) : (
+          <div className="card-grid card-grid-docs">
+            {visiveis.map((doc) => {
+              const cat = getCat(doc.categoria)
+              return (
+                <div key={doc.id} className="info-card" style={{ gap: 14, padding: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                    <span className="doc-icon"><FileText size={20} /><b>{fileExtension(doc.arquivo_path || doc.arquivo_url)}</b></span>
+                    <span style={{ display: 'flex', gap: 6 }}>
+                      <a href={safeHttpUrl(doc.download_url || doc.arquivo_url) || undefined} target="_blank" rel="noopener noreferrer" className="mini-btn mini-btn-icon" title="Baixar" aria-label={`Baixar ${doc.titulo}`}>
+                        <Download size={17} />
+                      </a>
+                      <button type="button" className="mini-btn mini-btn-icon mini-btn-danger" onClick={() => handleDelete(doc)} title="Excluir" aria-label={`Excluir ${doc.titulo}`}>
+                        <Trash2 size={16} />
+                      </button>
+                    </span>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.3, overflowWrap: 'anywhere' }}>{doc.titulo}</div>
+                    {doc.descricao && <div className="info-card-text info-card-clamp" style={{ fontSize: 13, marginTop: 4 }}>{doc.descricao}</div>}
+                    <div className="list-sub" style={{ fontSize: 13, marginTop: 6 }}>{cat.label} · {new Date(doc.created_at).toLocaleDateString('pt-BR')}</div>
+                  </div>
+                  {!doc.publico && <span className="pill pill-sm tone-amber" style={{ alignSelf: 'flex-start' }}>Restrito à administração</span>}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       {showModal && (
         <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && setShowModal(false)}>
@@ -194,8 +214,8 @@ export default function Documentos() {
                   }}
                   onClick={() => document.getElementById('fileInput').click()}
                 >
-                  <Upload size={20} color={file ? '#3fb950' : '#8b949e'} style={{ margin: '0 auto 8px' }} />
-                  <div style={{ fontSize: 13, color: file ? '#3fb950' : '#8b949e' }}>
+                  <Upload size={20} color={file ? '#3DAE4A' : '#8794A6'} style={{ margin: '0 auto 8px' }} />
+                  <div style={{ fontSize: 13, color: file ? '#3DAE4A' : '#8794A6' }}>
                     {file ? file.name : 'Clique para selecionar o arquivo'}
                   </div>
                   <input id="fileInput" type="file" style={{ display: 'none' }} onChange={(event) => setFile(event.target.files[0])} />

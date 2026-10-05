@@ -22,6 +22,9 @@ const STATUS_LABELS = {
   rejected: { label: 'Rejeitado', badge: 'badge-red' },
 }
 
+// Cor da situacao na lista (redesign v2.10A3).
+const STATUS_TONES = { pending: 'amber', active: 'green', blocked: 'red', rejected: 'red' }
+
 const LOGO_MAX_BYTES = 2 * 1024 * 1024
 const LOGO_TIPOS = ['image/png', 'image/jpeg', 'image/webp']
 
@@ -408,91 +411,79 @@ export default function PlatformCondominiums({ condominiums, loading, error, rel
 
   return (
     <div className="fade-in">
-      <div className="page-header">
-        <div className="page-title">Condominios</div>
-        <div className="page-subtitle">Clique em um condominio para ver e editar todos os dados, status e plano</div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
-          <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#8b949e' }} />
-          <input
-            className="input"
-            style={{ paddingLeft: 34 }}
-            placeholder="Buscar por condominio, CPF/CNPJ ou sindico..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
+      <div className="screen">
+        <div>
+          <h1 className="screen-title">Condomínios</h1>
+          <div className="screen-sub">Toque em um condomínio para ver e editar dados, status e plano</div>
         </div>
-        <select className="input" style={{ width: 180 }} value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
-          <option value="">Todos os status</option>
-          {Object.entries(STATUS_LABELS).map(([value, { label }]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-      </div>
 
-      <div className="presence-legend">
-        <span className="presence-legend-title">Sindico:</span>
-        {PRESENCE_LEGEND.map((item) => (
-          <span key={item.key} className="presence" data-tip={item.detail}>
-            <span className="presence-dot" style={{ background: item.color }} />
-            <span className="presence-label">{item.label}</span>
-          </span>
-        ))}
-      </div>
+        <div className="toolbar">
+          <label className="search-box">
+            <Search size={18} />
+            <input className="input" placeholder="Buscar por nome, CPF/CNPJ ou síndico" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Buscar condomínio" />
+          </label>
+        </div>
 
-      {filtered.length === 0 ? (
-        <div className="empty-state">
-          <Building2 size={40} />
-          <p>Nenhum condominio encontrado para os filtros atuais.</p>
+        <div className="chips" role="group" aria-label="Filtrar condomínios">
+          {[['', `Todos · ${(condominiums || []).length}`], ...Object.entries(STATUS_LABELS).map(([value, { label }]) => [value, `${label}s · ${(condominiums || []).filter((item) => item.status === value).length}`])].map(([value, label]) => (
+            <button key={value || 'todos'} type="button" className={`chip${filterStatus === value ? ' active' : ''}`} onClick={() => setFilterStatus(value)}>{label}</button>
+          ))}
         </div>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Condominio</th>
-                <th>Situacao</th>
-                <th>Plano</th>
-                <th>Unidades</th>
-                <th>Documentos</th>
-                <th>Sindico</th>
-                <th>Criado em</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((item) => (
-                <tr
-                  key={item.id}
-                  className="platform-condo-row"
-                  tabIndex={0}
-                  onClick={() => openCondominium(item)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      openCondominium(item)
-                    }
-                  }}
-                >
-                  <td>
-                    <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{item.name} <PresenceDot syndic={item.syndic} now={now} /></div>
-                    <div style={{ fontSize: 12, color: '#8b949e' }}>{item.cnpj ? formatCpfCnpj(item.cnpj) : '-'}</div>
-                    <div style={{ fontSize: 12, color: '#8b949e' }}>{item.address || '-'}</div>
-                  </td>
-                  <td><span className={`badge ${STATUS_LABELS[item.status]?.badge || 'badge-orange'}`}>{STATUS_LABELS[item.status]?.label || item.status}</span></td>
-                  <td><PlanSummary item={item} /></td>
-                  <td>{item.apartments_count || 0} / {item.unit_count || '-'}</td>
-                  <td>{item.documents_count || 0} / {item.document_limit}</td>
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{item.syndic?.nome || '-'}</div>
-                    <div style={{ fontSize: 12, color: '#8b949e' }}>{item.sub_syndic?.name ? `Sub.: ${item.sub_syndic.name}` : item.syndic?.email || '-'}</div>
-                  </td>
-                  <td>{formatDate(item.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+        <div className="presence-legend" style={{ margin: 0 }}>
+          <span className="presence-legend-title">Síndico:</span>
+          {PRESENCE_LEGEND.map((item) => (
+            <span key={item.key} className="presence" data-tip={item.detail}>
+              <span className="presence-dot" style={{ background: item.color }} />
+              <span className="presence-label">{item.label}</span>
+            </span>
+          ))}
         </div>
-      )}
+
+        {filtered.length === 0 ? (
+          <div className="empty-card">
+            <Building2 size={36} />
+            <span>Nenhum condomínio encontrado para os filtros atuais.</span>
+          </div>
+        ) : (
+          <div className="list-card">
+            <div className="list-head condo-list-grid"><span>Condomínio</span><span>Plano</span><span>Status</span><span>Unid.</span><span>Síndico</span><span>Cadastro</span></div>
+            {filtered.map((item) => (
+              <div
+                key={item.id}
+                className="list-row list-row-click condo-list-grid"
+                role="button"
+                tabIndex={0}
+                aria-label={`Abrir ${item.name}`}
+                onClick={() => openCondominium(item)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    openCondominium(item)
+                  }
+                }}
+              >
+                <span className="list-grow" style={{ minWidth: 0 }}>
+                  <span className="list-ellipsis" style={{ fontWeight: 600 }}>{item.name}</span>
+                  <span className="list-sub list-ellipsis">{item.cnpj ? formatCpfCnpj(item.cnpj) : item.address || '-'}</span>
+                  <span className="list-only-m list-sub" style={{ marginTop: 2 }}>{item.syndic?.nome || 'Sem síndico'} · {item.apartments_count || 0}/{item.unit_count || '-'} un.</span>
+                </span>
+                <span className="list-hide-m"><PlanSummary item={item} /></span>
+                <span><span className={`pill pill-sm tone-${STATUS_TONES[item.status] || 'amber'}`}>{STATUS_LABELS[item.status]?.label || item.status}</span></span>
+                <span className="list-hide-m" style={{ fontVariantNumeric: 'tabular-nums' }}>{item.apartments_count || 0}/{item.unit_count || '-'}</span>
+                <span className="list-hide-m" style={{ minWidth: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <span className="list-ellipsis">{item.syndic?.nome || '-'}</span>
+                    <PresenceDot syndic={item.syndic} now={now} />
+                  </span>
+                  <span className="list-sub list-ellipsis">{item.sub_syndic?.name ? `Sub.: ${item.sub_syndic.name}` : ''}</span>
+                </span>
+                <span className="list-hide-m" style={{ color: 'var(--text-dim)', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{formatDate(item.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {selected && form && (
         <div className="modal-overlay" onClick={(event) => event.target === event.currentTarget && closeCondominium()}>

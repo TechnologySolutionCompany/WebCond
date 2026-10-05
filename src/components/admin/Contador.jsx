@@ -239,9 +239,9 @@ export default function Contador() {
   }
 
   const exportCards = [
-    { icon: Home, color: '#58a6ff', title: 'Unidades', subtitle: 'Situacao, proprietario, inquilino e responsavel financeiro', action: exportUnidades },
-    { icon: DollarSign, color: '#3fb950', title: 'Cobrancas', subtitle: 'Por unidade; filtre por competencia ou exporte todas', action: exportCobrancas, withReference: true },
-    { icon: AlertCircle, color: '#f0883e', title: 'Inadimplentes', subtitle: 'Cobrancas vencidas e dias em atraso', action: exportInadimplentes },
+    { icon: Home, color: '#2160C4', title: 'Unidades', subtitle: 'Situacao, proprietario, inquilino e responsavel financeiro', action: exportUnidades },
+    { icon: DollarSign, color: '#3DAE4A', title: 'Cobrancas', subtitle: 'Por unidade; filtre por competencia ou exporte todas', action: exportCobrancas, withReference: true },
+    { icon: AlertCircle, color: '#E59A12', title: 'Inadimplentes', subtitle: 'Cobrancas vencidas e dias em atraso', action: exportInadimplentes },
   ]
 
   return (
@@ -258,7 +258,7 @@ export default function Contador() {
               <card.icon size={24} color={card.color} />
               <div>
                 <div style={{ fontWeight: 600 }}>{card.title}</div>
-                <div style={{ fontSize: 12, color: '#8b949e' }}>{card.subtitle}</div>
+                <div style={{ fontSize: 12, color: '#8794A6' }}>{card.subtitle}</div>
               </div>
             </div>
             {card.withReference && (
@@ -275,10 +275,10 @@ export default function Contador() {
         <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <FileText size={20} color="#58a6ff" />
+            <FileText size={20} color="#2160C4" />
             <div>
               <div style={{ fontWeight: 600 }}>Status das cobrancas por competencia</div>
-              <div style={{ fontSize: 12, color: '#8b949e' }}>Visao consolidada para acompanhamento financeiro</div>
+              <div style={{ fontSize: 12, color: '#8794A6' }}>Visao consolidada para acompanhamento financeiro</div>
             </div>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={exportStatusPorCompetencia} disabled={loading}>
@@ -296,7 +296,7 @@ export default function Contador() {
               <Calculator size={20} color="#bc8cff" />
               <div>
                 <div style={{ fontWeight: 600 }}>Acesso do contador</div>
-                <div style={{ fontSize: 12, color: '#8b949e' }}>O contador ve somente o Painel e os Relatorios. Apenas o sindico cria ou remove este acesso.</div>
+                <div style={{ fontSize: 12, color: '#8794A6' }}>O contador ve somente o Painel e os Relatorios. Apenas o sindico cria ou remove este acesso.</div>
               </div>
             </div>
             {!accountantForm && (

@@ -21,9 +21,9 @@ export default function ChargeSummaryBars({
   const total = Math.max(1, emAberto + pago + inadimplente)
 
   const items = [
-    { key: 'em_aberto', label: 'Em aberto', value: emAberto, color: '#f59e0b' },
-    { key: 'pago', label: 'Pago', value: pago, color: '#3fb950' },
-    { key: 'inadimplente', label: 'Inadimplente', value: inadimplente, color: '#f85149' },
+    { key: 'em_aberto', label: 'Em aberto', value: emAberto, color: '#E59A12' },
+    { key: 'pago', label: 'Pago', value: pago, color: '#3DAE4A' },
+    { key: 'inadimplente', label: 'Inadimplente', value: inadimplente, color: '#DC4B43' },
   ]
 
   return (

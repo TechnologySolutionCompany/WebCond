@@ -1,6 +1,10 @@
 import { createRoot } from 'react-dom/client'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 import App from './App.jsx'
+import { startInstallPromptListener } from './lib/installPrompt'
+
+// Escuta o convite de instalacao do navegador antes de qualquer tela montar (v2.10A3).
+startInstallPromptListener()
 
 createRoot(document.getElementById('root')).render(
   <>

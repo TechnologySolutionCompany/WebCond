@@ -16,3 +16,6 @@ tests
 
 # Desenho da fatura: nao vai para o site
 fatura
+
+# Prototipo do redesign (Claude Design): referencia, nao vai para o site
+redesigner-webcond

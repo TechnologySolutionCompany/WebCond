@@ -5,7 +5,7 @@ import globals from 'globals'
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'fatura/**'],
+    ignores: ['dist/**', 'node_modules/**', 'fatura/**', 'redesigner-webcond/**'],
   },
   {
     files: ['**/*.{js,jsx,mjs}'],
