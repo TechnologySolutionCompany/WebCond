@@ -7,10 +7,10 @@ dist/
 *.log
 SUPABASE_AUDIT.md
 .DS_Store
-fatura/saida/
 
 # Ficam so no computador local (v2.10A2): testes de validacao e desenho/dados reais da fatura.
 # O repositorio do GitHub e publico.
-tests/
-fatura/
-redesigner-webcond/
+# A "/" no comeco prende a regra a pasta da raiz: sem ela, "fatura/" tambem escondia
+# api/_lib/fatura/ (gerador da fatura nova), que entao nunca chegava ao GitHub nem a Vercel.
+/tests/
+/fatura/

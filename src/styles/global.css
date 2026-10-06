@@ -2,7 +2,7 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* Identidade visual v2.10A3 (redesign "Prototipo v3 · nova UX/UI", pasta redesigner-webcond).
+/* Identidade visual v2.10A3 (redesign "Prototipo v3 · nova UX/UI").
    Os nomes antigos (--bg-2, --accent, --green-dim...) continuam valendo para todas as telas,
    agora apontando para a paleta nova. As variaveis novas (--primary, --hero-bg, --line-2...)
    sao as do prototipo, para os componentes redesenhados. Tema escuro = padrao do :root. */
@@ -893,7 +893,7 @@ button, a, input, select, textarea, label { -webkit-tap-highlight-color: transpa
 .recebimento-opcao:disabled { opacity: .55; cursor: not-allowed; }
 
 /* ======================================================================================
-   Moldura do app · redesign v2.10A3 (redesigner-webcond/WebCond App.dc.html)
+   Moldura do app · redesign v2.10A3 (prototipo "WebCond App")
    Computador: menu lateral de 256px + cabecalho com "Condominio > Pagina".
    Celular (ate 920px): cabecalho com a marca, barra inferior com botao central e "Mais"
    (abre o menu completo como gaveta).

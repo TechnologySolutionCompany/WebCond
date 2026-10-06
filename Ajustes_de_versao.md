@@ -10,7 +10,7 @@ Lista do que fica para depois e histórico do que já foi feito em cada versão.
 
 ### v2.10A3 — 05/10/2026
 
-- Redesign "Protótipo v3 · nova UX/UI" (pasta `redesigner-webcond`, fica só no computador):
+- Redesign "Protótipo v3 · nova UX/UI":
   - cores, fonte Outfit, cantos e sombras novos nos temas claro e escuro, em todas as telas;
   - marca nova (`public/brand/`);
   - menu lateral novo com botão principal ("Pagar cobrança" / "Nova cobrança");
@@ -30,6 +30,11 @@ Lista do que fica para depois e histórico do que já foi feito em cada versão.
   iPhone/iPad mostra o passo a passo (Compartilhar › Adicionar à Tela de Início). Some quando o
   app já está instalado.
 - Banco: o SQL `sql/2026-10-03_feedback_e_recebimento.sql` já está aplicado no Supabase.
+- Correção (06/10/2026): a **fatura nova** não chegava à produção. A regra `fatura/` do `.gitignore`
+  (e `fatura` do `.vercelignore`) escondia também `api/_lib/fatura/`, o gerador da fatura; o boleto
+  caía, sem aviso, no modelo antigo. Regras presas à raiz (`/fatura/`), gerador enviado, tempo do
+  gerador maior (45 s na tela, 60 s no servidor) e aviso ao síndico se um boleto sair no modelo antigo.
+  Limpeza: removidas as pastas `redesigner-webcond` (já aplicada) e `designer-fatura` (cópia da `fatura`).
 
 ### v2.10A2 — 05/10/2026
 

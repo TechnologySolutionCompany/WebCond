@@ -143,7 +143,9 @@ O `vercel.json` já define:
 - Rewrites de SPA para `/admin`, `/platform` e `/morador`.
 - Headers de segurança (CSP, HSTS, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`).
   Se passar a carregar recursos de outro domínio, inclua-o na CSP.
-- Função `render-pdf` com 30 s e o binário do Chromium incluído.
+- Função `render-pdf` com 60 s, o binário do Chromium e o gerador da fatura (`api/_lib/fatura/`) incluídos.
+  As regras de `fatura` no `.gitignore` e no `.vercelignore` começam com `/` (só a pasta da raiz):
+  sem a barra elas escondiam `api/_lib/fatura/` e o boleto saía no modelo antigo.
 - `regions: ["gru1"]`: as funções rodam em São Paulo, perto do Supabase. Em Washington (padrão) o
   banco respondia em ~230 ms; em São Paulo, ~70 ms.
 

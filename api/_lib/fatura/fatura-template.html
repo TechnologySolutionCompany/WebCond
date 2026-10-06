@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Fatura {{fatura.numero}} - {{morador.unidade}}</title>
+<!--
+  TEMPLATE WEBCOND - Sintaxe Handlebars/Mustache.
+  Fonte de verdade do layout: fatura/fatura-template.html (desenho da TSCBr). Esta copia e a que o
+  servidor usa (api/_lib/fatura/render.js) e so acrescenta: QR opcional, Pix copia e cola impresso,
+  link "Pagar online" quando o banco do condominio gera um, e o tipo da chave Pix.
+  Dados: src/lib/faturaDados.js (mesmo formato de fatura/fatura-exemplo.json).
+  {{campo}} = texto | {{#itens}}...{{/itens}} = repetição | {{#if x}}...{{/if}} = condicional
+  Os valores monetários e porcentagens das barras devem chegar já calculados/formatados.
+-->
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 12mm 14mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font-family: 'Public Sans', Helvetica, sans-serif; color: #1d211f; background: #fbfbfa; font-size: 13px; }
+  .folha { max-width: 794px; margin: 0 auto; padding: 24px 0; display: flex; flex-direction: column; gap: 22px; }
+  .rotulo { font-size: 10px; letter-spacing: .12em; color: #6b7470; font-weight: 600; text-transform: uppercase; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  .caixa { border: 1px solid #d6d9d6; background: #fff; padding: 16px 18px; }
+  .cabecalho { display: flex; justify-content: space-between; gap: 24px; }
+  .logo { width: 64px; height: 64px; object-fit: contain; }
+  .dados { display: grid; grid-template-columns: 1.6fr 1fr 1fr; border: 1px solid #d6d9d6; background: #fff; }
+  .dados > div { padding: 14px 16px; border-right: 1px solid #d6d9d6; }
+  .dados > div:last-child { border-right: 0; }
+  .faixa { display: grid; grid-template-columns: 1fr 1fr 1.3fr; background: #1f6f5c; color: #fff; }
+  .faixa > div { padding: 18px 20px; border-left: 1px solid rgba(255,255,255,.3); }
+  .faixa > div:first-child { border-left: 0; }
+  .faixa .rotulo { color: #fff; opacity: .85; }
+  .faixa b { display: block; font-size: 24px; margin-top: 4px; }
+  /* Tabela de custos: cresce sem limite; cabeçalho repete e itens não quebram ao meio */
+  table.custos { width: 100%; border-collapse: collapse; }
+  table.custos thead { display: table-header-group; }
+  table.custos th { text-align: left; font-size: 11px; letter-spacing: .12em; padding-bottom: 8px; border-bottom: 2px solid #1d211f; }
+  table.custos th:last-child, table.custos td.valor { text-align: right; }
+  table.custos tr { break-inside: avoid; }
+  table.custos td { padding: 16px 0; border-bottom: 1px solid #d6d9d6; vertical-align: top; }
+  td.valor { font-size: 15px; font-weight: 600; white-space: nowrap; padding-left: 24px; }
+  .titulo { font-size: 14px; font-weight: 600; }
+  .desc { font-size: 12px; color: #4a524e; margin-top: 3px; line-height: 1.45; }
+  .tag { display: inline-block; font: 500 10px 'IBM Plex Mono', monospace; padding: 3px 8px; margin: 8px 8px 0 0; background: #eeeeec; color: #4a524e; }
+  .tag.tipo { background: #e6efec; color: #14493c; }
+  .totais { display: flex; justify-content: flex-end; gap: 32px; padding-top: 14px; color: #4a524e; }
+  .totais b { color: #1d211f; }
+  .pagto { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; }
+  .grafico { display: flex; gap: 18px; align-items: flex-end; }
+  .barras { display: flex; gap: 14px; flex: 1; align-items: flex-end; }
+  .mes { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 10px; color: #6b7470; }
+  .mes .coluna { width: 100%; max-width: 56px; height: 96px; display: flex; flex-direction: column; justify-content: flex-end; background: #f1f1ef; }
+  .mes .nome { font: 500 11px 'IBM Plex Mono', monospace; color: #1d211f; }
+  .inad { background: #c0392b; } .nao { background: #e08a2e; } .pago { background: #2e8b57; }
+  .legenda { display: flex; flex-direction: column; gap: 8px; font-size: 12px; padding-bottom: 30px; }
+  .legenda i { display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -2px; }
+  .qr { text-align: center; }
+  .qr img { width: 130px; height: 130px; display: block; margin: 8px auto; }
+  .copia { font: 400 7px 'IBM Plex Mono', monospace; color: #4a524e; word-break: break-all; text-align: left; margin-top: 10px; padding: 6px 8px; background: #f4f5f3; line-height: 1.35; }
+  .online { display: block; margin-top: 10px; font-size: 11px; color: #14493c; font-weight: 600; word-break: break-all; }
+  .abertas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .abertas span { font: 500 12px 'IBM Plex Mono', monospace; padding: 6px 12px; border: 1px solid #c0392b; color: #8f2a1f; background: #fbeeec; }
+  .rodape { display: flex; justify-content: space-between; gap: 20px; border-top: 1px solid #d6d9d6; padding-top: 12px; font-size: 10.5px; color: #6b7470; }
+  .pagto, .abertas-box, .totais { break-inside: avoid; }
+  /* Impressao/PDF (v1.09A5): espacos menores para a fatura comum (ate ~4 itens) caber em 1 folha A4. */
+  @media print {
+    body { background: #fff; }
+    .folha { padding: 0; max-width: none; gap: 14px; }
+    table.custos td { padding: 10px 0; }
+    .tag { margin-top: 5px; }
+    .caixa { padding: 12px 14px; }
+    .faixa > div { padding: 14px 18px; }
+    .qr img { width: 112px; height: 112px; margin: 6px auto; }
+    .mes .coluna { height: 96px; }
+  }
+</style>
+</head>
+<body>
+<div class="folha">
+
+  <div class="cabecalho">
+    <div style="display:flex;gap:16px;align-items:center">
+      {{#if condominio.logo_url}}<img class="logo" src="{{condominio.logo_url}}" alt="">{{/if}}
+      <div>
+        <div class="rotulo">Condomínio</div>
+        <div style="font-size:22px;font-weight:700;line-height:1.15">{{condominio.nome}}</div>
+        <div style="font-size:12px;color:#4a524e;margin-top:4px">{{condominio.endereco}}</div>
+        <div style="font-size:12px;color:#4a524e">CNPJ {{condominio.cnpj}}</div>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div class="rotulo">Fatura condominial</div>
+      <div class="mono" style="margin-top:4px">Nº {{fatura.numero}}</div>
+      <div style="font-size:12px;color:#4a524e;margin-top:2px">Emitida em {{fatura.emissao}}</div>
+    </div>
+  </div>
+
+  <div class="dados">
+    <div><div class="rotulo">Morador(a)</div><div style="font-size:15px;font-weight:600;margin-top:3px">{{morador.nome}}</div><div style="font-size:12px;color:#4a524e">{{morador.contato}}</div></div>
+    <div><div class="rotulo">Unidade</div><div style="font-size:15px;font-weight:600;margin-top:3px">{{morador.unidade}}</div><div style="font-size:12px;color:#4a524e">{{morador.bloco}}</div></div>
+    <div><div class="rotulo">Observações</div><div style="margin-top:3px">{{morador.obs}}</div></div>
+  </div>
+
+  <div class="faixa">
+    <div><div class="rotulo">Referente a</div><b>{{fatura.referencia}}</b></div>
+    <div><div class="rotulo">Vencimento</div><b>{{fatura.vencimento}}</b></div>
+    <div style="text-align:right"><div class="rotulo">Total a pagar</div><b style="font-size:30px;margin-top:2px">{{fatura.total}}</b></div>
+  </div>
+
+  <div>
+    <table class="custos">
+      <thead><tr><th>DESCRIÇÃO DOS CUSTOS, TAXAS E RATEIOS CONDOMINIAIS</th><th>VALOR</th></tr></thead>
+      <tbody>
+        {{#each itens}}
+        <tr>
+          <td>
+            <div class="titulo">{{titulo}}</div>
+            <div class="desc">{{descricao}}</div>
+            <span class="tag tipo">{{tipo}}</span>{{#if origem}}<span class="tag">{{origem}}</span>{{/if}}
+          </td>
+          <td class="valor">{{valor}}</td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+    <div class="totais"><span>Subtotal {{fatura.subtotal}}</span><b>Total {{fatura.total}}</b></div>
+  </div>
+
+  <div class="pagto">
+    <div class="caixa">
+      <div class="rotulo" style="color:#1d211f;font-weight:700;margin-bottom:12px">Pagamentos das unidades · últimos 3 meses</div>
+      <div class="grafico">
+        <div class="barras">
+          {{#each historico}}
+          <div class="mes">
+            <div class="coluna">
+              <div class="inad" style="height:{{px_inadimplente}}px"></div>
+              <div class="nao"  style="height:{{px_nao_pago}}px"></div>
+              <div class="pago" style="height:{{px_pago}}px"></div>
+            </div>
+            <div class="nome">{{mes}}</div>
+            <div>{{pagas}}/{{total}} pagas</div>
+          </div>
+          {{/each}}
+        </div>
+        <div class="legenda">
+          <div><i class="inad"></i>Inadimplente</div>
+          <div><i class="nao"></i>Não pago</div>
+          <div><i class="pago"></i>Pago</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#4a524e;line-height:1.5;border-top:1px solid #e3e5e3;margin-top:12px;padding-top:10px">{{pagamento.instrucoes}}</div>
+    </div>
+    <div class="caixa qr">
+      <div class="rotulo" style="color:#1d211f;font-weight:700">Pague com Pix</div>
+      {{#if pagamento.qrcode_url}}<img src="{{pagamento.qrcode_url}}" alt="QR Code Pix">{{/if}}
+      {{#if pagamento.pix_chave}}
+      <div class="rotulo">Chave Pix ({{pagamento.pix_rotulo}})</div>
+      <div class="mono" style="font-size:12px;margin-top:2px">{{pagamento.pix_chave}}</div>
+      {{/if}}
+      {{#if pagamento.banco}}<div style="font-size:11px;color:#4a524e;margin-top:2px">{{pagamento.banco}}</div>{{/if}}
+      {{#if pagamento.pix_copia_cola}}<div class="copia">{{pagamento.pix_copia_cola}}</div>{{/if}}
+      {{#if pagamento.link}}<a class="online" href="{{pagamento.link}}">Pagar online (Pix ou cartão): {{pagamento.link}}</a>{{/if}}
+    </div>
+  </div>
+
+  {{#if unidades_abertas}}
+  <div class="caixa abertas-box">
+    <div class="rotulo" style="color:#1d211f;font-weight:700">Unidades com pagamento em aberto</div>
+    <div class="abertas">{{#each unidades_abertas}}<span>UNIDADE {{this}}</span>{{/each}}</div>
+  </div>
+  {{/if}}
+
+  <div class="rodape"><div>{{condominio.nome}} · {{condominio.endereco}}</div><div>Emitido por WebCond · webcond.vercel.app</div></div>
+</div>
+</body>
+</html>

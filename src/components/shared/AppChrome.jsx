@@ -1,7 +1,7 @@
 import { ChevronRight, Ellipsis, PanelLeft } from 'lucide-react'
 import { condominiumLogoUrl } from '../../lib/condominiumLogo'
 
-// Moldura do app no redesign v2.10A3 (prototipo "WebCond App", pasta redesigner-webcond):
+// Moldura do app no redesign v2.10A3 (prototipo "WebCond App"):
 // marca, cabecalho e barra inferior do celular. Os tres layouts (sindico, morador e plataforma)
 // usam as mesmas pecas; cada um so diz quais abas e qual botao central quer.
 

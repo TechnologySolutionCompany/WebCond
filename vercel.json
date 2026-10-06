@@ -31,7 +31,7 @@
   ],
   "functions": {
     "api/admin/billing/render-pdf.js": {
-      "maxDuration": 30,
+      "maxDuration": 60,
       "includeFiles": "{node_modules/@sparticuz/chromium/bin/**,public/logo.png,api/_lib/fatura/**}"
     },
     "api/platform/[...segments].js": {

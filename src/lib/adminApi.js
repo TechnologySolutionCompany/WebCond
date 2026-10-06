@@ -91,7 +91,9 @@ export async function renderBillingPdf(payload) {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
-    }, 20000)
+      // A primeira chamada na Vercel liga o Chromium e carrega as fontes da fatura: 20 s nao bastava
+      // e o boleto caia no modelo antigo. O servidor pode levar ate 60 s (vercel.json).
+    }, 45000)
   } catch (error) {
     const renderError = new Error(
       error.name === 'AbortError'

@@ -201,12 +201,14 @@ async function generateChargePdfBytes({ condominiumSettings, recipient, form, to
   }
 
   try {
-    return await renderBillingPdf(payload)
+    return { pdfBytes: await renderBillingPdf(payload), modeloAntigo: false }
   } catch (error) {
     if (!shouldUseLegacyPdfFallback(error)) throw error
 
+    // Nao fica mais em silencio: quem lanca a cobranca e avisado de que saiu o boleto antigo.
+    console.error('Fatura nova indisponivel, usando o modelo antigo:', error)
     const { generateChargesPdf } = await import('../../lib/billingPdf')
-    return generateChargesPdf({
+    const pdfBytes = await generateChargesPdf({
       condominium: condominiumSettings,
       charges: [{
         nome: recipient.nome,
@@ -220,6 +222,7 @@ async function generateChargePdfBytes({ condominiumSettings, recipient, form, to
         breakdown,
       }],
     })
+    return { pdfBytes, modeloAntigo: true }
   }
 }
 
@@ -490,6 +493,7 @@ export default function Cobrancas() {
       }
 
       const rows = []
+      let boletosModeloAntigo = 0
       for (const recipient of selected) {
         // Pix gerado sozinho: Plano PRO (v2.10A1). No ONE vale o codigo colado ou a imagem enviada.
         const pixCopyPasteCode = manualPixCopyPasteCode || (pixAutomatico ? buildPixPayload(total, recipient, form, condominiumSettings) : '')
@@ -498,7 +502,8 @@ export default function Cobrancas() {
           pixQrCode = await QRCode.toDataURL(pixCopyPasteCode)
         }
 
-        const pdfBytes = await generateChargePdfBytes({ condominiumSettings, recipient, form, total, pixQrCode, pixCopyPasteCode, paymentLink, breakdown })
+        const { pdfBytes, modeloAntigo } = await generateChargePdfBytes({ condominiumSettings, recipient, form, total, pixQrCode, pixCopyPasteCode, paymentLink, breakdown })
+        if (modeloAntigo) boletosModeloAntigo += 1
         const boletoPath = buildChargeStorageFileName(`boleto-${recipient.unidade_numero || 'unidade'}-${form.mes_referencia}.pdf`, 'boletos', condominiumId)
         const { error: boletoUploadError } = await supabase.storage.from('cobrancas').upload(boletoPath, new Blob([pdfBytes], { type: 'application/pdf' }), { contentType: 'application/pdf' })
         if (boletoUploadError) throw boletoUploadError
@@ -566,6 +571,9 @@ export default function Cobrancas() {
           : `Cobranca lancada para ${selected.length} unidade(s).`,
         'success',
       )
+      if (boletosModeloAntigo > 0) {
+        toast(`${boletosModeloAntigo} boleto(s) sairam no modelo antigo porque o gerador da fatura nao respondeu. Use "Relançar" na cobranca para gerar a fatura nova.`, 'info')
+      }
       setOpenReference(form.mes_referencia)
       resetForm()
       void fetchAll()

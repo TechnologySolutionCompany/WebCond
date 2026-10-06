@@ -8,14 +8,13 @@ node_modules
 dist
 .agents
 
-# Material que nao faz parte do site publicado
-logos
-sql
-docs
-tests
+# Material que nao faz parte do site publicado.
+# A "/" no comeco prende a regra a pasta da raiz: sem ela, "fatura" tambem tirava do deploy
+# api/_lib/fatura/ (gerador da fatura nova) e o boleto caia no modelo antigo.
+/logos
+/sql
+/docs
+/tests
 
-# Desenho da fatura: nao vai para o site
-fatura
-
-# Prototipo do redesign (Claude Design): referencia, nao vai para o site
-redesigner-webcond
+# Desenho da fatura: nao vai para o site (o que o servidor usa fica em api/_lib/fatura/)
+/fatura
