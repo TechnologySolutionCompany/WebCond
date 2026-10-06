@@ -615,6 +615,35 @@ export default function Cobrancas() {
 
     toast('Pagamento confirmado!', 'success')
     void fetchAll()
+    void notificarPagamentoConfirmado(charge)
+  }
+
+  // Morador da unidade fica sabendo da baixa: aviso no app e, conforme o plano, celular/e-mail/WhatsApp.
+  // Falha aqui nao desfaz a confirmacao, que ja esta salva.
+  const notificarPagamentoConfirmado = async (charge) => {
+    const unidade = charge.unidade_numero || charge.profiles?.apartamento
+    if (!unidade) return
+
+    const { data: created, error } = await supabase
+      .from('avisos')
+      .insert({
+        titulo: 'Pagamento confirmado',
+        conteudo: 'Seu pagamento foi confirmado pelo Síndico.',
+        tipo: 'informativo',
+        destinatario: 'apartamento',
+        apartamento_destino: unidade,
+        created_by: profile.id,
+        condominium_id: condominiumId || null,
+        condominio_id: condominiumId || null,
+      })
+      .select('id')
+    if (error || !created?.length) return
+
+    try {
+      await notifyAvisos(created.map((row) => row.id))
+    } catch {
+      // O morador ve o aviso ao abrir o app.
+    }
   }
 
   const excluirCobranca = async (charge) => {

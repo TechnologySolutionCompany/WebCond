@@ -35,6 +35,9 @@ Lista do que fica para depois e histórico do que já foi feito em cada versão.
   caía, sem aviso, no modelo antigo. Regras presas à raiz (`/fatura/`), gerador enviado, tempo do
   gerador maior (45 s na tela, 60 s no servidor) e aviso ao síndico se um boleto sair no modelo antigo.
   Limpeza: removidas as pastas `redesigner-webcond` (já aplicada) e `designer-fatura` (cópia da `fatura`).
+- Notificação (06/10/2026): quando o síndico confirma um pagamento, o morador da unidade recebe
+  "Pagamento confirmado — Seu pagamento foi confirmado pelo Síndico." (aviso no app e, conforme o
+  plano, no celular, e-mail e WhatsApp).
 
 ### v2.10A2 — 05/10/2026
 
