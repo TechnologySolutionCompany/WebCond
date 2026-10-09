@@ -1,8 +1,8 @@
 {
   "name": "webcond",
   "private": true,
-  "version": "2.10.3",
-  "releaseDate": "2026-10-05",
+  "version": "2.10.4",
+  "releaseDate": "2026-10-09",
   "type": "module",
   "engines": {
     "node": "24.x"

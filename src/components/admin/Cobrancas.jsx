@@ -57,6 +57,8 @@ const emptyForm = {
   valor_condominio: '',
   valor_energia: '',
   valor_agua: '',
+  // Valores adicionais do condominio (v2.10A4): "Valor de melhoria", "Taxa de bombeiro"...
+  extras: [],
   mes_referencia: new Date().toISOString().slice(0, 7),
   vencimento: '',
   observacao: '',
@@ -98,6 +100,33 @@ function buildChargeDescription(form) {
   return `Cobranca avulsa ${formatReferenceLabel(form.mes_referencia)}`
 }
 
+let extraSeq = 0
+function newExtra(nome = '', valor = '') {
+  extraSeq += 1
+  return { id: `extra-${extraSeq}`, nome, valor }
+}
+
+// Nome do valor adicional como fica gravado na observacao ("Nome: R$ 0,00 | ..."): sem os separadores.
+function cleanExtraName(nome = '') {
+  return String(nome || '').replace(/[|:]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
+}
+
+// Valores adicionais preenchidos (nome e valor). Linha toda vazia e ignorada.
+function filledExtras(form) {
+  return (form.extras || [])
+    .map((item) => ({ nome: cleanExtraName(item.nome), value: parseCurrencyInput(item.valor) }))
+    .filter((item) => item.nome && item.value > 0)
+}
+
+// Linha com so o nome ou so o valor: o sindico esqueceu de completar.
+function findIncompleteExtra(form) {
+  return (form.extras || []).find((item) => {
+    const hasName = Boolean(cleanExtraName(item.nome))
+    const hasValue = parseCurrencyInput(item.valor) > 0
+    return hasName !== hasValue && (hasName || String(item.valor || '').trim())
+  })
+}
+
 function buildBreakdown(form) {
   if (form.tipo === 'condominio') {
     // titulo/tipo/origem: como cada linha aparece na fatura nova (v1.09A5).
@@ -105,6 +134,7 @@ function buildBreakdown(form) {
       { leftTitle: BREAKDOWN_TITLES.condominio, middleTitle: 'Atualizações, reparos e manutenções das áreas comuns', value: parseCurrencyInput(form.valor_condominio), titulo: 'Taxa condominial', tipo: 'TAXA CONDOMINIAL', origem: 'Rateio fixo' },
       { leftTitle: BREAKDOWN_TITLES.agua, middleTitle: 'Uso da água distribuída para todo condomínio', value: parseCurrencyInput(form.valor_agua), titulo: 'Água do condomínio', tipo: 'RATEIO', origem: 'Fatura Compesa' },
       { leftTitle: BREAKDOWN_TITLES.energia, middleTitle: 'Uso da conta de energia de áreas comuns', value: parseCurrencyInput(form.valor_energia), titulo: 'Energia das áreas comuns', tipo: 'RATEIO', origem: 'Fatura Neoenergia' },
+      ...filledExtras(form).map((item) => ({ leftTitle: item.nome, middleTitle: 'Valor adicional do condomínio', value: item.value, titulo: item.nome, tipo: 'TAXA EXTRA', origem: 'Condomínio' })),
     ]
   }
 
@@ -125,16 +155,23 @@ function buildObservation(form, breakdown) {
 }
 
 // Relancar: recupera os valores da observacao gravada ("Taxa Condominial: R$ 100,00 | ... | Obs: texto").
+// Qualquer outro "Nome: R$ valor" e um valor adicional (v2.10A4).
 function parseStoredObservation(observacao = '') {
-  const result = { valor_condominio: '', valor_agua: '', valor_energia: '', observacao: '' }
-  for (const part of String(observacao || '').split(' | ')) {
-    const [label, ...rest] = part.split(': ')
+  const result = { valor_condominio: '', valor_agua: '', valor_energia: '', extras: [], observacao: '' }
+  const parts = String(observacao || '').split(' | ')
+  for (let index = 0; index < parts.length; index += 1) {
+    const [label, ...rest] = parts[index].split(': ')
     const value = rest.join(': ')
     const amount = value.replace(/[^\d,.-]/g, '').trim()
+    if (label === 'Obs') {
+      // A observacao e sempre a ultima parte e pode ter " | " no meio.
+      result.observacao = [value, ...parts.slice(index + 1)].join(' | ')
+      break
+    }
     if (label === BREAKDOWN_TITLES.condominio) result.valor_condominio = amount
     else if (label === BREAKDOWN_TITLES.agua) result.valor_agua = amount
     else if (label === BREAKDOWN_TITLES.energia) result.valor_energia = amount
-    else if (label === 'Obs') result.observacao = value
+    else if (label && rest.length && /^R\$/.test(value.trim())) result.extras.push(newExtra(label, amount))
   }
   return result
 }
@@ -414,6 +451,7 @@ export default function Cobrancas() {
       valor_condominio: stored.valor_condominio,
       valor_agua: stored.valor_agua,
       valor_energia: stored.valor_energia,
+      extras: charge.tipo === 'condominio' ? stored.extras : [],
       mes_referencia: charge.mes_referencia || emptyForm.mes_referencia,
       vencimento: charge.vencimento || '',
       observacao: stored.observacao,
@@ -459,6 +497,11 @@ export default function Cobrancas() {
     }
     if (String(form.pagamento_link || '').trim() && !safeHttpUrl(form.pagamento_link)) {
       toast('O link de pagamento precisa ser um endereco que comeca com https://', 'error')
+      return
+    }
+    const incompleteExtra = form.tipo === 'condominio' ? findIncompleteExtra(form) : null
+    if (incompleteExtra) {
+      toast(cleanExtraName(incompleteExtra.nome) ? `Informe o valor de "${cleanExtraName(incompleteExtra.nome)}".` : 'Informe o nome de cada valor adicional (ex.: Taxa de bombeiro).', 'error')
       return
     }
     if (form.tipo === 'condominio' ? !breakdown.some((item) => item.value > 0) : parseCurrencyInput(form.valor) <= 0) {
@@ -668,6 +711,9 @@ export default function Cobrancas() {
   }
 
   const isCondominio = form.tipo === 'condominio'
+  const addExtra = () => setForm((current) => ({ ...current, extras: [...(current.extras || []), newExtra()] }))
+  const updateExtra = (id, patch) => setForm((current) => ({ ...current, extras: current.extras.map((item) => (item.id === id ? { ...item, ...patch } : item)) }))
+  const removeExtra = (id) => setForm((current) => ({ ...current, extras: current.extras.filter((item) => item.id !== id) }))
   const previewTotal = buildBreakdown(form).reduce((sum, item) => sum + Number(item.value || 0), 0)
   const unitsWithoutResponsible = units.length - recipients.length
 
@@ -873,7 +919,7 @@ export default function Cobrancas() {
 
               <div className="form-group">
                 <label className="form-label">Tipo *</label>
-                <select className="input" value={form.tipo} onChange={(event) => setForm((current) => ({ ...current, tipo: event.target.value, valor: '', valor_condominio: '', valor_energia: '', valor_agua: '' }))}>
+                <select className="input" value={form.tipo} onChange={(event) => setForm((current) => ({ ...current, tipo: event.target.value, valor: '', valor_condominio: '', valor_energia: '', valor_agua: '', extras: [] }))}>
                   {CREATE_TYPES.map((tipo) => <option key={tipo.value} value={tipo.value}>{tipo.label}</option>)}
                 </select>
               </div>
@@ -903,6 +949,26 @@ export default function Cobrancas() {
                   <div className="form-group">
                     <label className="form-label">Valor da conta de agua</label>
                     <input className="input" value={form.valor_agua} onChange={(event) => setForm((current) => ({ ...current, valor_agua: event.target.value }))} placeholder="0,00" />
+                  </div>
+
+                  {form.extras.map((extra, index) => (
+                    <div key={extra.id} className="charge-extra-row">
+                      <div className="form-group" style={{ flex: '2 1 200px' }}>
+                        <label className="form-label" htmlFor={`${extra.id}-nome`}>Nome do valor {index + 1}</label>
+                        <input id={`${extra.id}-nome`} className="input" value={extra.nome} maxLength={60} onChange={(event) => updateExtra(extra.id, { nome: event.target.value })} placeholder="Ex.: Valor de melhoria" />
+                      </div>
+                      <div className="form-group" style={{ flex: '1 1 120px' }}>
+                        <label className="form-label" htmlFor={`${extra.id}-valor`}>Valor (R$)</label>
+                        <input id={`${extra.id}-valor`} className="input" inputMode="decimal" value={extra.valor} onChange={(event) => updateExtra(extra.id, { valor: event.target.value })} placeholder="0,00" />
+                      </div>
+                      <button type="button" className="mini-btn mini-btn-icon mini-btn-danger" onClick={() => removeExtra(extra.id)} title="Remover este valor" aria-label={`Remover ${extra.nome || `valor ${index + 1}`}`}><Trash2 size={15} /></button>
+                    </div>
+                  ))}
+                  <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                    <button type="button" className="btn btn-ghost charge-extra-add" onClick={addExtra}>
+                      <Plus size={16} /> Adicionar outro valor
+                    </button>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Ex.: Valor de melhoria, Taxa de bombeiro. Cada valor vira uma linha da fatura e entra no total.</div>
                   </div>
                 </>
               ) : (

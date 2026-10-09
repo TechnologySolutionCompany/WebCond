@@ -346,10 +346,13 @@ export async function generateChargesPdf({ charges, condominium }) {
     drawSummary(page, fonts, charge)
     drawCostHeader(page, fonts)
 
+    // Ate 5 linhas cabem com 46pt cada; com os valores adicionais (v2.10A4) as linhas apertam
+    // para o pagamento continuar no mesmo lugar da folha.
+    const rowStep = Math.max(26, Math.min(46, Math.floor(230 / Math.max(1, charge.breakdown.length))))
     let rowY = 494
     for (const row of charge.breakdown) {
       drawBreakdownRow(page, fonts, row, rowY)
-      rowY -= 46
+      rowY -= rowStep
     }
 
     page.drawLine({

@@ -58,12 +58,12 @@ export function InstallAppCard() {
       <div className="install-card">
         <span className="install-card-icon"><img src="/brand/wc-simbolo-branco.svg" alt="" aria-hidden="true" /></span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <strong>Instale o WebCond</strong>
-          <span>Abre direto da tela inicial (ou da área de trabalho), em tela cheia, como um aplicativo.</span>
+          <strong>Baixe o app do WebCond</strong>
+          <span>Coloque o WebCond na tela inicial do celular (ou na área de trabalho) e abra como um aplicativo, em tela cheia.</span>
         </div>
         <div className="install-card-actions">
-          <button type="button" className="mini-btn mini-btn-primary" onClick={install}><Download size={15} />Adicionar à tela inicial</button>
-          <button type="button" className="mini-btn" onClick={() => { dismissInstall(); setHidden(true) }}>Agora não</button>
+          <button type="button" className="install-cta" onClick={install}><Download size={20} />Baixar e adicionar à tela inicial</button>
+          <button type="button" className="install-later" onClick={() => { dismissInstall(); setHidden(true) }}>Agora não</button>
         </div>
       </div>
       {showIos && <IosSteps onClose={() => setShowIos(false)} />}

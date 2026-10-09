@@ -115,6 +115,22 @@ export function getChargeStatus(charge, baseDate = new Date()) {
   return 'em_aberto'
 }
 
+// Cartoes do painel do sindico (v2.10A4): sem pagamento, a cobranca fica "em aberto" ate o fim
+// do mes do vencimento; no dia 1 do mes seguinte a unidade passa para inadimplente.
+// Ex.: vencimento 10/10/2026 -> em aberto ate 31/10/2026 -> inadimplente a partir de 01/11/2026.
+// Cancelada: null (fica fora dos cartoes).
+export function getMonthlyChargeBucket(charge, baseDate = new Date()) {
+  const status = getChargePaymentStatus(charge, baseDate)
+  if (status === 'PAID') return 'pago'
+  if (status === 'CANCELLED') return null
+
+  const dueDate = safeDate(charge?.vencimento)
+  if (!dueDate) return status === 'OVERDUE' ? 'inadimplente' : 'em_aberto'
+
+  const firstOfNextMonth = new Date(dueDate.getFullYear(), dueDate.getMonth() + 1, 1)
+  return baseDate >= firstOfNextMonth ? 'inadimplente' : 'em_aberto'
+}
+
 export function countChargeStatuses(charges = [], baseDate = new Date()) {
   return (charges || []).reduce((acc, charge) => {
     const status = getChargeStatus(charge, baseDate)

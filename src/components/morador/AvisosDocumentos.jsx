@@ -4,7 +4,9 @@ import { enrichDocumentsWithDownloadUrl } from '../../lib/documents'
 import { useAuth } from '../../hooks/useAuth'
 import { isNoticeForProfile } from '../../lib/units'
 import { isNoticeCurrent } from '../../lib/avisos'
-import { Megaphone, FileText, Download, Search } from 'lucide-react'
+import { hideNotice, isNoticeHidden, markNoticesRead, readNoticeState } from '../../lib/avisosLidos'
+import { Megaphone, FileText, Download, Search, Trash2 } from 'lucide-react'
+import { useToast } from '../shared/Toast'
 import { AVISO_TIPOS, DOC_CATEGORIAS, fileExtension, formatNoticeDate } from '../shared/noticeMeta'
 import { safeHttpUrl } from '../../lib/safeUrl'
 
@@ -15,6 +17,7 @@ export function MoradorAvisos({ isActive = true }) {
   const [avisos, setAvisos] = useState([])
   const [loading, setLoading] = useState(true)
   const [tipo, setTipo] = useState('todos')
+  const { toast } = useToast()
 
   const fetchAvisos = useCallback(async () => {
     const { data } = await supabase
@@ -23,10 +26,21 @@ export function MoradorAvisos({ isActive = true }) {
       .eq('ativo', true)
       .order('created_at', { ascending: false })
 
-    const filtrados = (data || []).filter((aviso) => isNoticeCurrent(aviso) && isNoticeForProfile(aviso, profile))
+    const estado = readNoticeState(profile?.id)
+    const filtrados = (data || []).filter((aviso) => isNoticeCurrent(aviso) && isNoticeForProfile(aviso, profile) && !isNoticeHidden(estado, aviso))
     setAvisos(filtrados)
     setLoading(false)
+    // Abriu a tela de Avisos: todos ficam lidos e saem dos "Avisos recentes" do Inicio (v2.10A4).
+    markNoticesRead(profile?.id, filtrados.map((aviso) => aviso.id))
   }, [profile])
+
+  // Excluir: some so para este morador (o aviso e do condominio; o sindico apaga para todos).
+  const excluir = (aviso) => {
+    if (!window.confirm(`Excluir o aviso "${aviso.titulo}"? Ele deixa de aparecer para você.`)) return
+    hideNotice(profile?.id, aviso.id)
+    setAvisos((atual) => atual.filter((item) => item.id !== aviso.id))
+    toast('Aviso excluído.', 'success')
+  }
 
   useEffect(() => {
     if (!profile?.apartamento || !isActive) return
@@ -67,6 +81,7 @@ export function MoradorAvisos({ isActive = true }) {
                     {novo && <span className="pill pill-sm" style={{ background: 'var(--primary)', color: '#fff', marginRight: 8 }}>Novo</span>}
                     {formatNoticeDate(aviso.created_at)}
                   </span>
+                  <button type="button" className="mini-btn mini-btn-icon mini-btn-danger" onClick={() => excluir(aviso)} title="Excluir aviso" aria-label={`Excluir aviso ${aviso.titulo}`}><Trash2 size={15} /></button>
                 </div>
                 <div>
                   <h3 className="info-card-title">{aviso.titulo}</h3>

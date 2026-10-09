@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { describeResidentAccess, isNoticeForProfile } from '../../lib/units'
 import { isNoticeCurrent } from '../../lib/avisos'
+import { isNoticeHidden, isNoticeRead, markNoticesRead, readNoticeState } from '../../lib/avisosLidos'
 import { ArrowRight, Bell, ChevronRight, CircleCheck, Clock3, DoorClosed, FileText, KeyRound, QrCode, Receipt, TriangleAlert } from 'lucide-react'
 import { getChargeStatus } from '../../lib/chargeStatus'
 import { formatReferenceLabel } from '../../lib/billingShared'
@@ -67,12 +68,15 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
       const [cobrancasRes, avisosRes, summaryRes] = await Promise.all([
         // RLS: cobrancas da pessoa e das unidades dela (inquilino: desde que entrou na unidade).
         supabase.from('cobrancas').select('*').order('created_at', { ascending: false }),
-        supabase.from('avisos').select('*').eq('ativo', true).order('created_at', { ascending: false }).limit(12),
+        supabase.from('avisos').select('*').eq('ativo', true).order('created_at', { ascending: false }).limit(40),
         getTenantChargeSummary().catch(() => EMPTY_SUMMARY),
       ])
 
+      // Inicio mostra so os avisos ainda nao abertos (v2.10A4); os lidos ficam em Avisos.
+      const lidos = readNoticeState(profile.id)
       const avisosFiltrados = (avisosRes.data || [])
         .filter((aviso) => isNoticeCurrent(aviso) && isNoticeForProfile(aviso, profile))
+        .filter((aviso) => !isNoticeRead(lidos, aviso) && !isNoticeHidden(lidos, aviso))
 
       setCobrancas(cobrancasRes.data || [])
       setAvisos(avisosFiltrados)
@@ -92,6 +96,13 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
   ), [cobrancas])
   const proxima = emAberto[0] || null
   const segunda = emAberto[1] || null
+
+  // Abriu o aviso: sai do Inicio e fica registrado em Avisos.
+  const abrirAviso = (aviso) => {
+    markNoticesRead(profile?.id, [aviso.id])
+    setAvisos((atual) => atual.filter((item) => item.id !== aviso.id))
+    onNavigate('avisos')
+  }
 
   // Abre Minhas cobrancas ja com o painel de pagamento daquela cobranca.
   const pagar = (cobranca) => {
@@ -124,9 +135,9 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
         </div>
       </div>
 
-      <div className="home-cols">
+      <div className="home-cols home-cols-morador">
         <div className="home-main">
-          <section className="hero-card">
+          <section className="hero-card m-order-1">
             <img src="/brand/wc-simbolo.svg" alt="" aria-hidden="true" className="hero-card-mark" />
             <div className="hero-card-body">
               <div className="hero-card-top">
@@ -164,7 +175,7 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
           </section>
 
           {segunda && (
-            <button type="button" className="home-row-card" onClick={() => pagar(segunda)}>
+            <button type="button" className="home-row-card m-order-2" onClick={() => pagar(segunda)}>
               <span className="home-icon home-icon-primary"><Receipt size={20} /></span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span className="home-row-title">{segunda.descricao || segunda.tipo || 'Cobrança'}</span>
@@ -175,15 +186,15 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
             </button>
           )}
 
-          <section className="home-panel">
+          <section className="home-panel m-order-6">
             <div className="home-panel-head">
               <span className="home-panel-title">Avisos recentes</span>
               <button type="button" className="home-link" onClick={() => onNavigate('avisos')}>Ver todos<ArrowRight size={15} /></button>
             </div>
             {avisosRecentes.length === 0 ? (
-              <div className="home-empty">Nenhum aviso no momento.</div>
+              <div className="home-empty">Nenhum aviso novo. Os avisos já abertos ficam em “Ver todos”.</div>
             ) : avisosRecentes.map((aviso) => (
-              <button key={aviso.id} type="button" className="home-notice" onClick={() => onNavigate('avisos')}>
+              <button key={aviso.id} type="button" className="home-notice" onClick={() => abrirAviso(aviso)}>
                 <span className="home-icon home-icon-primary"><Bell size={18} /></span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span className="home-row-title home-ellipsis">{aviso.titulo}</span>
@@ -199,7 +210,7 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
           <InstallAppCard />
           <PushPrompt />
 
-          <section className="home-panel home-panel-pad">
+          <section className="home-panel home-panel-pad m-order-5">
             <div className="home-panel-head" style={{ padding: 0, marginBottom: 4 }}>
               <span className="home-panel-title">{tenantSummary.competencia ? `${formatReferenceLabel(tenantSummary.competencia)} no condomínio` : 'Mês no condomínio'}</span>
               <span className="home-dim">{tenantSummary.total_unidades} unidades</span>
@@ -229,7 +240,7 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
             </div>
           </section>
 
-          <div className="home-shortcuts">
+          <div className="home-shortcuts m-order-7">
             <button type="button" className="home-shortcut" onClick={() => onNavigate('ocorrencias')}>
               <span className="home-icon home-icon-amber"><TriangleAlert size={18} /></span>
               <span><span className="home-row-title">Registrar ocorrência</span><span className="home-row-sub">Vai direto para o síndico</span></span>

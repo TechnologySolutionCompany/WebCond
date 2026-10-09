@@ -4,7 +4,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { applyTenantFilter } from '../../lib/tenant'
 import { ArrowRight, Building2, CircleCheck, Clock3, Megaphone, MessageSquareWarning, Plus, TriangleAlert } from 'lucide-react'
-import { buildChargeStatusChartData, getChargeStatus, getChargePaymentStatus } from '../../lib/chargeStatus'
+import { buildChargeStatusChartData, getChargeStatus, getMonthlyChargeBucket } from '../../lib/chargeStatus'
 import { formatReferenceLabel } from '../../lib/billingShared'
 import { ACTIVE_UNIT_STATUSES } from '../../lib/units'
 import { normalizeRole } from '../../lib/auth'
@@ -25,11 +25,13 @@ function formatDate(value) {
   return value ? new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR') : '-'
 }
 
-function saudacao() {
-  const hora = new Date().getHours()
-  if (hora < 12) return 'Bom dia'
-  if (hora < 18) return 'Boa tarde'
-  return 'Boa noite'
+// Unidade da cobranca, para contar unidades (e nao cobrancas) nos cartoes.
+function unitKey(charge) {
+  return charge.unidade_id || charge.unidade_numero || charge.id
+}
+
+function unidades(n) {
+  return `${n} ${n === 1 ? 'unidade' : 'unidades'}`
 }
 
 function hojePorExtenso() {
@@ -55,7 +57,7 @@ export default function AdminDashboard({ isActive = true, onNavigate = () => {} 
       const [unidadesRes, cobrancasRes, ocorrenciasRes] = await Promise.all([
         supabase.from('unidades').select('id, situacao').eq('condominium_id', condominiumId),
         applyTenantFilter(
-          supabase.from('cobrancas').select('id, descricao, valor, pago, payment_status, vencimento, mes_referencia, data_pagamento, paid_at, created_at, unidade_numero').order('created_at', { ascending: false }),
+          supabase.from('cobrancas').select('id, descricao, valor, pago, payment_status, vencimento, mes_referencia, data_pagamento, paid_at, created_at, unidade_id, unidade_numero').order('created_at', { ascending: false }),
           condominiumId,
         ),
         applyTenantFilter(
@@ -88,20 +90,21 @@ export default function AdminDashboard({ isActive = true, onNavigate = () => {} 
 
   const chartData = useMemo(() => buildChargeStatusChartData(cobrancas, 6), [cobrancas])
 
-  // Recebido no mes: so cobrancas confirmadas pelo sindico (PAID) com pagamento neste mes.
-  const recebidoNoMes = useMemo(() => {
-    const pagas = cobrancas.filter((item) => getChargePaymentStatus(item) === 'PAID' && isSameMonth(item.paid_at || item.data_pagamento))
-    return { valor: pagas.reduce((sum, item) => sum + Number(item.valor || 0), 0), quantidade: pagas.length }
-  }, [cobrancas])
-
-  const porStatus = useMemo(() => {
-    const total = { em_aberto: { valor: 0, n: 0 }, inadimplente: { valor: 0, n: 0 } }
+  // Cartoes do painel (v2.10A4). Pagos no mes: so cobrancas confirmadas pelo sindico (PAID) com
+  // pagamento neste mes. Em aberto ate o fim do mes do vencimento; depois, inadimplente.
+  // Embaixo do valor: quantas unidades (uma unidade com duas cobrancas conta uma vez).
+  const cartoes = useMemo(() => {
+    const total = {
+      pago: { valor: 0, unidades: new Set() },
+      em_aberto: { valor: 0, unidades: new Set() },
+      inadimplente: { valor: 0, unidades: new Set() },
+    }
     for (const item of cobrancas) {
-      const status = getChargeStatus(item)
-      if (total[status]) {
-        total[status].valor += Number(item.valor || 0)
-        total[status].n += 1
-      }
+      const bucket = getMonthlyChargeBucket(item)
+      if (bucket === 'pago' && !isSameMonth(item.paid_at || item.data_pagamento)) continue
+      if (!total[bucket]) continue
+      total[bucket].valor += Number(item.valor || 0)
+      total[bucket].unidades.add(unitKey(item))
     }
     return total
   }, [cobrancas])
@@ -152,9 +155,9 @@ export default function AdminDashboard({ isActive = true, onNavigate = () => {} 
 
   const pct = (n) => (arrecadacao?.total ? `${(n / arrecadacao.total) * 100}%` : '0%')
   const kpis = [
-    { Icon: CircleCheck, tom: 'green', label: 'Recebido no mês', valor: formatMoney(recebidoNoMes.valor), sub: `${recebidoNoMes.quantidade} ${recebidoNoMes.quantidade === 1 ? 'pagamento confirmado' : 'pagamentos confirmados'}` },
-    { Icon: Clock3, tom: 'amber', label: 'A receber', valor: formatMoney(porStatus.em_aberto.valor), sub: `${porStatus.em_aberto.n} ${porStatus.em_aberto.n === 1 ? 'cobrança em aberto' : 'cobranças em aberto'}` },
-    { Icon: TriangleAlert, tom: 'red', label: 'Em atraso', valor: formatMoney(porStatus.inadimplente.valor), sub: `${porStatus.inadimplente.n} ${porStatus.inadimplente.n === 1 ? 'cobrança vencida' : 'cobranças vencidas'}` },
+    { Icon: CircleCheck, tom: 'green', label: 'Valores pagos no mês', valor: formatMoney(cartoes.pago.valor), sub: `${unidades(cartoes.pago.unidades.size)} ${cartoes.pago.unidades.size === 1 ? 'pagou' : 'pagaram'} no mês` },
+    { Icon: Clock3, tom: 'amber', label: 'Valores em aberto', valor: formatMoney(cartoes.em_aberto.valor), sub: `${unidades(cartoes.em_aberto.unidades.size)} com valor em aberto` },
+    { Icon: TriangleAlert, tom: 'red', label: 'Uni. Inadimplente', valor: formatMoney(cartoes.inadimplente.valor), sub: `${unidades(cartoes.inadimplente.unidades.size)} ${cartoes.inadimplente.unidades.size === 1 ? 'inadimplente' : 'inadimplentes'}` },
     { Icon: Building2, tom: 'primary', label: 'Unidades ativas', valor: stats.unidadesAtivas, sub: `${stats.unidadesCadastradas} de ${unitLimit || '-'} cadastradas` },
   ]
 
@@ -163,7 +166,7 @@ export default function AdminDashboard({ isActive = true, onNavigate = () => {} 
       <div className="home-head">
         <div>
           <div className="home-date">{hojePorExtenso()}</div>
-          <h1 className="page-title" style={{ marginTop: 2 }}>{saudacao()}, {profile?.nome?.split(' ')[0] || 'síndico(a)'}</h1>
+          <h1 className="page-title" style={{ marginTop: 2 }}>Administração</h1>
         </div>
         {!isAccountant && (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>

@@ -8,6 +8,24 @@ Lista do que fica para depois e histórico do que já foi feito em cada versão.
 
 ## Histórico
 
+### v2.10A4 — 09/10/2026 (ajuste)
+
+- Síndico › Lançar cobrança (Condomínio): além de condomínio, energia e água, o botão
+  **"+ Adicionar outro valor"** abre mais linhas com nome e valor (ex.: Valor de melhoria, Taxa de
+  bombeiro). Cada valor vira uma linha da fatura e entra no total; o "Relançar" recupera os valores.
+- Painel do síndico: título **Administração** (no lugar de "Bom dia, nome"). Cartões renomeados, com
+  o número de unidades embaixo do valor:
+  - **Valores pagos no mês** — X unidades pagaram no mês;
+  - **Valores em aberto** — X unidades com valor em aberto. Fica aqui até o fim do mês do vencimento
+    (ex.: vence 10/10 → em aberto até 31/10);
+  - **Uni. Inadimplente** — X unidades inadimplentes (a partir do dia 1 do mês seguinte, ex.: 01/11).
+- Morador › Avisos: o aviso aberto sai dos **Avisos recentes** do Início e fica registrado em Avisos;
+  abrir a tela Avisos marca todos como lidos. Cada aviso tem **Excluir** (some só para aquele morador;
+  o síndico continua apagando para todos). Lido/excluído fica guardado no aparelho da pessoa.
+- Morador › Início no celular: o gráfico do mês no condomínio vem **antes** dos avisos.
+- Convite "Instale o app" maior e mais visível: **Baixar e adicionar à tela inicial** (botão grande,
+  largura toda no celular); "Instalar o app" da tela de login virou botão.
+
 ### v2.10A3 — 05/10/2026
 
 - Redesign "Protótipo v3 · nova UX/UI":
