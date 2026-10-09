@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { House, Receipt, Bell, FileText, User, TriangleAlert, LifeBuoy, QrCode } from 'lucide-react'
+import { House, Receipt, Bell, FileText, User, TriangleAlert, LifeBuoy, QrCode, ChartColumn } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { useMoradorPresence } from '../../hooks/useMoradorPresence'
@@ -16,6 +16,7 @@ import MoradorCobrancas from './Cobrancas'
 import { MoradorAvisos, MoradorDocumentos } from './AvisosDocumentos'
 import MoradorPerfil from './Perfil'
 import MoradorOcorrencias from './Ocorrencias'
+import MoradorResumo from './Resumo'
 import SuporteHub from '../shared/SuporteHub'
 import { sendTenantFeedback } from '../../lib/tenantApi'
 
@@ -31,6 +32,7 @@ const nav = [
     items: [
       { key: 'dashboard', label: 'Início', icon: House },
       { key: 'cobrancas', label: 'Minhas cobranças', icon: Receipt },
+      { key: 'resumo', label: 'Resumo do condomínio', icon: ChartColumn },
       { key: 'avisos', label: 'Avisos', icon: Bell },
       { key: 'documentos', label: 'Documentos', icon: FileText },
       { key: 'ocorrencias', label: 'Ocorrências', icon: TriangleAlert },
@@ -55,6 +57,7 @@ const TABS = [
 const pages = {
   dashboard: MoradorDashboard,
   cobrancas: MoradorCobrancas,
+  resumo: MoradorResumo,
   avisos: MoradorAvisos,
   documentos: MoradorDocumentos,
   ocorrencias: MoradorOcorrencias,

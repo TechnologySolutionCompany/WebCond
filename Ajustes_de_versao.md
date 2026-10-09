@@ -8,6 +8,21 @@ Lista do que fica para depois e histórico do que já foi feito em cada versão.
 
 ## Histórico
 
+### v2.10A5 — 09/10/2026 (ajuste)
+
+- Morador acompanha o condomínio em tempo real (atualiza sozinho a cada minuto com a tela aberta):
+  - Início: bloco **Condomínio agora** com os mesmos cartões do painel do síndico — **Unidades
+    ativas**, **Valores pagos no mês**, **Valores em aberto** e **Uni. Inadimplente**;
+  - tela nova **Resumo do condomínio** (menu e "Ver resumo"): cartões, arrecadação da competência
+    (% recebido, R$ recebido de R$ lançado) e **Status das cobranças por mês** (gráfico de 6 meses
+    com unidades pagas, em aberto e inadimplentes). Só para ver: sem exportar nem baixar, e o
+    gráfico não é imagem (não aparece "salvar imagem" ao segurar o dedo).
+- Privacidade: o morador recebe só totais, montados no servidor; nenhum nome, número de unidade ou
+  cobrança de outra pessoa.
+- O cálculo dos cartões passou para `src/lib/condominioResumo.js`, usado pelo painel do síndico e
+  pelo servidor: os números são os mesmos nas duas telas. A barra "mês no condomínio" do morador
+  agora segue a mesma regra (em aberto até o fim do mês do vencimento).
+
 ### v2.10A4 — 09/10/2026 (ajuste)
 
 - Síndico › Lançar cobrança (Condomínio): além de condomínio, energia e água, o botão

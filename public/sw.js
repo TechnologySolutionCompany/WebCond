@@ -1,6 +1,6 @@
-// Trocar o nome descarta o cache anterior: e o que faz o visual novo (v2.10A3, ajustes v2.10A4) chegar em quem ja
+// Trocar o nome descarta o cache anterior: e o que faz o visual novo (v2.10A3, ajustes v2.10A4 e v2.10A5) chegar em quem ja
 // tinha o app aberto.
-const CACHE_NAME = 'webcond-v7'
+const CACHE_NAME = 'webcond-v8'
 // Em localhost (npm run dev) o service worker so cuida das notificacoes: nada de cache.
 const IS_LOCAL = ['localhost', '127.0.0.1'].includes(self.location.hostname)
 const STATIC_ASSETS = ['/', '/manifest.json', '/favicon.svg']

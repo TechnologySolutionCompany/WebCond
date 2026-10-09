@@ -4,12 +4,13 @@ import { useAuth } from '../../hooks/useAuth'
 import { describeResidentAccess, isNoticeForProfile } from '../../lib/units'
 import { isNoticeCurrent } from '../../lib/avisos'
 import { isNoticeHidden, isNoticeRead, markNoticesRead, readNoticeState } from '../../lib/avisosLidos'
-import { ArrowRight, Bell, ChevronRight, CircleCheck, Clock3, DoorClosed, FileText, KeyRound, QrCode, Receipt, TriangleAlert } from 'lucide-react'
+import { ArrowRight, Bell, ChartColumn, ChevronRight, CircleCheck, Clock3, DoorClosed, FileText, KeyRound, QrCode, Receipt, TriangleAlert } from 'lucide-react'
 import { getChargeStatus } from '../../lib/chargeStatus'
 import { formatReferenceLabel } from '../../lib/billingShared'
 import PushPrompt from '../shared/PushPrompt'
 import { InstallAppCard } from '../shared/InstallApp'
-import { getTenantChargeSummary } from '../../lib/tenantApi'
+import { useResumoCondominio } from '../../hooks/useResumoCondominio'
+import ResumoCards from '../shared/ResumoCards'
 import { saveLastView } from '../../lib/lastView'
 
 const EMPTY_SUMMARY = {
@@ -21,6 +22,8 @@ const EMPTY_SUMMARY = {
   em_aberto: 0,
   pago: 0,
   inadimplente: 0,
+  unidades_ativas: 0,
+  cartoes: null,
 }
 
 const DIA_MS = 86400000
@@ -57,7 +60,9 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
   const [cobrancas, setCobrancas] = useState([])
   const [avisos, setAvisos] = useState([])
   const [loading, setLoading] = useState(true)
-  const [tenantSummary, setTenantSummary] = useState(EMPTY_SUMMARY)
+  // Resumo do condominio (v2.10A5): atualiza sozinho a cada minuto com o Inicio aberto.
+  const { resumo } = useResumoCondominio(isActive)
+  const tenantSummary = { ...EMPTY_SUMMARY, ...resumo }
 
   useEffect(() => {
     if (!isActive || !profile?.id) return
@@ -65,11 +70,10 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
     void (async () => {
       setLoading(true)
 
-      const [cobrancasRes, avisosRes, summaryRes] = await Promise.all([
+      const [cobrancasRes, avisosRes] = await Promise.all([
         // RLS: cobrancas da pessoa e das unidades dela (inquilino: desde que entrou na unidade).
         supabase.from('cobrancas').select('*').order('created_at', { ascending: false }),
         supabase.from('avisos').select('*').eq('ativo', true).order('created_at', { ascending: false }).limit(40),
-        getTenantChargeSummary().catch(() => EMPTY_SUMMARY),
       ])
 
       // Inicio mostra so os avisos ainda nao abertos (v2.10A4); os lidos ficam em Avisos.
@@ -80,7 +84,6 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
 
       setCobrancas(cobrancasRes.data || [])
       setAvisos(avisosFiltrados)
-      setTenantSummary({ ...EMPTY_SUMMARY, ...summaryRes })
       setLoading(false)
     })()
   }, [isActive, profile])
@@ -186,7 +189,15 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
             </button>
           )}
 
-          <section className="home-panel m-order-6">
+          <div className="m-order-3">
+            <div className="home-panel-head" style={{ padding: '0 2px 10px' }}>
+              <span className="home-panel-title">Condomínio agora</span>
+              <button type="button" className="home-link" onClick={() => onNavigate('resumo')}>Ver resumo<ArrowRight size={15} /></button>
+            </div>
+            <ResumoCards cartoes={tenantSummary.cartoes} unidadesAtivas={tenantSummary.unidades_ativas} unidadesSub={`${tenantSummary.total_unidades} cadastradas`} />
+          </div>
+
+          <section className="home-panel m-order-7">
             <div className="home-panel-head">
               <span className="home-panel-title">Avisos recentes</span>
               <button type="button" className="home-link" onClick={() => onNavigate('avisos')}>Ver todos<ArrowRight size={15} /></button>
@@ -210,7 +221,7 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
           <InstallAppCard />
           <PushPrompt />
 
-          <section className="home-panel home-panel-pad m-order-5">
+          <section className="home-panel home-panel-pad m-order-6">
             <div className="home-panel-head" style={{ padding: 0, marginBottom: 4 }}>
               <span className="home-panel-title">{tenantSummary.competencia ? `${formatReferenceLabel(tenantSummary.competencia)} no condomínio` : 'Mês no condomínio'}</span>
               <span className="home-dim">{tenantSummary.total_unidades} unidades</span>
@@ -235,12 +246,15 @@ export default function MoradorDashboard({ isActive = true, onNavigate = () => {
                 </div>
               </>
             )}
+            <button type="button" className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', marginTop: 16 }} onClick={() => onNavigate('resumo')}>
+              <ChartColumn size={16} />Ver resumo do condomínio
+            </button>
             <div className="home-note">
-              Sem identificação do pagamento em até {tenantSummary.carencia_horas}h após o vencimento, a unidade passa para inadimplente.
+              Em aberto até o fim do mês do vencimento; sem pagamento confirmado até lá, a unidade passa para inadimplente.
             </div>
           </section>
 
-          <div className="home-shortcuts m-order-7">
+          <div className="home-shortcuts m-order-8">
             <button type="button" className="home-shortcut" onClick={() => onNavigate('ocorrencias')}>
               <span className="home-icon home-icon-amber"><TriangleAlert size={18} /></span>
               <span><span className="home-row-title">Registrar ocorrência</span><span className="home-row-sub">Vai direto para o síndico</span></span>

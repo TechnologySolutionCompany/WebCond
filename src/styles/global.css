@@ -1038,12 +1038,25 @@ h1, h2, h3 { letter-spacing: -0.02em; }
   .home-cols-morador > .home-main, .home-cols-morador > .home-side { display: contents; }
   .home-cols-morador .m-order-1 { order: 1; }
   .home-cols-morador .m-order-2 { order: 2; }
-  .home-cols-morador .install-card { order: 3; }
-  .home-cols-morador .push-prompt { order: 4; margin: 0; }
-  .home-cols-morador .m-order-5 { order: 5; }
+  .home-cols-morador .m-order-3 { order: 3; }
+  .home-cols-morador .install-card { order: 4; }
+  .home-cols-morador .push-prompt { order: 5; margin: 0; }
   .home-cols-morador .m-order-6 { order: 6; }
   .home-cols-morador .m-order-7 { order: 7; }
+  .home-cols-morador .m-order-8 { order: 8; }
 }
+/* Resumo do condominio do morador (v2.10A5): grafico so para ver (nao seleciona nem arrasta). */
+.status-chart { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.status-months { display: flex; align-items: flex-end; gap: 10px; height: 190px; }
+.status-month { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; }
+.status-month-pct { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.status-month-stack { width: 100%; max-width: 48px; display: flex; flex-direction: column-reverse; border-radius: 8px 8px 4px 4px; overflow: hidden; background: var(--surface-2); }
+.status-month-stack > div { width: 100%; }
+.status-month-label { font-size: 12px; color: var(--text-dim); }
+.live-chip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 999px; background: var(--green-dim); color: var(--green); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-solid); animation: live-pulse 2s ease-in-out infinite; }
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
 
 .hero-card { position: relative; overflow: hidden; border-radius: 24px; background: var(--hero-bg); color: #fff; padding: clamp(20px, 2.4vw, 30px); }
 .hero-card-mark { position: absolute; right: -50px; top: -30px; width: 260px; opacity: .12; pointer-events: none; }

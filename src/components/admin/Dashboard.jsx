@@ -3,19 +3,15 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useCondominiumSettings } from '../../hooks/useCondominiumSettings'
 import { applyTenantFilter } from '../../lib/tenant'
-import { ArrowRight, Building2, CircleCheck, Clock3, Megaphone, MessageSquareWarning, Plus, TriangleAlert } from 'lucide-react'
-import { buildChargeStatusChartData, getChargeStatus, getMonthlyChargeBucket } from '../../lib/chargeStatus'
+import { ArrowRight, Megaphone, MessageSquareWarning, Plus, TriangleAlert } from 'lucide-react'
+import { buildChargeStatusChartData, getChargeStatus } from '../../lib/chargeStatus'
+import { buildMonthlyCards } from '../../lib/condominioResumo'
 import { formatReferenceLabel } from '../../lib/billingShared'
 import { ACTIVE_UNIT_STATUSES } from '../../lib/units'
 import { normalizeRole } from '../../lib/auth'
 import { buildResidentRequestSummary, filterSyndicNotifications } from '../../lib/residentRequests'
 import { InstallAppCard } from '../shared/InstallApp'
-
-function isSameMonth(value, reference = new Date()) {
-  if (!value) return false
-  const date = new Date(String(value).length === 10 ? `${value}T12:00:00` : value)
-  return !Number.isNaN(date.getTime()) && date.getMonth() === reference.getMonth() && date.getFullYear() === reference.getFullYear()
-}
+import ResumoCards from '../shared/ResumoCards'
 
 function formatMoney(value = 0) {
   return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -23,15 +19,6 @@ function formatMoney(value = 0) {
 
 function formatDate(value) {
   return value ? new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR') : '-'
-}
-
-// Unidade da cobranca, para contar unidades (e nao cobrancas) nos cartoes.
-function unitKey(charge) {
-  return charge.unidade_id || charge.unidade_numero || charge.id
-}
-
-function unidades(n) {
-  return `${n} ${n === 1 ? 'unidade' : 'unidades'}`
 }
 
 function hojePorExtenso() {
@@ -57,7 +44,7 @@ export default function AdminDashboard({ isActive = true, onNavigate = () => {} 
       const [unidadesRes, cobrancasRes, ocorrenciasRes] = await Promise.all([
         supabase.from('unidades').select('id, situacao').eq('condominium_id', condominiumId),
         applyTenantFilter(
-          supabase.from('cobrancas').select('id, descricao, valor, pago, payment_status, vencimento, mes_referencia, data_pagamento, paid_at, created_at, unidade_id, unidade_numero').order('created_at', { ascending: false }),
+          supabase.from('cobrancas').select('id, descricao, valor, pago, payment_status, vencimento, mes_referencia, data_pagamento, paid_at, created_at, unidade_id, unidade_numero, morador_id').order('created_at', { ascending: false }),
           condominiumId,
         ),
         applyTenantFilter(
@@ -90,24 +77,9 @@ export default function AdminDashboard({ isActive = true, onNavigate = () => {} 
 
   const chartData = useMemo(() => buildChargeStatusChartData(cobrancas, 6), [cobrancas])
 
-  // Cartoes do painel (v2.10A4). Pagos no mes: so cobrancas confirmadas pelo sindico (PAID) com
-  // pagamento neste mes. Em aberto ate o fim do mes do vencimento; depois, inadimplente.
-  // Embaixo do valor: quantas unidades (uma unidade com duas cobrancas conta uma vez).
-  const cartoes = useMemo(() => {
-    const total = {
-      pago: { valor: 0, unidades: new Set() },
-      em_aberto: { valor: 0, unidades: new Set() },
-      inadimplente: { valor: 0, unidades: new Set() },
-    }
-    for (const item of cobrancas) {
-      const bucket = getMonthlyChargeBucket(item)
-      if (bucket === 'pago' && !isSameMonth(item.paid_at || item.data_pagamento)) continue
-      if (!total[bucket]) continue
-      total[bucket].valor += Number(item.valor || 0)
-      total[bucket].unidades.add(unitKey(item))
-    }
-    return total
-  }, [cobrancas])
+  // Cartoes do painel (v2.10A4): pagos no mes, em aberto ate o fim do mes do vencimento e
+  // inadimplentes. O mesmo calculo vai para o morador (v2.10A5), pelo servidor.
+  const cartoes = useMemo(() => buildMonthlyCards(cobrancas), [cobrancas])
 
   // Arrecadacao da competencia mais recente lancada.
   const arrecadacao = useMemo(() => {
@@ -154,12 +126,6 @@ export default function AdminDashboard({ isActive = true, onNavigate = () => {} 
   }
 
   const pct = (n) => (arrecadacao?.total ? `${(n / arrecadacao.total) * 100}%` : '0%')
-  const kpis = [
-    { Icon: CircleCheck, tom: 'green', label: 'Valores pagos no mês', valor: formatMoney(cartoes.pago.valor), sub: `${unidades(cartoes.pago.unidades.size)} ${cartoes.pago.unidades.size === 1 ? 'pagou' : 'pagaram'} no mês` },
-    { Icon: Clock3, tom: 'amber', label: 'Valores em aberto', valor: formatMoney(cartoes.em_aberto.valor), sub: `${unidades(cartoes.em_aberto.unidades.size)} com valor em aberto` },
-    { Icon: TriangleAlert, tom: 'red', label: 'Uni. Inadimplente', valor: formatMoney(cartoes.inadimplente.valor), sub: `${unidades(cartoes.inadimplente.unidades.size)} ${cartoes.inadimplente.unidades.size === 1 ? 'inadimplente' : 'inadimplentes'}` },
-    { Icon: Building2, tom: 'primary', label: 'Unidades ativas', valor: stats.unidadesAtivas, sub: `${stats.unidadesCadastradas} de ${unitLimit || '-'} cadastradas` },
-  ]
 
   return (
     <div className="fade-in home">
@@ -178,18 +144,7 @@ export default function AdminDashboard({ isActive = true, onNavigate = () => {} 
 
       <InstallAppCard />
 
-      <div className="stats-grid" style={{ marginBottom: 0 }}>
-        {kpis.map(({ Icon, tom, label, valor, sub }) => (
-          <div key={label} className="stat-card">
-            <div className="kpi-head">
-              <span className={`kpi-icon kpi-${tom}`}><Icon size={17} /></span>
-              <span className="label">{label}</span>
-            </div>
-            <div className="value">{valor}</div>
-            <div className="sub">{sub}</div>
-          </div>
-        ))}
-      </div>
+      <ResumoCards cartoes={cartoes} unidadesAtivas={stats.unidadesAtivas} unidadesSub={`${stats.unidadesCadastradas} de ${unitLimit || '-'} cadastradas`} />
 
       <div className="home-cols">
         <section className="home-main home-panel home-panel-pad" style={{ gap: 18, flex: '1.35 1 420px' }}>
